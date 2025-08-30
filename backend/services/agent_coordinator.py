@@ -320,11 +320,14 @@ class AgentCoordinator:
     """Manages background agent tasks using threading"""
     
     def __init__(self):
-        self.task_queue = Queue()
+        self.task_queue = []  # Simple list instead of Queue
+        self.task_queue_lock = threading.Lock()  # Thread safety for list operations
         self.workers = []
         self.running = True
         self.result_manager = AgentResultManager()  # Use the new result manager
         self.task_history = {}   # Store task history by task_id
+        self.most_recent_conversation: Optional[str] = None  # Track most recently accessed conversation
+        self.most_recent_snapshot: Optional[int] = None  # Track most recently accessed snapshot
         
         # Create agents with coordinator dependency injected
         self.agents = {
@@ -360,16 +363,12 @@ class AgentCoordinator:
         
         while self.running:
             try:
-                # Get task from queue with timeout
-                task = self.task_queue.get(timeout=1)
+                # Get task from queue with prioritization
+                task = self._get_next_task_for_agent(agent_type)
                 
-                # Check if this task is for our agent type
-                if task.agent_type == agent_type:
+                if task:
                     # logger.info(f"Worker {agent_type} processing task {task.id}")
                     self._process_task(task)
-                else:
-                    # Put back in queue for different agent
-                    self.task_queue.put(task)
                     
             except Exception as e:
                 # Queue timeout or other error, continue
@@ -466,6 +465,30 @@ class AgentCoordinator:
         """Update task in history"""
         self.task_history[task.id] = task
     
+    def _get_next_task_for_agent(self, agent_type: str) -> Optional[AgentTask]:
+        """Get next task for specific agent type with snapshot-based prioritization"""
+        with self.task_queue_lock:
+            if not self.task_queue:
+                return None
+            
+            # Try to find a task for the most recent conversation/snapshot first
+            if self.most_recent_conversation and self.most_recent_snapshot:
+                for task in self.task_queue:
+                    is_most_recent = (task.agent_type == agent_type and
+                        task.agent_input.conversation_id == self.most_recent_conversation and
+                        int(task.agent_input.snapshot_id) == self.most_recent_snapshot)
+                    if is_most_recent:
+                        self.task_queue.remove(task)
+                        return task
+            
+            # Otherwise return any task of the right type
+            for task in self.task_queue:
+                if task.agent_type == agent_type:
+                    self.task_queue.remove(task)
+                    return task
+            
+            return None
+    
     def queue_task(self, agent_type: str, agent_input: AgentInput, priority: int = 0) -> str:
         """Queue a new task for processing"""
         task_id = str(uuid.uuid4())
@@ -477,7 +500,8 @@ class AgentCoordinator:
             priority=priority
         )
         
-        self.task_queue.put(task)
+        with self.task_queue_lock:
+            self.task_queue.append(task)
         self.task_history[task_id] = task
         
         # logger.info(f"Queued task {task_id} for {agent_type} agent in conversation {agent_input.conversation_id}")
@@ -496,6 +520,10 @@ class AgentCoordinator:
     
     def get_latest_results(self, conversation_id: str, snapshot_id: str) -> List[StoredAgentResult]:
         """Get latest results for a conversation/snapshot context"""
+        # Update most recent conversation/snapshot for prioritization
+        self.most_recent_conversation = conversation_id
+        self.most_recent_snapshot = int(snapshot_id)
+        
         return self.result_manager.get_latest_results(conversation_id, snapshot_id)
     
     def get_results_by_target_type(self, conversation_id: str, target_type: str, snapshot_id: str) -> List[StoredAgentResult]:
