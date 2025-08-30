@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines a comprehensive rearchitecture of the agent system in Dianoia, addressing six key areas:
+This document outlines a comprehensive rearchitecture of the agent system in Dianoia, addressing seven key areas:
 
 1. **Input Normalization** - Standardize how agents receive and process input
 2. **Agent Type Reorganization** - Restructure agent functions into a new array of agent types
@@ -10,6 +10,7 @@ This document outlines a comprehensive rearchitecture of the agent system in Dia
 4. **Snapshot Association** - Associate agents with conversation snapshots, not just conversations
 5. **TTL Implementation** - Introduce time-to-live mechanisms on agent results
 6. **Frontend Integration** - Propagate changes to the frontend accordingly
+7. **Frontend State Management** - Centralize frontend state management using Zustand
 
 ## Current State Analysis
 
@@ -858,13 +859,13 @@ interface AgentRealTimeUpdates {
    - Added support for existing formalizations for consistency checking
    - **TODO**: Update to use previous content evaluation results
 
-4. **Update Existing FormEvaluationAgent**
-   - Enhance existing `FormEvaluationAgent` in `agents.py`
-   - Ensure proper input filtering to exclude natural language content
-   - Update prompts for formal logic validation
-   - Standardize result schema
-   - Add prompts for weakest formal inference identification
-   - **TODO**: Update to use approved formalization results from user review system
+4. ✅ **Update Existing FormEvaluationAgent**
+   - ✅ Enhanced existing `FormEvaluationAgent` in `agents.py`
+   - ✅ Ensured proper input filtering to exclude natural language content
+   - ✅ Updated prompts for formal logic validation
+   - ✅ Standardized result schema
+   - ✅ Weakest formal inference identification (already provided by `proposition_evaluations` array)
+   - ✅ Integrated with user review system via `endorsed` field
 
 5. **Implement Improvement Agent (combining RewriterAgent and ArgumentBuilderAgent)**
    - Complete the existing `RewriterAgent` stub in `agents.py`
@@ -966,6 +967,223 @@ interface AgentRealTimeUpdates {
 3. **Unwanted Suggestions**: User control over agent activity levels
 4. **Performance Perception**: Real-time feedback and progress indicators
 
+## 7. Frontend State Management Rearchitecture
+
+### Problem
+The frontend application had scattered state management with conversation-related state and logic distributed across local React component state and hooks, leading to:
+- **Prop drilling** - Passing state down multiple component levels
+- **Inconsistent state** - State managed in different places with different patterns
+- **Complex component interfaces** - Components requiring many props for state access
+- **Difficult debugging** - State changes happening in multiple locations
+- **Poor separation of concerns** - UI components managing business logic
+
+### Solution: Centralized Zustand State Management
+
+#### **Store Architecture**
+```typescript
+interface ConversationState {
+  // Core state
+  conversations: ConversationType[]
+  currentConversationIndex: number
+  currentSnapshotIndex: number
+  nextConversationId: number
+  userMode: 'waiting' | 'ready' | 'input'
+  snapshotRenderCount: number
+  sessionId: string
+  lastFailedOperation: ApiOperationInfo | null
+  
+  // State management functions
+  updateCurrentConversation: (conversation: ConversationType) => void
+  saveConversationName: (conversationId: number, name: string) => void
+  setCurrentConversationIndex: (index: number) => void
+  setCurrentSnapshotIndex: (index: number) => void
+  setUserMode: (mode: 'waiting' | 'ready' | 'input') => void
+  setSnapshotRenderCount: (count: number) => void
+  setNextConversationId: (id: number) => void
+  setLastFailedOperation: (operation: ApiOperationInfo | null) => void
+  
+  // Data access functions
+  getCurrentConversationState: () => { conversation: ConversationType, snapshotIndex: number }
+  getCurrentConversationId: () => number
+  
+  // Conversation management
+  createConversationFromProposition: (proposition: string) => void
+  createConversation: (initPrompt?: string) => void
+  
+  // Snapshot operations
+  applyNewArgument: (responseData: any) => void
+  applyAgentResults: (changes: AgentResultChanges) => void
+  
+  // API coordination
+  makeApiCall: (operation: ApiOperationInfo) => Promise<void>
+}
+
+interface AgentResultChanges {
+  truthUpdates?: { symbol: string, value: string }[]
+  validityUpdates?: { symbol: string, value: string }[]
+  formalizationUpdates?: { symbol: string, formalization: any }[]
+  formalValidityUpdates?: { symbol: string, value: string }[]
+  formalizationDefinitions?: any
+}
+```
+
+#### **Component Integration**
+```typescript
+// Before: Components with many props
+function Conversation({ 
+  conversation, 
+  setConversation, 
+  sessionId, 
+  userMode, 
+  setUserMode,
+  currentSnapshotIndex,
+  setCurrentSnapshotIndex,
+  // ... many more props
+}) { ... }
+
+// After: Components access state directly
+function Conversation() {
+  const { 
+    conversations, 
+    currentConversationIndex, 
+    currentSnapshotIndex,
+    updateCurrentConversation 
+  } = useConversationStore()
+  // ... component logic
+}
+```
+
+#### **Data Flow Architecture**
+```typescript
+// 1. Components access state via store
+const { getCurrentConversationState, applyNewArgument } = useConversationStore()
+
+// 2. User actions dispatch to store
+const handleUserAction = () => {
+  makeApiCall({
+    url: '/api/argument/user-justify',
+    data: currentSnapshot,
+    onSuccess: applyNewArgument,  // Store handles state update
+    onFinally: () => setUserMode('ready')
+  })
+}
+
+// 3. Agent results processed and applied
+const applyAgentResultsToSnapshot = (newResultsByAgent: ResultsByAgent) => {
+  // Component parses results into structured changes
+  const changes = parseAgentResults(newResultsByAgent)
+  
+  // Store applies changes to its own state
+  applyAgentResults(changes)
+}
+```
+
+### Implementation Results
+
+#### **Completed Work ✅**
+
+**1. Store Foundation**
+- ✅ **Created centralized Zustand store** (`conversationStore.ts`)
+- ✅ **Defined core state structure** with conversations, snapshots, indices, and user modes
+- ✅ **Implemented initial snapshot system** where all conversations start with an empty snapshot (index 0)
+- ✅ **Added session management** with `sessionId` and `lastFailedOperation` tracking
+
+**2. State Migration**
+- ✅ **Moved `sessionId`** from local hooks to store
+- ✅ **Moved `userMode`** from local hooks to store  
+- ✅ **Moved `currentSnapshotIndex`** from local hooks to store
+- ✅ **Moved `snapshotRenderCount`** from local hooks to store
+- ✅ **Moved conversation data** from props to store access
+- ✅ **Moved `getCurrentConversationState`** to store
+- ✅ **Moved `getCurrentConversationId`** to store
+
+**3. Function Migration**
+- ✅ **Moved `createConversationFromProposition`** to store
+- ✅ **Moved `createConversation`** to store
+- ✅ **Moved `setUserMode`** to store
+- ✅ **Moved `setCurrentConversationIndex`** to store
+- ✅ **Moved `setSnapshotRenderCount`** to store
+- ✅ **Moved `setNextConversationId`** to store
+- ✅ **Moved `setLastFailedOperation`** to store
+
+**4. API Call Management**
+- ✅ **Implemented `makeApiCall`** in store with error handling
+- ✅ **Created `applyNewArgument`** for handling API responses and creating new snapshots
+- ✅ **Refactored handlers** to use `applyNewArgument` for snapshot updates
+- ✅ **Maintained async operations in hooks** while dispatching pure actions to store
+
+**5. Agent Results Processing**
+- ✅ **Implemented `applyAgentResults`** in store for applying agent result changes
+- ✅ **Refactored `AllAgentResults`** to parse agent results and send structured changes to store
+- ✅ **Proper separation of concerns**: Component parses, store applies changes to state
+- ✅ **Eliminated snapshot construction** outside the store
+
+**6. Component Cleanup**
+- ✅ **Removed prop drilling** from `Conversation`, `AllAgentResults`, and other components
+- ✅ **Updated `useConversationState`** to get state from store instead of props
+- ✅ **Updated `useConversationActions`** to get actions from store instead of props
+- ✅ **Simplified component interfaces** by removing unnecessary props
+
+**7. Code Cleanup**
+- ✅ **Removed unused functions**: `saveSnapshot`, `saveSnapshotInPlace`, `addConversation`
+- ✅ **Removed commented-out code** and dead functions
+- ✅ **Cleaned up redundant parameters** and unused variables
+- ✅ **Fixed linter errors** and type issues
+
+#### **Current Architecture**
+
+**Store Responsibilities**
+- **State management**: Conversations, snapshots, indices, user modes
+- **Snapshot operations**: Creating new snapshots, applying changes to current snapshot
+- **API coordination**: Making calls, handling responses, error management
+- **State consistency**: Ensuring proper snapshot sequencing and state updates
+
+**Component Responsibilities**
+- **UI rendering**: Displaying conversation state from store
+- **User interactions**: Dispatching actions to store
+- **Agent result parsing**: Converting backend responses to structured changes
+- **Side effects**: Polling, API calls, lifecycle management
+
+**Data Flow**
+1. **Components** access state via `useConversationStore()`
+2. **User actions** dispatch to store functions
+3. **API calls** happen in hooks, results dispatched to store
+4. **Store** manages all state updates and snapshot operations
+5. **Components** re-render automatically via Zustand subscriptions
+
+#### **Benefits Achieved**
+- ✅ **Centralized state management** - Single source of truth for conversation state
+- ✅ **Eliminated prop drilling** - Components access state directly from store
+- ✅ **Improved state consistency** - Store ensures proper snapshot sequencing
+- ✅ **Better separation of concerns** - Clear boundaries between state management and UI
+- ✅ **Simplified component interfaces** - Fewer props, cleaner component signatures
+- ✅ **Type safety** - Proper TypeScript interfaces for all state operations
+- ✅ **Error handling** - Centralized error management in store
+
+### Integration with Agent System
+
+The frontend state management rearchitecture provides a solid foundation for the agent system improvements:
+
+**1. Agent Results Integration**
+- Store's `applyAgentResults` function provides clean interface for agent result updates
+- Structured changes ensure type safety and proper state updates
+- Component parsing ensures proper separation of concerns
+
+**2. User Review System**
+- Store can easily add user review state management
+- Components can access review state directly without prop drilling
+- Review decisions can be dispatched to store for state updates
+
+**3. Real-time Updates**
+- Zustand subscriptions enable real-time updates from agent system
+- Store can handle agent status updates and result notifications
+- Components automatically re-render when agent state changes
+
+**4. Error Handling**
+- Centralized error management in store handles agent failures
+- `lastFailedOperation` tracking provides user feedback
+- Retry mechanisms can be implemented at store level
+
 ## Conclusion
 
 This rearchitecture plan transforms Dianoia's agent system from a reactive, conversation-focused system into a proactive, snapshot-aware, and user-controlled intelligent assistant. The phased implementation ensures minimal disruption while delivering significant improvements in functionality, performance, and user experience.
@@ -977,6 +1195,7 @@ The new architecture provides:
 - **Rich Context**: Full awareness of conversation history and evolution
 - **Efficient Resource Management**: Smart TTLs and cleanup
 - **Enhanced User Experience**: Rich frontend integration and controls
+- **Centralized State Management**: Single source of truth for frontend state
 
 This foundation enables future enhancements such as agent learning, collaborative agent networks, and advanced reasoning capabilities.
 
