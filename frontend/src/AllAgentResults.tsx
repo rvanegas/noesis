@@ -21,7 +21,7 @@ type ResultsByAgent = {
 
 export default function AllAgentResults() {
   const { sessionId, getCurrentConversationState, getCurrentConversationId, currentSnapshotIndex, 
-    applyAgentResults } = useConversationStore()
+    applyAgentResults, saveAgentResults, getAgentResults } = useConversationStore()
   const conversationId = getCurrentConversationId()
   
   const [resultsByAgent, setResultsByAgent] = useState<ResultsByAgent>({})
@@ -51,6 +51,12 @@ export default function AllAgentResults() {
       default: return agentType
     }
   }
+
+  // Load agent results from store when snapshot changes
+  useEffect(() => {
+    const storedResults = getAgentResults(conversationId, currentSnapshotIndex)
+    setResultsByAgent(storedResults)
+  }, [currentSnapshotIndex, conversationId, getAgentResults])
 
   // Note: This component resets its state when snapshotIndex changes to ensure
   // proper behavior with undo/redo operations. Each snapshot will fetch its own
@@ -162,7 +168,11 @@ export default function AllAgentResults() {
         // Only update if we have new results
         if (JSON.stringify(newResultsByAgent) !== JSON.stringify(resultsByAgent)) {
           setResultsByAgent(newResultsByAgent)
-          // Apply results to snapshot
+          
+          // Store raw agent results by snapshot
+          saveAgentResults(conversationId, currentSnapshotIndex, newResultsByAgent)
+          
+          // Apply results to snapshot (for UI updates)
           applyAgentResultsToSnapshot(newResultsByAgent)
         } else {
           // console.log('⏭️ Skipping update - no new data')
@@ -205,12 +215,13 @@ export default function AllAgentResults() {
     if (currentPollingSnapshotRef.current === currentSnapshotIndex) {
       return
     }
-        
-    // Reset state when conversation or snapshot changes
-    // console.log('🔄 Resetting agent results state for new snapshot:', { snapshotIndex, snapshotVersion })
-    setResultsByAgent({})
+    
+    // Always check with server for latest results, but preserve stored results as initial state
+    const storedResults = getAgentResults(conversationId, currentSnapshotIndex)
+    setResultsByAgent(storedResults)
     setError(null)
     tasksCompleteRef.current = false
+    
     currentPollingSnapshotRef.current = currentSnapshotIndex
     
     // Set up polling every 1 second, but only if tasks are not complete
@@ -645,10 +656,11 @@ export default function AllAgentResults() {
       {!error && currentPollingSnapshotRef.current >= 0 && !tasksCompleteRef.current && (
         <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
           <div className="text-center">
-            <div className="flex items-center justify-center mb-3">
-              <p className="text-blue-700 font-medium">Processing with AI agents...</p>
-            </div>
-            
+            {activeTaskCount > 0 && (
+              <div className="flex items-center justify-center mb-3">
+                <p className="text-blue-700 font-medium">Processing with AI agents...</p>
+              </div>
+            )}
             {activeTaskCount > 0 && (
               <div className="text-left">
                 <p className="text-blue-600 text-sm mb-2">

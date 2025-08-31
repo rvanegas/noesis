@@ -33,6 +33,7 @@ interface ConversationState {
   updateCurrentConversation: (conversation: ConversationType) => void
   saveConversationName: (conversationId: number, name: string) => void
   saveAgentResults: (conversationId: number, snapshotIndex: number, agentResults: any) => void
+  getAgentResults: (conversationId: number, snapshotIndex: number) => { [agentType: string]: any[] }
   setCurrentConversationIndex: (index: number) => void
   setCurrentSnapshotIndex: (index: number) => void
   setUserMode: (mode: 'waiting' | 'ready' | 'input') => void
@@ -78,14 +79,23 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     }))
   },
 
-  saveAgentResults: (conversationId, snapshotIndex, agentResults) => {
+  saveAgentResults: (conversationId: number, snapshotIndex: number, agentResults: { [agentType: string]: any[] }) => {
     set(produce((state) => {
       const conversation = state.conversations.find((c: ConversationType) => c.id === conversationId)
       if (conversation && conversation.snapshots[snapshotIndex]) {
-        // Update the agent results for the specific snapshot
+        // Store the raw agent results for the specific snapshot
         conversation.snapshots[snapshotIndex].agentResults = agentResults
       }
     }))
+  },
+
+  getAgentResults: (conversationId: number, snapshotIndex: number) => {
+    const state = get()
+    const conversation = state.conversations.find((c: ConversationType) => c.id === conversationId)
+    if (conversation && conversation.snapshots[snapshotIndex]) {
+      return conversation.snapshots[snapshotIndex].agentResults || {}
+    }
+    return {}
   },
 
   setCurrentConversationIndex: (index) => 

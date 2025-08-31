@@ -104,25 +104,26 @@ class AgentResultManager:
         target_metadata = result.target_metadata
         target_type = target_metadata.target_type
         target_content = target_metadata.target_content
+        snapshot_id = result.snapshot_id
         
         if agent_type == 'builder':
             # Builder targets a specific proposition
-            return f"builder:{target_type}:{target_content}"
+            return f"builder:{target_type}:{target_content}:{snapshot_id}"
         
         elif agent_type == 'formalizer':
             # Formalizer targets a specific proposition
-            return f"formalizer:{target_type}:{target_content}"
+            return f"formalizer:{target_type}:{target_content}:{snapshot_id}"
         
         elif agent_type in ['content_evaluator', 'form_evaluator']:
             # Evaluators target the entire argument as a whole
-            return f"{agent_type}:{target_type}"
+            return f"{agent_type}:{target_type}:{snapshot_id}"
         
         elif agent_type == 'rewriter':
             # Rewriter targets a specific proposition
-            return f"rewriter:{target_type}:{target_content}"
+            return f"rewriter:{target_type}:{target_content}:{snapshot_id}"
         
         # Fallback to using the entire result as identifier
-        return f"{agent_type}:{hash(str(result))}"
+        return f"{agent_type}:{hash(str(result))}:{snapshot_id}"
     
     def _is_outdated_result(self, result: StoredAgentResult, new_agent_type: str, 
                            new_operation: str, target_id: str) -> bool:
@@ -525,6 +526,8 @@ class AgentCoordinator:
         self.most_recent_snapshot = int(snapshot_id)
         
         return self.result_manager.get_latest_results(conversation_id, snapshot_id)
+    
+
     
     def get_results_by_target_type(self, conversation_id: str, target_type: str, snapshot_id: str) -> List[StoredAgentResult]:
         """Get results filtered by target type (argument vs proposition level)"""

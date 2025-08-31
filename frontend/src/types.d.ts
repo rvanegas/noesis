@@ -27,6 +27,7 @@ type ConversationSnapshot = {
     predicates: Array<{symbol: string, value: string}>
     constants: Array<{symbol: string, value: string}>
   }
+  agentResults?: { [agentType: string]: any[] }
 }
 
 type ConversationType = {
