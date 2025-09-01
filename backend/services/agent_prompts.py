@@ -886,7 +886,7 @@ You are an AI agent working on logical argumentation. Your task is to analyze ev
 
 ### Task: Generate Improvement Recommendations
 
-You will receive argument data with evaluation results and generate cohesive recommendation sets that work together to strengthen the concluding proposition (the thesis/conclusion). Each recommendation must demonstrate how it contributes to improving the concluding proposition's truth, content validity, and formal validity scores.
+You will receive argument data with evaluation results and generate cohesive recommendation sets that work together to strengthen the argument structure. Each recommendation targets a specific proposition and demonstrates how it contributes to improving that proposition's scores, which in turn strengthens the overall argument and ultimately improves the concluding proposition's scores.
 
 ### Input Format
 The input will be a JSON object with the following structure:
@@ -908,29 +908,27 @@ Each Step object contains:
 - formalization: Formal logic representation (optional)
 
 ### Improvement Types
-Generate cohesive recommendation sets that work together to strengthen the concluding proposition:
+Generate cohesive recommendation sets that work together to strengthen the argument structure:
 
 1. **Conclusion-Supporting Premises**: New propositions that provide evidence or reasoning to directly support the concluding proposition
-2. **Proposition Strengthening**: New propositions that support existing propositions, thereby strengthening the overall argument for the conclusion
+2. **Proposition Strengthening**: New propositions that support any existing proposition (conclusion, lemmas, or intermediate conclusions), thereby strengthening the overall argument structure
 3. **Proposition Refinements**: Rewrites of existing propositions to improve clarity, logic, or precision
 4. **Mixed Recommendations**: Combinations of new supporting propositions and refined existing propositions
-5. **Justification Sets**: Multiple propositions that together provide comprehensive justification for the concluding proposition
+5. **Justification Sets**: Multiple propositions that together provide comprehensive justification for any target proposition
 
 ### Guidelines
-1. **Focus on Conclusion Improvement**: All recommendations must ultimately aim to improve the concluding proposition's scores
+1. **Focus on Argument Strengthening**: All recommendations must ultimately strengthen the argument structure and improve the concluding proposition's scores
 2. **Cohesive Sets**: Each recommendation should be a complete, self-contained improvement set where propositions work together
 3. **Evaluation-Driven**: Base recommendations on actual evaluation results, not generic suggestions
-4. **Target Weaknesses**: Identify specific weaknesses in the argument structure and address them
-5. **Confidence Scoring**: Rate your confidence in each recommendation (0.0 to 1.0)
-6. **Impact Assessment**: Estimate the expected improvement in conclusion scores
-7. **Detailed Reasoning**: Explain why each improvement is suggested and how it will help
-8. **Avoid Repetition**: Don't suggest improvements that duplicate existing propositions
-9. **Consider Context**: Use assumptions and existing argument structure to inform recommendations
+4. **Target Weaknesses**: Identify specific weaknesses in any proposition or argument structure and address them
+5. **Impact Assessment**: Estimate the expected improvement in target proposition scores and overall argument strength
+6. **Detailed Reasoning**: Explain why each improvement is suggested and how it will help strengthen the argument
+7. **Avoid Repetition**: Don't suggest improvements that duplicate existing propositions
+8. **Consider Context**: Use assumptions and existing argument structure to inform recommendations
 
 ### Output Structure
 Each recommendation should include:
 - **reasoning**: Why this improvement is suggested based on evaluation results
-- **confidence**: Your confidence in this recommendation (0.0 to 1.0)
 - **impact**: Expected impact level ('high', 'medium', 'low')
 - **target_proposition**: Symbol of the proposition this recommendation supports
 - **expected_conclusion_improvement**: Detailed prediction of how this will improve conclusion scores
@@ -938,7 +936,7 @@ Each recommendation should include:
 
 ### Examples
 
-# Low conclusion truth score scenario
+# Low conclusion truth score scenario - Conclusion-Supporting Premises
 
 Input:
 {
@@ -976,28 +974,28 @@ Output:
     {
       "id": "rec_001",
       "reasoning": "The conclusion has a very low truth score (0.3) because it lacks supporting evidence. Adding specific evidence about the policy's effectiveness will significantly improve the conclusion's credibility.",
-      "confidence": 0.85,
       "impact": "high",
       "target_proposition": "A",
       "expected_conclusion_improvement": {
-        "truth_score_improvement": 0.4,
-        "content_validity_improvement": 0.3,
-        "formal_validity_improvement": 0.2,
-        "reasoning": "Adding empirical evidence and specific mechanisms will make the conclusion more credible and logically sound"
+        "truth_score_improvement": "0.4",
+        "content_validity_improvement": "0.3",
+        "formal_validity_improvement": "0.2"
       },
       "propositions": [
         {
-          "symbol": "B",
+          "symbol": null,
           "proposition": "Similar policies have reduced crime by 25% in comparable cities",
           "type": "new",
           "placement": "argument",
+          "justifies_symbol": "A",
           "justification_suggestions": ["Statistical evidence from peer-reviewed studies", "Case studies from similar urban areas"]
         },
         {
-          "symbol": "C", 
+          "symbol": null, 
           "proposition": "The policy targets root causes of crime through community engagement",
           "type": "new",
           "placement": "argument",
+          "justifies_symbol": "A",
           "justification_suggestions": ["Policy analysis documents", "Expert testimony on crime prevention"]
         }
       ]
@@ -1048,21 +1046,20 @@ Output:
     {
       "id": "rec_002",
       "reasoning": "The conclusion has a low validity score (0.3) because the inference from economic growth to unemployment reduction is weak. Adding a bridging premise will strengthen the logical connection.",
-      "confidence": 0.9,
       "impact": "high",
       "target_proposition": "B",
       "expected_conclusion_improvement": {
-        "truth_score_improvement": 0.1,
-        "content_validity_improvement": 0.5,
-        "formal_validity_improvement": 0.4,
-        "reasoning": "Adding a specific mechanism linking growth to employment will make the inference much stronger"
+        "truth_score_improvement": "0.1",
+        "content_validity_improvement": "0.5",
+        "formal_validity_improvement": "0.4"
       },
       "propositions": [
         {
-          "symbol": "C",
+          "symbol": null,
           "proposition": "Economic growth creates new job opportunities in expanding sectors",
           "type": "new",
           "placement": "argument",
+          "justifies_symbol": "B",
           "justification_suggestions": ["Economic theory on job creation", "Historical data on employment growth"]
         }
       ]
@@ -1070,7 +1067,7 @@ Output:
   ]
 }
 
-# Mixed recommendation scenario
+# Mixed recommendation scenario - Proposition Refinements + New Supporting Premises
 
 Input:
 {
@@ -1120,14 +1117,12 @@ Output:
     {
       "id": "rec_003",
       "reasoning": "The conclusion has moderate scores but could be significantly improved by making it more specific and adding supporting evidence. This mixed approach will strengthen both the conclusion and its justification.",
-      "confidence": 0.8,
       "impact": "medium",
       "target_proposition": "B",
       "expected_conclusion_improvement": {
-        "truth_score_improvement": 0.2,
-        "content_validity_improvement": 0.4,
-        "formal_validity_improvement": 0.3,
-        "reasoning": "Making the conclusion specific and adding evidence will make it more credible and logically sound"
+        "truth_score_improvement": "0.2",
+        "content_validity_improvement": "0.4",
+        "formal_validity_improvement": "0.3"
       },
       "propositions": [
         {
@@ -1140,18 +1135,275 @@ Output:
           "justification_suggestions": ["Economic analysis of carbon pricing effectiveness", "Policy recommendations from climate scientists"]
         },
         {
-          "symbol": "C",
+          "symbol": null,
           "proposition": "Carbon pricing has been effective in reducing emissions in other countries",
           "type": "new",
           "placement": "argument",
+          "justifies_symbol": "B",
           "justification_suggestions": ["Case studies from European countries", "Economic research on carbon pricing"]
         },
         {
-          "symbol": "D",
+          "symbol": null,
           "proposition": "Reducing emissions will mitigate the worst effects of climate change",
           "type": "new",
           "placement": "argument",
+          "justifies_symbol": "B",
           "justification_suggestions": ["Climate science research", "IPCC reports on emission reduction impacts"]
+        }
+      ]
+    }
+  ]
+}
+
+# Proposition Strengthening scenario - Supporting existing propositions
+
+Input:
+{
+  "agent_data": {
+    "argument": [
+      {
+        "symbol": "A",
+        "proposition": "The new drug shows promise in clinical trials",
+        "justifiers": [],
+        "truth_score": 0.6,
+        "valid_content": 0.7,
+        "valid_formal": null
+      },
+      {
+        "symbol": "B",
+        "proposition": "Therefore, the drug should be approved",
+        "justifiers": ["A"],
+        "truth_score": 0.5,
+        "valid_content": 0.4,
+        "valid_formal": null
+      }
+    ],
+    "assumptions": [],
+    "target_type": "argument",
+    "target_content": null
+  },
+  "evaluation_results": {
+    "truth_evaluations": [
+      {"symbol": "A", "truth_value": 0.6, "reasoning": "Moderate evidence, needs more supporting data"},
+      {"symbol": "B", "truth_value": 0.5, "reasoning": "Weak conclusion from weak premise"}
+    ],
+    "validity_evaluations": [
+      {"symbol": "B", "validity_value": 0.4, "reasoning": "Premise A is too weak to support approval conclusion"}
+    ]
+  },
+  "conclusion_proposition": "The drug should be approved",
+  "current_conclusion_scores": {
+    "truth": 0.5,
+    "content_validity": 0.4,
+    "formal_validity": null
+  }
+}
+
+Output:
+{
+  "recommendations": [
+    {
+      "id": "rec_004",
+      "reasoning": "The conclusion has low scores because premise A is too weak to support the approval conclusion. Adding supporting evidence for the premise will strengthen the overall argument.",
+      "impact": "high",
+      "target_proposition": "A",
+      "expected_conclusion_improvement": {
+        "truth_score_improvement": "0.3",
+        "content_validity_improvement": "0.4",
+        "formal_validity_improvement": "0.2"
+      },
+      "propositions": [
+        {
+          "symbol": null,
+          "proposition": "Phase II trials showed 70% effectiveness rate",
+          "type": "new",
+          "placement": "argument",
+          "justifies_symbol": "A",
+          "justification_suggestions": ["Clinical trial reports", "Peer-reviewed medical journals"]
+        },
+        {
+          "symbol": null,
+          "proposition": "Safety profile meets FDA requirements",
+          "type": "new",
+          "placement": "argument",
+          "justifies_symbol": "A",
+          "justification_suggestions": ["Safety analysis reports", "FDA regulatory guidelines"]
+        },
+        {
+          "symbol": null,
+          "proposition": "The drug addresses an unmet medical need",
+          "type": "new",
+          "placement": "argument",
+          "justifies_symbol": "A",
+          "justification_suggestions": ["Medical literature review", "Healthcare provider surveys"]
+        }
+      ]
+    }
+  ]
+}
+
+# Justification Sets scenario - Multiple propositions working together
+
+Input:
+{
+  "agent_data": {
+    "argument": [
+      {
+        "symbol": "A",
+        "proposition": "The company should expand internationally",
+        "justifiers": [],
+        "truth_score": 0.4,
+        "valid_content": 0.3,
+        "valid_formal": null
+      }
+    ],
+    "assumptions": [],
+    "target_type": "argument",
+    "target_content": null
+  },
+  "evaluation_results": {
+    "truth_evaluations": [
+      {"symbol": "A", "truth_value": 0.4, "reasoning": "Vague claim without supporting evidence or reasoning"}
+    ]
+  },
+  "conclusion_proposition": "The company should expand internationally",
+  "current_conclusion_scores": {
+    "truth": 0.4,
+    "content_validity": 0.3,
+    "formal_validity": null
+  }
+}
+
+Output:
+{
+  "recommendations": [
+    {
+      "id": "rec_005",
+      "reasoning": "The conclusion has very low scores because it lacks comprehensive justification. A complete justification set will provide multiple supporting reasons that work together to make the conclusion compelling.",
+      "impact": "high",
+      "target_proposition": "A",
+      "expected_conclusion_improvement": {
+        "truth_score_improvement": "0.5",
+        "content_validity_improvement": "0.6",
+        "formal_validity_improvement": "0.4"
+      },
+      "propositions": [
+        {
+          "symbol": null,
+          "proposition": "International markets show strong demand for our products",
+          "type": "new",
+          "placement": "argument",
+          "justifies_symbol": "A",
+          "justification_suggestions": ["Market research reports", "International sales data", "Customer surveys"]
+        },
+        {
+          "symbol": null,
+          "proposition": "Expansion will diversify our revenue streams",
+          "type": "new",
+          "placement": "argument",
+          "justifies_symbol": "A",
+          "justification_suggestions": ["Financial analysis", "Risk assessment reports", "Industry benchmarks"]
+        },
+        {
+          "symbol": null,
+          "proposition": "We have the operational capacity to support international growth",
+          "type": "new",
+          "placement": "argument",
+          "justifies_symbol": "A",
+          "justification_suggestions": ["Capacity analysis", "Resource planning documents", "Expert assessments"]
+        },
+        {
+          "symbol": null,
+          "proposition": "Competitors are already expanding internationally",
+          "type": "new",
+          "placement": "argument",
+          "justifies_symbol": "A",
+          "justification_suggestions": ["Competitive analysis", "Industry reports", "Market intelligence"]
+        }
+      ]
+    }
+  ]
+}
+
+# Lemma Strengthening scenario - Supporting intermediate conclusions
+
+Input:
+{
+  "agent_data": {
+    "argument": [
+      {
+        "symbol": "A",
+        "proposition": "The new policy will reduce traffic congestion",
+        "justifiers": [],
+        "truth_score": 0.6,
+        "valid_content": 0.5,
+        "valid_formal": null
+      },
+      {
+        "symbol": "B",
+        "proposition": "Reduced congestion will improve air quality",
+        "justifiers": ["A"],
+        "truth_score": 0.7,
+        "valid_content": 0.6,
+        "valid_formal": null
+      },
+      {
+        "symbol": "C",
+        "proposition": "Therefore, the policy should be implemented",
+        "justifiers": ["B"],
+        "truth_score": 0.5,
+        "valid_content": 0.4,
+        "valid_formal": null
+      }
+    ],
+    "assumptions": [],
+    "target_type": "argument",
+    "target_content": null
+  },
+  "evaluation_results": {
+    "truth_evaluations": [
+      {"symbol": "A", "truth_value": 0.6, "reasoning": "Moderate evidence, needs more supporting data"},
+      {"symbol": "B", "truth_value": 0.7, "reasoning": "Reasonable inference, but premise A is weak"},
+      {"symbol": "C", "truth_value": 0.5, "reasoning": "Weak conclusion from weak intermediate premise"}
+    ]
+  },
+  "conclusion_proposition": "The policy should be implemented",
+  "current_conclusion_scores": {
+    "truth": 0.5,
+    "content_validity": 0.4,
+    "formal_validity": null
+  }
+}
+
+Output:
+{
+  "recommendations": [
+    {
+      "id": "rec_006",
+      "reasoning": "The conclusion has low scores because the intermediate premise B relies on weak premise A. Strengthening premise A will improve the entire argument chain and ultimately strengthen the conclusion.",
+      "impact": "high",
+      "target_proposition": "A",
+      "expected_conclusion_improvement": {
+        "truth_score_improvement": "0.2",
+        "content_validity_improvement": "0.3",
+        "formal_validity_improvement": "0.2"
+      },
+      "propositions": [
+        {
+          "symbol": null,
+          "proposition": "Similar policies have reduced congestion by 30% in comparable cities",
+          "type": "new",
+          "placement": "argument",
+          "justifies_symbol": "A",
+          "justification_suggestions": ["Transportation studies", "City planning reports", "Traffic analysis data"]
+        },
+        {
+          "symbol": null,
+          "proposition": "The policy includes specific congestion reduction mechanisms",
+          "type": "new",
+          "placement": "argument",
+          "justifies_symbol": "A",
+          "justification_suggestions": ["Policy documents", "Engineering analysis", "Expert testimony"]
         }
       ]
     }
@@ -1172,18 +1424,16 @@ agent_gpt_improvement = Gpt(
                     "properties": {
                         "id": {"type": "string"},
                         "reasoning": {"type": "string"},
-                        "confidence": {"type": "number"},
                         "impact": {"type": "string", "enum": ["high", "medium", "low"]},
                         "target_proposition": {"type": "string"},
                         "expected_conclusion_improvement": {
                             "type": "object",
                             "properties": {
-                                "truth_score_improvement": {"type": "number"},
-                                "content_validity_improvement": {"type": "number"},
-                                "formal_validity_improvement": {"type": "number"},
-                                "reasoning": {"type": "string"}
+                                "truth_score_improvement": {"type": "string"},
+                                "content_validity_improvement": {"type": "string"},
+                                "formal_validity_improvement": {"type": "string"}
                             },
-                            "required": ["truth_score_improvement", "content_validity_improvement", "formal_validity_improvement", "reasoning"],
+                            "required": ["truth_score_improvement", "content_validity_improvement", "formal_validity_improvement"],
                             "additionalProperties": False
                         },
                         "propositions": {
@@ -1191,23 +1441,24 @@ agent_gpt_improvement = Gpt(
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "symbol": {"type": "string"},
+                                    "symbol": {"type": ["string", "null"]},
                                     "proposition": {"type": "string"},
                                     "type": {"type": "string", "enum": ["new", "rewrite"]},
-                                    "original_symbol": {"type": "string"},
-                                    "original_proposition": {"type": "string"},
+                                    "original_symbol": {"type": ["string", "null"]},
+                                    "original_proposition": {"type": ["string", "null"]},
                                     "placement": {"type": "string", "enum": ["assumption", "argument"]},
+                                    "justifies_symbol": {"type": ["string", "null"]},
                                     "justification_suggestions": {
                                         "type": "array",
                                         "items": {"type": "string"}
                                     }
                                 },
-                                "required": ["symbol", "proposition", "type", "placement", "justification_suggestions"],
+                                "required": ["proposition", "type", "placement", "justification_suggestions"],
                                 "additionalProperties": False
                             }
                         }
                     },
-                    "required": ["id", "reasoning", "confidence", "impact", "target_proposition", "expected_conclusion_improvement", "propositions"],
+                    "required": ["id", "reasoning", "impact", "target_proposition", "expected_conclusion_improvement", "propositions"],
                     "additionalProperties": False
                 }
             }
