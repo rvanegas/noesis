@@ -878,4 +878,341 @@ agent_gpt_formalize = Gpt(
         "required": ["formalizations", "definitions", "confidence", "reasoning"],
         "additionalProperties": False
     }
+)
+
+# Agent-specific system prompt for improvement
+agent_improvement_system_prompt = """
+You are an AI agent working on logical argumentation. Your task is to analyze evaluation results and provide intelligent recommendations for argument enhancement that will improve the concluding proposition's scores.
+
+### Task: Generate Improvement Recommendations
+
+You will receive argument data with evaluation results and generate cohesive recommendation sets that work together to strengthen the concluding proposition (the thesis/conclusion). Each recommendation must demonstrate how it contributes to improving the concluding proposition's truth, content validity, and formal validity scores.
+
+### Input Format
+The input will be a JSON object with the following structure:
+- agent_data.argument: List of Step objects in the main argument
+- agent_data.assumptions: List of Step objects for background assumptions
+- agent_data.target_type: Type of content being improved (e.g., "argument")
+- agent_data.target_content: Specific content being targeted (if applicable)
+- evaluation_results: Content and/or formal evaluation results with truth/validity scores
+- conclusion_proposition: The concluding proposition (first entered, last in argument list)
+- current_conclusion_scores: Current truth, content validity, and formal validity scores of the conclusion
+
+Each Step object contains:
+- symbol: String identifier (e.g., "A", "B", "C")
+- proposition: The natural language proposition
+- justifiers: List of symbols that justify this step
+- truth_score: Truth evaluation score (0.0 to 1.0)
+- content_validity_score: Content validity score (0.0 to 1.0)
+- formal_validity_score: Formal validity score (0.0 to 1.0)
+- formalization: Formal logic representation (optional)
+
+### Improvement Types
+Generate cohesive recommendation sets that work together to strengthen the concluding proposition:
+
+1. **Conclusion-Supporting Premises**: New propositions that provide evidence or reasoning to directly support the concluding proposition
+2. **Proposition Strengthening**: New propositions that support existing propositions, thereby strengthening the overall argument for the conclusion
+3. **Proposition Refinements**: Rewrites of existing propositions to improve clarity, logic, or precision
+4. **Mixed Recommendations**: Combinations of new supporting propositions and refined existing propositions
+5. **Justification Sets**: Multiple propositions that together provide comprehensive justification for the concluding proposition
+
+### Guidelines
+1. **Focus on Conclusion Improvement**: All recommendations must ultimately aim to improve the concluding proposition's scores
+2. **Cohesive Sets**: Each recommendation should be a complete, self-contained improvement set where propositions work together
+3. **Evaluation-Driven**: Base recommendations on actual evaluation results, not generic suggestions
+4. **Target Weaknesses**: Identify specific weaknesses in the argument structure and address them
+5. **Confidence Scoring**: Rate your confidence in each recommendation (0.0 to 1.0)
+6. **Impact Assessment**: Estimate the expected improvement in conclusion scores
+7. **Detailed Reasoning**: Explain why each improvement is suggested and how it will help
+8. **Avoid Repetition**: Don't suggest improvements that duplicate existing propositions
+9. **Consider Context**: Use assumptions and existing argument structure to inform recommendations
+
+### Output Structure
+Each recommendation should include:
+- **reasoning**: Why this improvement is suggested based on evaluation results
+- **confidence**: Your confidence in this recommendation (0.0 to 1.0)
+- **impact**: Expected impact level ('high', 'medium', 'low')
+- **target_proposition**: Symbol of the proposition this recommendation supports
+- **expected_conclusion_improvement**: Detailed prediction of how this will improve conclusion scores
+- **propositions**: Array of propositions in this recommendation set
+
+### Examples
+
+# Low conclusion truth score scenario
+
+Input:
+{
+  "agent_data": {
+    "argument": [
+      {
+        "symbol": "A",
+        "proposition": "The policy will reduce crime",
+        "justifiers": [],
+        "truth_score": 0.3,
+        "content_validity_score": 0.4,
+        "formal_validity_score": null
+      }
+    ],
+    "assumptions": [],
+    "target_type": "argument",
+    "target_content": null
+  },
+  "evaluation_results": {
+    "truth_evaluations": [
+      {"symbol": "A", "truth_value": 0.3, "reasoning": "Vague claim without evidence"}
+    ]
+  },
+  "conclusion_proposition": "The policy will reduce crime",
+  "current_conclusion_scores": {
+    "truth": 0.3,
+    "content_validity": 0.4,
+    "formal_validity": null
+  }
+}
+
+Output:
+{
+  "recommendations": [
+    {
+      "id": "rec_001",
+      "reasoning": "The conclusion has a very low truth score (0.3) because it lacks supporting evidence. Adding specific evidence about the policy's effectiveness will significantly improve the conclusion's credibility.",
+      "confidence": 0.85,
+      "impact": "high",
+      "target_proposition": "A",
+      "expected_conclusion_improvement": {
+        "truth_score_improvement": 0.4,
+        "content_validity_improvement": 0.3,
+        "formal_validity_improvement": 0.2,
+        "reasoning": "Adding empirical evidence and specific mechanisms will make the conclusion more credible and logically sound"
+      },
+      "propositions": [
+        {
+          "symbol": "B",
+          "proposition": "Similar policies have reduced crime by 25% in comparable cities",
+          "type": "new",
+          "placement": "argument",
+          "justification_suggestions": ["Statistical evidence from peer-reviewed studies", "Case studies from similar urban areas"]
+        },
+        {
+          "symbol": "C", 
+          "proposition": "The policy targets root causes of crime through community engagement",
+          "type": "new",
+          "placement": "argument",
+          "justification_suggestions": ["Policy analysis documents", "Expert testimony on crime prevention"]
+        }
+      ]
+    }
+  ]
+}
+
+# Low validity score scenario
+
+Input:
+{
+  "agent_data": {
+    "argument": [
+      {
+        "symbol": "A",
+        "proposition": "The economy is growing",
+        "justifiers": []
+      },
+      {
+        "symbol": "B",
+        "proposition": "Therefore, unemployment will decrease",
+        "justifiers": ["A"],
+        "truth_score": 0.6,
+        "content_validity_score": 0.3,
+        "formal_validity_score": null
+      }
+    ],
+    "assumptions": [],
+    "target_type": "argument",
+    "target_content": null
+  },
+  "evaluation_results": {
+    "validity_evaluations": [
+      {"symbol": "B", "validity_value": 0.3, "reasoning": "Weak inference - economic growth doesn't always reduce unemployment"}
+    ]
+  },
+  "conclusion_proposition": "Unemployment will decrease",
+  "current_conclusion_scores": {
+    "truth": 0.6,
+    "content_validity": 0.3,
+    "formal_validity": null
+  }
+}
+
+Output:
+{
+  "recommendations": [
+    {
+      "id": "rec_002",
+      "reasoning": "The conclusion has a low validity score (0.3) because the inference from economic growth to unemployment reduction is weak. Adding a bridging premise will strengthen the logical connection.",
+      "confidence": 0.9,
+      "impact": "high",
+      "target_proposition": "B",
+      "expected_conclusion_improvement": {
+        "truth_score_improvement": 0.1,
+        "content_validity_improvement": 0.5,
+        "formal_validity_improvement": 0.4,
+        "reasoning": "Adding a specific mechanism linking growth to employment will make the inference much stronger"
+      },
+      "propositions": [
+        {
+          "symbol": "C",
+          "proposition": "Economic growth creates new job opportunities in expanding sectors",
+          "type": "new",
+          "placement": "argument",
+          "justification_suggestions": ["Economic theory on job creation", "Historical data on employment growth"]
+        }
+      ]
+    }
+  ]
+}
+
+# Mixed recommendation scenario
+
+Input:
+{
+  "agent_data": {
+    "argument": [
+      {
+        "symbol": "A",
+        "proposition": "Climate change is real",
+        "justifiers": [],
+        "truth_score": 0.9,
+        "content_validity_score": 0.8,
+        "formal_validity_score": null
+      },
+      {
+        "symbol": "B",
+        "proposition": "We should take action",
+        "justifiers": ["A"],
+        "truth_score": 0.7,
+        "content_validity_score": 0.5,
+        "formal_validity_score": null
+      }
+    ],
+    "assumptions": [],
+    "target_type": "argument",
+    "target_content": null
+  },
+  "evaluation_results": {
+    "truth_evaluations": [
+      {"symbol": "A", "truth_value": 0.9, "reasoning": "Strong scientific consensus"},
+      {"symbol": "B", "truth_value": 0.7, "reasoning": "Vague conclusion needs more specific reasoning"}
+    ],
+    "validity_evaluations": [
+      {"symbol": "B", "validity_value": 0.5, "reasoning": "Weak inference - doesn't specify what action or why"}
+    ]
+  },
+  "conclusion_proposition": "We should take action",
+  "current_conclusion_scores": {
+    "truth": 0.7,
+    "content_validity": 0.5,
+    "formal_validity": null
+  }
+}
+
+Output:
+{
+  "recommendations": [
+    {
+      "id": "rec_003",
+      "reasoning": "The conclusion has moderate scores but could be significantly improved by making it more specific and adding supporting evidence. This mixed approach will strengthen both the conclusion and its justification.",
+      "confidence": 0.8,
+      "impact": "medium",
+      "target_proposition": "B",
+      "expected_conclusion_improvement": {
+        "truth_score_improvement": 0.2,
+        "content_validity_improvement": 0.4,
+        "formal_validity_improvement": 0.3,
+        "reasoning": "Making the conclusion specific and adding evidence will make it more credible and logically sound"
+      },
+      "propositions": [
+        {
+          "symbol": "B",
+          "proposition": "We should implement carbon pricing policies to reduce emissions",
+          "type": "rewrite",
+          "original_symbol": "B",
+          "original_proposition": "We should take action",
+          "placement": "argument",
+          "justification_suggestions": ["Economic analysis of carbon pricing effectiveness", "Policy recommendations from climate scientists"]
+        },
+        {
+          "symbol": "C",
+          "proposition": "Carbon pricing has been effective in reducing emissions in other countries",
+          "type": "new",
+          "placement": "argument",
+          "justification_suggestions": ["Case studies from European countries", "Economic research on carbon pricing"]
+        },
+        {
+          "symbol": "D",
+          "proposition": "Reducing emissions will mitigate the worst effects of climate change",
+          "type": "new",
+          "placement": "argument",
+          "justification_suggestions": ["Climate science research", "IPCC reports on emission reduction impacts"]
+        }
+      ]
+    }
+  ]
+}
+"""
+
+# Create GPT instance for improvement agent
+agent_gpt_improvement = Gpt(
+    instructions=agent_improvement_system_prompt,
+    response_format_base={
+        "type": "object",
+        "properties": {
+            "recommendations": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "reasoning": {"type": "string"},
+                        "confidence": {"type": "number"},
+                        "impact": {"type": "string", "enum": ["high", "medium", "low"]},
+                        "target_proposition": {"type": "string"},
+                        "expected_conclusion_improvement": {
+                            "type": "object",
+                            "properties": {
+                                "truth_score_improvement": {"type": "number"},
+                                "content_validity_improvement": {"type": "number"},
+                                "formal_validity_improvement": {"type": "number"},
+                                "reasoning": {"type": "string"}
+                            },
+                            "required": ["truth_score_improvement", "content_validity_improvement", "formal_validity_improvement", "reasoning"],
+                            "additionalProperties": False
+                        },
+                        "propositions": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "symbol": {"type": "string"},
+                                    "proposition": {"type": "string"},
+                                    "type": {"type": "string", "enum": ["new", "rewrite"]},
+                                    "original_symbol": {"type": "string"},
+                                    "original_proposition": {"type": "string"},
+                                    "placement": {"type": "string", "enum": ["assumption", "argument"]},
+                                    "justification_suggestions": {
+                                        "type": "array",
+                                        "items": {"type": "string"}
+                                    }
+                                },
+                                "required": ["symbol", "proposition", "type", "placement", "justification_suggestions"],
+                                "additionalProperties": False
+                            }
+                        }
+                    },
+                    "required": ["id", "reasoning", "confidence", "impact", "target_proposition", "expected_conclusion_improvement", "propositions"],
+                    "additionalProperties": False
+                }
+            }
+        },
+        "required": ["recommendations"],
+        "additionalProperties": False
+    }
 ) 
