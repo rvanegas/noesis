@@ -217,12 +217,12 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
           })
         }
 
-        // Apply validity updates
+        // Apply validity updates (content validity)
         if (changes.validityUpdates) {
           changes.validityUpdates.forEach(({ symbol, value }) => {
             const stepIndex = currentSnapshot.argument.findIndex((s: any) => s.symbol === symbol)
             if (stepIndex !== -1) {
-              currentSnapshot.argument[stepIndex].valid = value
+              currentSnapshot.argument[stepIndex].valid_content = value
               hasChanges = true
             }
           })

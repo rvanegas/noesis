@@ -6,21 +6,19 @@ export type StepType = {
   proposition: string
   justifiers: string[]
   truth: string
-  valid: string
-  valid_formal?: string
+  valid_content?: string  // Content validity score from content evaluation
+  valid_formal?: string   // Formal validity score from formal evaluation
   formalization?: {
     ascii: string
     json_structure: any
     endorsed: boolean
   }
-
 }
 
 type ConversationSnapshot = {
   argument: StepType[]
   assumptions: StepType[]
   argMode: ArgMode
-  // evaluationsPending: boolean // DISABLED: Old evaluation system
   explanation: string | undefined
   file_ids: string[]
   formalization_definitions?: {

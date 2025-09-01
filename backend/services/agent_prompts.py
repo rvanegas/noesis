@@ -903,8 +903,8 @@ Each Step object contains:
 - proposition: The natural language proposition
 - justifiers: List of symbols that justify this step
 - truth_score: Truth evaluation score (0.0 to 1.0)
-- content_validity_score: Content validity score (0.0 to 1.0)
-- formal_validity_score: Formal validity score (0.0 to 1.0)
+- valid_content: Content validity score (0.0 to 1.0)
+- valid_formal: Formal validity score (0.0 to 1.0)
 - formalization: Formal logic representation (optional)
 
 ### Improvement Types
@@ -949,8 +949,8 @@ Input:
         "proposition": "The policy will reduce crime",
         "justifiers": [],
         "truth_score": 0.3,
-        "content_validity_score": 0.4,
-        "formal_validity_score": null
+        "valid_content": 0.4,
+        "valid_formal": null
       }
     ],
     "assumptions": [],
@@ -1021,8 +1021,8 @@ Input:
         "proposition": "Therefore, unemployment will decrease",
         "justifiers": ["A"],
         "truth_score": 0.6,
-        "content_validity_score": 0.3,
-        "formal_validity_score": null
+        "valid_content": 0.3,
+        "valid_formal": null
       }
     ],
     "assumptions": [],
@@ -1081,16 +1081,16 @@ Input:
         "proposition": "Climate change is real",
         "justifiers": [],
         "truth_score": 0.9,
-        "content_validity_score": 0.8,
-        "formal_validity_score": null
+        "valid_content": 0.8,
+        "valid_formal": null
       },
       {
         "symbol": "B",
         "proposition": "We should take action",
         "justifiers": ["A"],
         "truth_score": 0.7,
-        "content_validity_score": 0.5,
-        "formal_validity_score": null
+        "valid_content": 0.5,
+        "valid_formal": null
       }
     ],
     "assumptions": [],

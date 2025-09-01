@@ -23,7 +23,7 @@ export function exportMarkdown(currentSnapshot: ConversationSnapshot) {
       }
       else {
         justifier = 'from ' + step.justifiers.join(', ')
-        value += `, ${step.valid}`
+        value += `, ${step.valid_content}, ${step.valid_formal}`
       }
       md += `_[${justifier}; ${value}]_\n\n`
     })
