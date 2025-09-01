@@ -41,7 +41,7 @@ Transform the argument builder into an intelligent improvement agent that:
 Each recommendation is a cohesive set of propositions that work together to strengthen the concluding proposition (the thesis/conclusion):
 
 1. **Conclusion-Supporting Premises**: New propositions that provide evidence or reasoning to directly support the concluding proposition
-2. **Premise Strengthening**: New propositions that support existing premises, thereby strengthening the overall argument for the conclusion
+2. **Proposition Strengthening**: New propositions that support existing propositions, thereby strengthening the overall argument for the conclusion
 3. **Proposition Refinements**: Rewrites of existing propositions to improve clarity, logic, or precision, making the argument more compelling
 4. **Mixed Recommendations**: Combinations of new supporting propositions and refined existing propositions that together strengthen the conclusion
 5. **Justification Sets**: Multiple propositions that together provide comprehensive justification for the concluding proposition
