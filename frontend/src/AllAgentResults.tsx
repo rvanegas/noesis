@@ -653,14 +653,12 @@ export default function AllAgentResults() {
       )}
 
       {/* Show loading state when no results yet and we're actively polling */}
-      {!error && currentPollingSnapshotRef.current >= 0 && !tasksCompleteRef.current && (
+      {!error && currentPollingSnapshotRef.current >= 0 && !tasksCompleteRef.current && activeTaskCount > 0 && (
         <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
           <div className="text-center">
-            {activeTaskCount > 0 && (
-              <div className="flex items-center justify-center mb-3">
-                <p className="text-blue-700 font-medium">Processing with AI agents...</p>
-              </div>
-            )}
+            <div className="flex items-center justify-center mb-3">
+              <p className="text-blue-700 font-medium">Processing with AI agents...</p>
+            </div>
             {activeTaskCount > 0 && (
               <div className="text-left">
                 <p className="text-blue-600 text-sm mb-2">
