@@ -68,7 +68,7 @@ class ArgumentService:
     def new_step(self, proposition: str) -> Step:
         """Make new step"""
         return Step(symbol=self.next_symbol(), proposition=proposition,
-            justifiers=[], truth="", valid="")
+            justifiers=[], truth_score="", valid="")
 
     def subargument(self, arg: List[Step], conclusion: Step) -> Tuple[Dict[str, Any], List[Step]]:
         """Extract a few steps by way of a justifiers property"""
@@ -148,7 +148,7 @@ class ArgumentStepService(ArgumentService):
             raise ValueError("already assumed")
         if len(self.arguments_with_step.arg[self.arguments_with_step.index].justifiers) != 0:
             raise ValueError("cannot assume justified proposition")
-        self.arguments_with_step.arg[self.arguments_with_step.index].truth = "1.0"
+        self.arguments_with_step.arg[self.arguments_with_step.index].truth_score = "1.0"
         self.arguments_with_step.assumptions.append(self.arguments_with_step.arg[self.arguments_with_step.index])
         del self.arguments_with_step.arg[self.arguments_with_step.index]
         # Queue analysis and discovery for the argument state change

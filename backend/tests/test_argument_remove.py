@@ -16,9 +16,9 @@ class TestArgumentRemove:
         argument_data = {
             "assumptions": [],
             "argument": [
-                Step(symbol="A", proposition="Socrates is a man", justifiers=[], truth="1.0", valid="1.0"),
-                Step(symbol="B", proposition="All men are mortal", justifiers=["A"], truth="1.0", valid="1.0"),
-                Step(symbol="C", proposition="Socrates is mortal", justifiers=["B"], truth="1.0", valid="1.0")
+                Step(symbol="A", proposition="Socrates is a man", justifiers=[], truth_score="1.0", valid="1.0"),
+                Step(symbol="B", proposition="All men are mortal", justifiers=["A"], truth_score="1.0", valid="1.0"),
+                Step(symbol="C", proposition="Socrates is mortal", justifiers=["B"], truth_score="1.0", valid="1.0")
             ],
             "loc": "argument",
             "index": 1,  # Remove step B (All men are mortal)
@@ -64,9 +64,9 @@ class TestArgumentRemove:
         argument_data = {
             "assumptions": [],
             "argument": [
-                Step(symbol="A", proposition="Socrates is a man", justifiers=[], truth="1.0", valid="1.0"),
-                Step(symbol="B", proposition="All men are mortal", justifiers=[], truth="1.0", valid="1.0"),
-                Step(symbol="C", proposition="Socrates is mortal", justifiers=["A"], truth="1.0", valid="1.0")
+                Step(symbol="A", proposition="Socrates is a man", justifiers=[], truth_score="1.0", valid="1.0"),
+                Step(symbol="B", proposition="All men are mortal", justifiers=[], truth_score="1.0", valid="1.0"),
+                Step(symbol="C", proposition="Socrates is mortal", justifiers=["A"], truth_score="1.0", valid="1.0")
             ],
             "loc": "argument", 
             "index": 1,  # Remove step B (All men are mortal)
@@ -97,8 +97,8 @@ class TestArgumentRemove:
         """Test removing a step from assumptions (should not transfer justifiers)"""
         argument_data = {
             "assumptions": [
-                Step(symbol="A", proposition="Socrates is a man", justifiers=[], truth="1.0", valid="1.0"),
-                Step(symbol="B", proposition="All men are mortal", justifiers=["A"], truth="1.0", valid="1.0")
+                Step(symbol="A", proposition="Socrates is a man", justifiers=[], truth_score="1.0", valid="1.0"),
+                Step(symbol="B", proposition="All men are mortal", justifiers=["A"], truth_score="1.0", valid="1.0")
             ],
             "argument": [],
             "loc": "assumptions",
@@ -127,10 +127,10 @@ class TestArgumentRemove:
         argument_data = {
             "assumptions": [],
             "argument": [
-                Step(symbol="A", proposition="Premise A", justifiers=[], truth="1.0", valid="1.0"),
-                Step(symbol="B", proposition="Premise B", justifiers=["A"], truth="1.0", valid="1.0"),
-                Step(symbol="C", proposition="Premise C", justifiers=["A", "B"], truth="1.0", valid="1.0"),
-                Step(symbol="D", proposition="Conclusion", justifiers=["C"], truth="1.0", valid="1.0")
+                Step(symbol="A", proposition="Premise A", justifiers=[], truth_score="1.0", valid="1.0"),
+                Step(symbol="B", proposition="Premise B", justifiers=["A"], truth_score="1.0", valid="1.0"),
+                Step(symbol="C", proposition="Premise C", justifiers=["A", "B"], truth_score="1.0", valid="1.0"),
+                Step(symbol="D", proposition="Conclusion", justifiers=["C"], truth_score="1.0", valid="1.0")
             ],
             "loc": "argument",
             "index": 2,  # Remove step C (Premise C)
@@ -164,8 +164,8 @@ class TestArgumentRemove:
         argument_data = {
             "assumptions": [],
             "argument": [
-                Step(symbol="A", proposition="Step A", justifiers=[], truth="1.0", valid="1.0"),
-                Step(symbol="B", proposition="Step B", justifiers=["A"], truth="1.0", valid="1.0")
+                Step(symbol="A", proposition="Step A", justifiers=[], truth_score="1.0", valid="1.0"),
+                Step(symbol="B", proposition="Step B", justifiers=["A"], truth_score="1.0", valid="1.0")
             ],
             "loc": "argument",
             "index": 1,
@@ -199,8 +199,8 @@ class TestArgumentRemove:
         argument_data = {
             "assumptions": [],
             "argument": [
-                Step(symbol="A", proposition="Step A", justifiers=[], truth="1.0", valid="1.0"),
-                Step(symbol="B", proposition="Step B", justifiers=["A"], truth="1.0", valid="1.0")
+                Step(symbol="A", proposition="Step A", justifiers=[], truth_score="1.0", valid="1.0"),
+                Step(symbol="B", proposition="Step B", justifiers=[], truth_score="1.0", valid="1.0")
             ],
             "loc": "argument",
             "index": 1,

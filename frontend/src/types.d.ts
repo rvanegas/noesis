@@ -5,9 +5,9 @@ export type StepType = {
   symbol: string
   proposition: string
   justifiers: string[]
-  truth: string
-  valid_content?: string  // Content validity score from content evaluation
-  valid_formal?: string   // Formal validity score from formal evaluation
+  truth_score: string
+  content_validity?: string  // Content validity score from content evaluation
+  formal_validity?: string   // Formal validity score from formal evaluation
   formalization?: {
     ascii: string
     json_structure: any

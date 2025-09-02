@@ -211,7 +211,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
           changes.truthUpdates.forEach(({ symbol, value }) => {
             const stepIndex = currentSnapshot.argument.findIndex((s: any) => s.symbol === symbol)
             if (stepIndex !== -1) {
-              currentSnapshot.argument[stepIndex].truth = value
+              currentSnapshot.argument[stepIndex].truth_score = value
               hasChanges = true
             }
           })
@@ -222,7 +222,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
           changes.validityUpdates.forEach(({ symbol, value }) => {
             const stepIndex = currentSnapshot.argument.findIndex((s: any) => s.symbol === symbol)
             if (stepIndex !== -1) {
-              currentSnapshot.argument[stepIndex].valid_content = value
+              currentSnapshot.argument[stepIndex].content_validity = value
               hasChanges = true
             }
           })
@@ -249,14 +249,14 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
             // Check argument steps
             const argStepIndex = currentSnapshot.argument.findIndex((s: any) => s.symbol === symbol)
             if (argStepIndex !== -1) {
-              currentSnapshot.argument[argStepIndex].valid_formal = value
+              currentSnapshot.argument[argStepIndex].formal_validity = value
               hasChanges = true
             }
             
             // Check assumption steps
             const assumptionStepIndex = currentSnapshot.assumptions.findIndex((s: any) => s.symbol === symbol)
             if (assumptionStepIndex !== -1) {
-              currentSnapshot.assumptions[assumptionStepIndex].valid_formal = value
+              currentSnapshot.assumptions[assumptionStepIndex].formal_validity = value
               hasChanges = true
             }
           })

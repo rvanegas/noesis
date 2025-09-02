@@ -19,19 +19,18 @@ class Step(BaseModel):
     symbol: str
     proposition: str
     justifiers: list[str]
-    truth: str
-    # Normalized validity properties
-    valid_content: str | None = Field(default=None, description="Content validity score from content evaluation")
-    valid_formal: str | None = Field(default=None, description="Formal validity score from formal evaluation")  
+    truth_score: str
+    content_validity: str | None = Field(default=None, description="Content validity score from content evaluation")
+    formal_validity: str | None = Field(default=None, description="Formal validity score from formal evaluation")  
     formalization: Formalization | None = None  # Formal logic representation
     
 
 # Improvement Agent Schemas
 class ExpectedConclusionImprovement(BaseModel):
     """Expected improvement in conclusion scores from a recommendation"""
-    truth_score_improvement: str = Field(description="Expected improvement in truth score (0.0 to 1.0)")
-    content_validity_improvement: str = Field(description="Expected improvement in content validity score (0.0 to 1.0)")
-    formal_validity_improvement: str = Field(description="Expected improvement in formal validity score (0.0 to 1.0)")
+    truth_score_improvement: str = Field(description="Expected improvement in truth score (e.g., '+0.4')")
+    content_validity_improvement: str = Field(description="Expected improvement in content validity score (e.g., '+0.3')")
+    formal_validity_improvement: str = Field(description="Expected improvement in formal validity score (e.g., '+0.2')")
 
 
 class ImprovementProposition(BaseModel):

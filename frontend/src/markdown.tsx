@@ -17,13 +17,13 @@ export function exportMarkdown(currentSnapshot: ConversationSnapshot) {
       md += `${step.proposition} `
 
       let justifier = ''
-      let value = `${step.truth}`
+      let value = `${step.truth_score}`
       if (step.justifiers.length == 0) {
         justifier = 'premise'
       }
       else {
         justifier = 'from ' + step.justifiers.join(', ')
-        value += `, ${step.valid_content}, ${step.valid_formal}`
+        value += `, ${step.content_validity}, ${step.formal_validity}`
       }
       md += `_[${justifier}; ${value}]_\n\n`
     })

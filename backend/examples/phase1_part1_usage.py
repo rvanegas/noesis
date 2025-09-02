@@ -20,16 +20,16 @@ def example_enhanced_step_creation():
         symbol="A",
         proposition="Socrates is mortal",
         justifiers=[],
-        truth="1.0",
+        truth_score="1.0",
         valid="1.0",  # Backward compatibility
-        valid_content="0.9",  # New: content evaluation validity
-        valid_formal="1.0",   # New: formal evaluation validity
+        content_validity="0.9",  # New: content evaluation validity
+        formal_validity="1.0",   # New: formal evaluation validity
         formalization="Mortal(Socrates)"  # New: formal logic representation
     )
     
     print(f"Step {step.symbol}: {step.proposition}")
-    print(f"  Content validity: {step.valid_content}")
-    print(f"  Formal validity: {step.valid_formal}")
+    print(f"  Content validity: {step.content_validity}")
+    print(f"  Formal validity: {step.formal_validity}")
     print(f"  Formalization: {step.formalization}")
     
     # Create a step with backward compatibility
@@ -37,12 +37,12 @@ def example_enhanced_step_creation():
         symbol="B",
         proposition="All men are mortal",
         justifiers=["A"],
-        truth="1.0",
+        truth_score="1.0",
         valid="1.0"
     )
     
     print(f"\nLegacy Step {legacy_step.symbol}: {legacy_step.proposition}")
-    print(f"  New attributes default to None: {legacy_step.valid_content is None}")
+    print(f"  New attributes default to None: {legacy_step.content_validity is None}")
     
     return step, legacy_step
 
@@ -56,7 +56,7 @@ def example_normalized_agent_input():
         symbol="A",
         proposition="Socrates is a man",
         justifiers=[],
-        truth="1.0",
+        truth_score="1.0",
         valid="1.0",
         formalization="Man(Socrates)"
     )
@@ -65,10 +65,10 @@ def example_normalized_agent_input():
         symbol="B",
         proposition="Socrates is mortal",
         justifiers=["A"],
-        truth="0.9",
+        truth_score="0.9",
         valid="0.95",
-        valid_content="0.9",
-        valid_formal="1.0",
+        content_validity="0.9",
+        formal_validity="1.0",
         formalization="Mortal(Socrates)"
     )
     
@@ -119,7 +119,7 @@ def example_content_filtering():
         symbol="A",
         proposition="Socrates is mortal",
         justifiers=[],
-        truth="1.0",
+        truth_score="1.0",
         valid="1.0",
         formalization="Mortal(Socrates)"
     )
@@ -128,7 +128,7 @@ def example_content_filtering():
         symbol="B",
         proposition="All men are mortal",
         justifiers=["A"],
-        truth="1.0",
+        truth_score="1.0",
         valid="1.0"
     )
     

@@ -36,9 +36,9 @@ class TestDualEvaluators:
             agent_data = AgentData(
                 assumptions=[],
                 argument=[
-                    Step(symbol="A", proposition="Socrates is a man", justifiers=[], truth="1.0", valid="1.0"),
-                    Step(symbol="B", proposition="All men are mortal", justifiers=[], truth="1.0", valid="1.0"),
-                    Step(symbol="C", proposition="Socrates is mortal", justifiers=["A", "B"], truth="1.0", valid="1.0")
+                    Step(symbol="A", proposition="Socrates is a man", justifiers=[], truth_score="1.0", valid="1.0"),
+                    Step(symbol="B", proposition="All men are mortal", justifiers=[], truth_score="1.0", valid="1.0"),
+                    Step(symbol="C", proposition="Socrates is mortal", justifiers=["A", "B"], truth_score="1.0", valid="1.0")
                 ],
                 latest_results=[],
                 target_type="argument",
@@ -88,12 +88,12 @@ class TestDualEvaluators:
             agent_data = AgentData(
                 assumptions=[],
                 argument=[
-                    Step(symbol="A", proposition="All men are mortal", justifiers=[], truth="1.0", valid="1.0", 
-                         formalization=Formalization(ascii="forall x. (P(x) -> Q(x))", endorsed=True)),
-                    Step(symbol="B", proposition="Socrates is a man", justifiers=[], truth="1.0", valid="1.0", 
-                         formalization=Formalization(ascii="P(a)", endorsed=True)),
-                    Step(symbol="C", proposition="Socrates is mortal", justifiers=["A", "B"], truth="1.0", valid="1.0", 
-                         formalization=Formalization(ascii="Q(a)", endorsed=True))
+                    Step(symbol="A", proposition="All men are mortal", justifiers=[], truth_score="1.0", valid="1.0", 
+                        formalization=Formalization(ascii="forall x. (P(x) -> Q(x))", endorsed=True)),
+                    Step(symbol="B", proposition="Socrates is a man", justifiers=[], truth_score="1.0", valid="1.0", 
+                        formalization=Formalization(ascii="P(a)", endorsed=True)),
+                    Step(symbol="C", proposition="Socrates is mortal", justifiers=["A", "B"], truth_score="1.0", valid="1.0", 
+                        formalization=Formalization(ascii="Q(a)", endorsed=True))
                 ],
                 latest_results=[],
                 target_type="argument",

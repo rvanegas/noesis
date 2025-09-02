@@ -88,8 +88,8 @@ Each Step object contains:
 - symbol: String identifier (e.g., "A", "B", "C")
 - proposition: The natural language proposition
 - justifiers: List of symbols that justify this step
-- valid_content: Content validity from previous evaluation (optional)
-- valid_formal: Formal validity from previous evaluation (optional)
+- content_validity: Content validity from previous evaluation (optional)
+- formal_validity: Formal validity from previous evaluation (optional)
 - formalization: Formal logic representation (optional)
 
 ### Task
@@ -163,12 +163,12 @@ Input:
 Output:
 {
   "truth_evaluations": [
-    {"symbol": "A", "truth_value": 0.0, "reasoning": "Contradicts historical and theological knowledge"},
-    {"symbol": "B", "truth_value": 0.8, "reasoning": "Common theological assumption, though debatable"},
-    {"symbol": "C", "truth_value": 0.0, "reasoning": "False conclusion from false premise"}
+          {"symbol": "A", "truth_value": "0.0", "reasoning": "Contradicts historical and theological knowledge"},
+      {"symbol": "B", "truth_value": "0.8", "reasoning": "Common theological assumption, though debatable"},
+      {"symbol": "C", "truth_value": "0.0", "reasoning": "False conclusion from false premise"}
   ],
   "validity_evaluations": [
-    {"symbol": "C", "validity_value": 1.0, "reasoning": "Valid deduction from A and B, though premises are false"}
+          {"symbol": "C", "validity_value": "1.0", "reasoning": "Valid deduction from A and B, though premises are false"}
   ],
 
   "incoherent_sets": [],
@@ -206,7 +206,7 @@ Input:
 Output:
 {
   "truth_evaluations": [
-    {"symbol": "B", "truth_value": 1.0, "reasoning": "True given the assumption that the sun has four legs"}
+          {"symbol": "B", "truth_value": "1.0", "reasoning": "True given the assumption that the sun has four legs"}
   ],
   "validity_evaluations": [],
   "incoherent_sets": [],
@@ -245,12 +245,12 @@ Input:
 Output:
 {
   "truth_evaluations": [
-    {"symbol": "A", "truth_value": 0.95, "reasoning": "Historical fact, well-documented"},
-    {"symbol": "B", "truth_value": 0.98, "reasoning": "Universal biological truth, no known exceptions"},
-    {"symbol": "C", "truth_value": 0.95, "reasoning": "Valid conclusion from true premises"}
+          {"symbol": "A", "truth_value": "0.95", "reasoning": "Historical fact, well-documented"},
+      {"symbol": "B", "truth_value": "0.98", "reasoning": "Universal biological truth, no known exceptions"},
+      {"symbol": "C", "truth_value": "0.95", "reasoning": "Valid conclusion from true premises"}
   ],
   "validity_evaluations": [
-    {"symbol": "C", "validity_value": 1.0, "reasoning": "Valid deduction from A and B"}
+          {"symbol": "C", "validity_value": "1.0", "reasoning": "Valid deduction from A and B"}
   ],
 
   "incoherent_sets": [],
@@ -289,17 +289,17 @@ Input:
 Output:
 {
   "truth_evaluations": [
-    {"symbol": "A", "truth_value": 0.98, "reasoning": "Universal biological truth"},
-    {"symbol": "B", "truth_value": 0.95, "reasoning": "Historical fact"},
-    {"symbol": "C", "truth_value": 0.0, "reasoning": "Contradicts premises A and B"}
+          {"symbol": "A", "truth_value": "0.98", "reasoning": "Universal biological truth"},
+      {"symbol": "B", "truth_value": "0.95", "reasoning": "Historical fact"},
+      {"symbol": "C", "truth_value": "0.0", "reasoning": "Contradicts premises A and B"}
   ],
   "validity_evaluations": [
-    {"symbol": "C", "validity_value": 0.0, "reasoning": "Logical contradiction with premises"}
+          {"symbol": "C", "validity_value": "0.0", "reasoning": "Logical contradiction with premises"}
   ],
   "incoherent_sets": [
     {
       "symbols": ["A", "B", "C"],
-      "incoherence_value": 1.0
+      "incoherence_value": "1.0"
     }
   ],
   "logical_issues": ["Contains logical contradiction"],
@@ -337,18 +337,18 @@ Output:
 Output:
 {
   "truth_evaluations": [
-    {"symbol": "A", "truth_value": 0.7, "reasoning": "Limited evidence, context-dependent"},
-    {"symbol": "B", "truth_value": 0.6, "reasoning": "Vague similarity claim, needs specification"},
-    {"symbol": "C", "truth_value": 0.5, "reasoning": "Weak conclusion from weak premises"}
+          {"symbol": "A", "truth_value": "0.7", "reasoning": "Limited evidence, context-dependent"},
+      {"symbol": "B", "truth_value": "0.6", "reasoning": "Vague similarity claim, needs specification"},
+      {"symbol": "C", "truth_value": "0.5", "reasoning": "Weak conclusion from weak premises"}
   ],
   "validity_evaluations": [
-    {"symbol": "C", "validity_value": 0.6, "reasoning": "Weak analogical inference from A and B"}
+          {"symbol": "C", "validity_value": "0.6", "reasoning": "Weak analogical inference from A and B"}
   ],
 
   "incoherent_sets": [
     {
       "symbols": ["A", "B", "C"],
-      "incoherence_value": 0.7
+      "incoherence_value": "0.7"
     }
   ],
   "logical_issues": ["Relies on weak analogical reasoning"],
@@ -511,11 +511,11 @@ Input:
 Output:
 {
   "proposition_evaluations": [
-    {"symbol": "B", "validity": 1.0, "reasoning": "Premise - no validity to evaluate"},
-    {"symbol": "C", "validity": 1.0, "reasoning": "Premise - no validity to evaluate"},
-    {"symbol": "A", "validity": 1.0, "reasoning": "Valid conclusion from premises B and C"}
+          {"symbol": "B", "validity": "1.0", "reasoning": "Premise - no validity to evaluate"},
+      {"symbol": "C", "validity": "1.0", "reasoning": "Premise - no validity to evaluate"},
+      {"symbol": "A", "validity": "1.0", "reasoning": "Valid conclusion from premises B and C"}
   ],
-  "argument_validity": 1.0,
+              "argument_validity": "1.0",
   "logical_issues": [],
   "recommendations": ["Argument is deductively valid: P(a) and forall x. (P(x) -> Q(x)) logically entail Q(a)"]
 }
@@ -563,11 +563,11 @@ Input:
 Output:
 {
   "proposition_evaluations": [
-    {"symbol": "A", "validity": 1.0, "reasoning": "Premise - no validity to evaluate"},
-    {"symbol": "B", "validity": 1.0, "reasoning": "Premise - no validity to evaluate"},
-    {"symbol": "C", "validity": 0.0, "reasoning": "Invalid conclusion - premises do not support this conclusion"}
+          {"symbol": "A", "validity": "1.0", "reasoning": "Premise - no validity to evaluate"},
+      {"symbol": "B", "validity": "1.0", "reasoning": "Premise - no validity to evaluate"},
+      {"symbol": "C", "validity": "0.0", "reasoning": "Invalid conclusion - premises do not support this conclusion"}
   ],
-  "argument_validity": 0.0,
+              "argument_validity": "0.0",
   "logical_issues": ["Invalid argument: Q(a) and forall x. (P(x) -> Q(x)) do not logically entail P(a)"],
   "recommendations": ["The premises do not logically support the conclusion"]
 }
@@ -765,7 +765,7 @@ Output:
       {"symbol": "a", "value": "Socrates"}
     ]
   },
-  "confidence": 0.95,
+  "confidence": "0.95",
   "reasoning": "Consistent formalization using P for 'is a man' and Q for 'is mortal' across all propositions"
 }
 
@@ -815,7 +815,7 @@ Output:
     ],
     "constants": []
   },
-  "confidence": 0.95,
+  "confidence": "0.95",
   "reasoning": "Consistent with existing formalization: using P for 'mouse' and Q for 'small' as established in previous formalization"
 }
 """
@@ -903,8 +903,8 @@ Each Step object contains:
 - proposition: The natural language proposition
 - justifiers: List of symbols that justify this step
 - truth_score: Truth evaluation score (0.0 to 1.0)
-- valid_content: Content validity score (0.0 to 1.0)
-- valid_formal: Formal validity score (0.0 to 1.0)
+- content_validity: Content validity score (0.0 to 1.0)
+- formal_validity: Formal validity score (0.0 to 1.0)
 - formalization: Formal logic representation (optional)
 
 ### Improvement Types
@@ -931,7 +931,7 @@ Each recommendation should include:
 - **reasoning**: Why this improvement is suggested based on evaluation results
 - **impact**: Expected impact level ('high', 'medium', 'low')
 - **target_proposition**: Symbol of the proposition this recommendation supports
-- **expected_conclusion_improvement**: Detailed prediction of how this will improve conclusion scores
+- **expected_conclusion_improvement**: Detailed prediction of how this will improve conclusion scores (use '+' notation, e.g., '+0.4')
 - **propositions**: Array of propositions in this recommendation set
 
 ### Examples
@@ -946,9 +946,9 @@ Input:
         "symbol": "A",
         "proposition": "The policy will reduce crime",
         "justifiers": [],
-        "truth_score": 0.3,
-        "valid_content": 0.4,
-        "valid_formal": null
+        "truth_score": "0.3",
+        "content_validity": "0.4",
+        "formal_validity": null
       }
     ],
     "assumptions": [],
@@ -957,13 +957,13 @@ Input:
   },
   "evaluation_results": {
     "truth_evaluations": [
-      {"symbol": "A", "truth_value": 0.3, "reasoning": "Vague claim without evidence"}
+      {"symbol": "A", "truth_value": "0.3", "reasoning": "Vague claim without evidence"}
     ]
   },
   "conclusion_proposition": "The policy will reduce crime",
   "current_conclusion_scores": {
-    "truth": 0.3,
-    "content_validity": 0.4,
+    "truth": "0.3",
+    "content_validity": "0.4",
     "formal_validity": null
   }
 }
@@ -977,9 +977,9 @@ Output:
       "impact": "high",
       "target_proposition": "A",
       "expected_conclusion_improvement": {
-        "truth_score_improvement": "0.4",
-        "content_validity_improvement": "0.3",
-        "formal_validity_improvement": "0.2"
+        "truth_score_improvement": "+0.4",
+        "content_validity_improvement": "+0.3",
+        "formal_validity_improvement": "+0.2"
       },
       "propositions": [
         {
@@ -1018,9 +1018,9 @@ Input:
         "symbol": "B",
         "proposition": "Therefore, unemployment will decrease",
         "justifiers": ["A"],
-        "truth_score": 0.6,
-        "valid_content": 0.3,
-        "valid_formal": null
+        "truth_score": "0.6",
+        "content_validity": "0.3",
+        "formal_validity": null
       }
     ],
     "assumptions": [],
@@ -1029,13 +1029,13 @@ Input:
   },
   "evaluation_results": {
     "validity_evaluations": [
-      {"symbol": "B", "validity_value": 0.3, "reasoning": "Weak inference - economic growth doesn't always reduce unemployment"}
+      {"symbol": "B", "validity_value": "0.3", "reasoning": "Weak inference - economic growth doesn't always reduce unemployment"}
     ]
   },
   "conclusion_proposition": "Unemployment will decrease",
   "current_conclusion_scores": {
-    "truth": 0.6,
-    "content_validity": 0.3,
+    "truth": "0.6",
+    "content_validity": "0.3",
     "formal_validity": null
   }
 }
@@ -1049,9 +1049,9 @@ Output:
       "impact": "high",
       "target_proposition": "B",
       "expected_conclusion_improvement": {
-        "truth_score_improvement": "0.1",
-        "content_validity_improvement": "0.5",
-        "formal_validity_improvement": "0.4"
+        "truth_score_improvement": "+0.1",
+        "content_validity_improvement": "+0.5",
+        "formal_validity_improvement": "+0.4"
       },
       "propositions": [
         {
@@ -1077,17 +1077,17 @@ Input:
         "symbol": "A",
         "proposition": "Climate change is real",
         "justifiers": [],
-        "truth_score": 0.9,
-        "valid_content": 0.8,
-        "valid_formal": null
+        "truth_score": "0.9",
+        "content_validity": "0.8",
+        "formal_validity": null
       },
       {
         "symbol": "B",
         "proposition": "We should take action",
         "justifiers": ["A"],
-        "truth_score": 0.7,
-        "valid_content": 0.5,
-        "valid_formal": null
+        "truth_score": "0.7",
+        "content_validity": "0.5",
+        "formal_validity": null
       }
     ],
     "assumptions": [],
@@ -1096,17 +1096,17 @@ Input:
   },
   "evaluation_results": {
     "truth_evaluations": [
-      {"symbol": "A", "truth_value": 0.9, "reasoning": "Strong scientific consensus"},
-      {"symbol": "B", "truth_value": 0.7, "reasoning": "Vague conclusion needs more specific reasoning"}
+      {"symbol": "A", "truth_value": "0.9", "reasoning": "Strong scientific consensus"},
+      {"symbol": "B", "truth_value": "0.7", "reasoning": "Vague conclusion needs more specific reasoning"}
     ],
     "validity_evaluations": [
-      {"symbol": "B", "validity_value": 0.5, "reasoning": "Weak inference - doesn't specify what action or why"}
+      {"symbol": "B", "validity_value": "0.5", "reasoning": "Weak inference - doesn't specify what action or why"}
     ]
   },
   "conclusion_proposition": "We should take action",
   "current_conclusion_scores": {
-    "truth": 0.7,
-    "content_validity": 0.5,
+    "truth": "0.7",
+    "content_validity": "0.5",
     "formal_validity": null
   }
 }
@@ -1120,9 +1120,9 @@ Output:
       "impact": "medium",
       "target_proposition": "B",
       "expected_conclusion_improvement": {
-        "truth_score_improvement": "0.2",
-        "content_validity_improvement": "0.4",
-        "formal_validity_improvement": "0.3"
+        "truth_score": "0.2",
+        "content_validity": "0.4",
+        "formal_validity": "0.3"
       },
       "propositions": [
         {
@@ -1165,17 +1165,17 @@ Input:
         "symbol": "A",
         "proposition": "The new drug shows promise in clinical trials",
         "justifiers": [],
-        "truth_score": 0.6,
-        "valid_content": 0.7,
-        "valid_formal": null
+        "truth_score": "0.6",
+        "content_validity": "0.7",
+        "formal_validity": null
       },
       {
         "symbol": "B",
         "proposition": "Therefore, the drug should be approved",
         "justifiers": ["A"],
-        "truth_score": 0.5,
-        "valid_content": 0.4,
-        "valid_formal": null
+        "truth_score": "0.5",
+        "content_validity": "0.4",
+        "formal_validity": null
       }
     ],
     "assumptions": [],
@@ -1184,17 +1184,17 @@ Input:
   },
   "evaluation_results": {
     "truth_evaluations": [
-      {"symbol": "A", "truth_value": 0.6, "reasoning": "Moderate evidence, needs more supporting data"},
-      {"symbol": "B", "truth_value": 0.5, "reasoning": "Weak conclusion from weak premise"}
+      {"symbol": "A", "truth_value": "0.6", "reasoning": "Moderate evidence, needs more supporting data"},
+      {"symbol": "B", "truth_value": "0.5", "reasoning": "Weak conclusion from weak premise"}
     ],
     "validity_evaluations": [
-      {"symbol": "B", "validity_value": 0.4, "reasoning": "Premise A is too weak to support approval conclusion"}
+      {"symbol": "B", "validity_value": "0.4", "reasoning": "Premise A is too weak to support approval conclusion"}
     ]
   },
   "conclusion_proposition": "The drug should be approved",
   "current_conclusion_scores": {
-    "truth": 0.5,
-    "content_validity": 0.4,
+    "truth": "0.5",
+    "content_validity": "0.4",
     "formal_validity": null
   }
 }
@@ -1208,9 +1208,9 @@ Output:
       "impact": "high",
       "target_proposition": "A",
       "expected_conclusion_improvement": {
-        "truth_score_improvement": "0.3",
-        "content_validity_improvement": "0.4",
-        "formal_validity_improvement": "0.2"
+        "truth_score": "0.3",
+        "content_validity": "0.4",
+        "formal_validity": "0.2"
       },
       "propositions": [
         {
@@ -1252,9 +1252,9 @@ Input:
         "symbol": "A",
         "proposition": "The company should expand internationally",
         "justifiers": [],
-        "truth_score": 0.4,
-        "valid_content": 0.3,
-        "valid_formal": null
+        "truth_score": "0.4",
+        "content_validity": "0.3",
+        "formal_validity": null
       }
     ],
     "assumptions": [],
@@ -1263,13 +1263,13 @@ Input:
   },
   "evaluation_results": {
     "truth_evaluations": [
-      {"symbol": "A", "truth_value": 0.4, "reasoning": "Vague claim without supporting evidence or reasoning"}
+      {"symbol": "A", "truth_value": "0.4", "reasoning": "Vague claim without supporting evidence or reasoning"}
     ]
   },
   "conclusion_proposition": "The company should expand internationally",
   "current_conclusion_scores": {
-    "truth": 0.4,
-    "content_validity": 0.3,
+    "truth": "0.4",
+    "content_validity": "0.3",
     "formal_validity": null
   }
 }
@@ -1283,9 +1283,9 @@ Output:
       "impact": "high",
       "target_proposition": "A",
       "expected_conclusion_improvement": {
-        "truth_score_improvement": "0.5",
-        "content_validity_improvement": "0.6",
-        "formal_validity_improvement": "0.4"
+        "truth_score": "0.5",
+        "content_validity": "0.6",
+        "formal_validity": "0.4"
       },
       "propositions": [
         {
@@ -1335,25 +1335,25 @@ Input:
         "symbol": "A",
         "proposition": "The new policy will reduce traffic congestion",
         "justifiers": [],
-        "truth_score": 0.6,
-        "valid_content": 0.5,
-        "valid_formal": null
+        "truth_score": "0.6",
+        "content_validity": "0.5",
+        "formal_validity": null
       },
       {
         "symbol": "B",
         "proposition": "Reduced congestion will improve air quality",
         "justifiers": ["A"],
-        "truth_score": 0.7,
-        "valid_content": 0.6,
-        "valid_formal": null
+        "truth_score": "0.7",
+        "content_validity": "0.6",
+        "formal_validity": null
       },
       {
         "symbol": "C",
         "proposition": "Therefore, the policy should be implemented",
         "justifiers": ["B"],
-        "truth_score": 0.5,
-        "valid_content": 0.4,
-        "valid_formal": null
+        "truth_score": "0.5",
+        "content_validity": "0.4",
+        "formal_validity": null
       }
     ],
     "assumptions": [],
@@ -1362,15 +1362,15 @@ Input:
   },
   "evaluation_results": {
     "truth_evaluations": [
-      {"symbol": "A", "truth_value": 0.6, "reasoning": "Moderate evidence, needs more supporting data"},
-      {"symbol": "B", "truth_value": 0.7, "reasoning": "Reasonable inference, but premise A is weak"},
-      {"symbol": "C", "truth_value": 0.5, "reasoning": "Weak conclusion from weak intermediate premise"}
+      {"symbol": "A", "truth_value": "0.6", "reasoning": "Moderate evidence, needs more supporting data"},
+      {"symbol": "B", "truth_value": "0.7", "reasoning": "Reasonable inference, but premise A is weak"},
+      {"symbol": "C", "truth_value": "0.5", "reasoning": "Weak conclusion from weak intermediate premise"}
     ]
   },
   "conclusion_proposition": "The policy should be implemented",
   "current_conclusion_scores": {
-    "truth": 0.5,
-    "content_validity": 0.4,
+    "truth": "0.5",
+    "content_validity": "0.4",
     "formal_validity": null
   }
 }
@@ -1384,9 +1384,9 @@ Output:
       "impact": "high",
       "target_proposition": "A",
       "expected_conclusion_improvement": {
-        "truth_score_improvement": "0.2",
-        "content_validity_improvement": "0.3",
-        "formal_validity_improvement": "0.2"
+        "truth_score_improvement": "+0.2",
+        "content_validity_improvement": "+0.3",
+        "formal_validity_improvement": "+0.2"
       },
       "propositions": [
         {

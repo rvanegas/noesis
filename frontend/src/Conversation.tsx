@@ -182,9 +182,9 @@ function Conversation({
 
       // Display agent result values
       const agentValuesDisplay = () => {
-        const hasTruth = step.truth && step.truth !== ""
-        const hasContentValidity = step.valid_content && step.valid_content !== "" && step.justifiers.length > 0
-        const hasFormalValidity = step.valid_formal && step.valid_formal !== "" && step.justifiers.length > 0
+        const hasTruth = step.truth_score && step.truth_score !== ""
+        const hasContentValidity = step.content_validity && step.content_validity !== "" && step.justifiers.length > 0
+        const hasFormalValidity = step.formal_validity && step.formal_validity !== "" && step.justifiers.length > 0
         const hasFormalization = step.formalization
 
         if (!hasTruth && !hasContentValidity && !hasFormalValidity && !hasFormalization) {
@@ -197,17 +197,17 @@ function Conversation({
               <div className="flex gap-2 text-xs">
                 {hasTruth && (
                   <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded">
-                    Truth: {(parseFloat(step.truth) * 100).toFixed(0)}%
+                    Truth: {(parseFloat(step.truth_score) * 100).toFixed(0)}%
                   </span>
                 )}
                 {hasContentValidity && (
                   <span className="px-2 py-1 bg-green-100 text-green-800 rounded">
-                    Content Validity: {(parseFloat(step.valid_content!) * 100).toFixed(0)}%
+                    Content Validity: {(parseFloat(step.content_validity!) * 100).toFixed(0)}%
                   </span>
                 )}
                 {hasFormalValidity && (
                   <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded">
-                    Formal Validity: {(parseFloat(step.valid_formal!) * 100).toFixed(0)}%
+                    Formal Validity: {(parseFloat(step.formal_validity!) * 100).toFixed(0)}%
                   </span>
                 )}
               </div>
@@ -328,10 +328,10 @@ function Conversation({
 
         // Display agent result values for assumptions
         const agentValuesDisplay = () => {
-          // Assumptions always have truth=1.0 and are never evaluated by agents
-          const hasTruth = step.truth && step.truth !== ""
-          const hasContentValidity = step.valid_content && step.valid_content !== "" && step.justifiers.length > 0
-          const hasFormalValidity = step.valid_formal && step.valid_formal !== "" && step.justifiers.length > 0
+                  // Assumptions always have truth=1.0 and are never evaluated by agents
+        const hasTruth = step.truth_score && step.truth_score !== ""
+        const hasContentValidity = step.content_validity && step.content_validity !== "" && step.justifiers.length > 0
+        const hasFormalValidity = step.formal_validity && step.formal_validity !== "" && step.justifiers.length > 0
           const hasFormalization = step.formalization
 
           if (!hasTruth && !hasContentValidity && !hasFormalValidity && !hasFormalization) {
@@ -345,17 +345,17 @@ function Conversation({
                 <div className="flex gap-2 text-xs">
                   {hasTruth && (
                     <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded">
-                      Truth: {(parseFloat(step.truth) * 100).toFixed(0)}% (Assumed)
+                      Truth: {(parseFloat(step.truth_score) * 100).toFixed(0)}% (Assumed)
                     </span>
                   )}
                   {hasContentValidity && (
                     <span className="px-2 py-1 bg-green-100 text-green-800 rounded">
-                      Content Validity: {(parseFloat(step.valid_content!) * 100).toFixed(0)}%
+                      Content Validity: {(parseFloat(step.content_validity!) * 100).toFixed(0)}%
                     </span>
                   )}
                   {hasFormalValidity && (
                     <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded">
-                      Formal Validity: {(parseFloat(step.valid_formal!) * 100).toFixed(0)}%
+                      Formal Validity: {(parseFloat(step.formal_validity!) * 100).toFixed(0)}%
                     </span>
                   )}
                 </div>

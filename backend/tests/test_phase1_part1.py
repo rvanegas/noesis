@@ -17,17 +17,17 @@ class TestStepModelUpdates:
             symbol="A",
             proposition="Socrates is mortal",
             justifiers=[],
-            truth="1.0",
+            truth_score="1.0",
             valid="1.0",
-            valid_content="0.9",
-            valid_formal="1.0",
+            content_validity="0.9",
+            formal_validity="1.0",
             formalization="∀x(Mortal(x) → Socrates(x))"
         )
         
         assert step.symbol == "A"
         assert step.proposition == "Socrates is mortal"
-        assert step.valid_content == "0.9"
-        assert step.valid_formal == "1.0"
+        assert step.content_validity == "0.9"
+        assert step.formal_validity == "1.0"
         assert step.formalization == "∀x(Mortal(x) → Socrates(x))"
     
     def test_step_backward_compatibility(self):
@@ -36,13 +36,13 @@ class TestStepModelUpdates:
             symbol="B",
             proposition="All men are mortal",
             justifiers=["A"],
-            truth="1.0",
+            truth_score="1.0",
             valid="1.0"
         )
         
         # New attributes should have default values
-        assert step.valid_content is None
-        assert step.valid_formal is None
+        assert step.content_validity is None
+        assert step.formal_validity is None
         assert step.formalization is None
     
     def test_step_formalization_filtering(self):
@@ -51,10 +51,10 @@ class TestStepModelUpdates:
             symbol="C",
             proposition="Socrates is a man",
             justifiers=["B"],
-            truth="1.0",
+            truth_score="1.0",
             valid="1.0",
-            valid_content="0.95",
-            valid_formal="1.0",
+            content_validity="0.95",
+            formal_validity="1.0",
             formalization="Man(Socrates)"
         )
         
@@ -71,10 +71,10 @@ class TestNormalizedAgentInput:
         """Test creating a normalized AgentInput"""
         agent_data = AgentData(
             assumptions=[
-                Step(symbol="A", proposition="Background assumption", justifiers=[], truth="1.0", valid="1.0")
+                Step(symbol="A", proposition="Background assumption", justifiers=[], truth_score="1.0", valid="1.0")
             ],
             argument=[
-                Step(symbol="B", proposition="Main argument", justifiers=["A"], truth="0.8", valid="0.9")
+                Step(symbol="B", proposition="Main argument", justifiers=["A"], truth_score="0.8", valid="0.9")
             ],
             latest_results=[],
             target_type="argument",
@@ -103,7 +103,7 @@ class TestNormalizedAgentInput:
             symbol="A",
             proposition="Test proposition",
             justifiers=[],
-            truth="1.0",
+            truth_score="1.0",
             valid="1.0",
             formalization="Test formalization"
         )
@@ -141,10 +141,10 @@ class TestNormalizedAgentInput:
             symbol="A",
             proposition="Test proposition",
             justifiers=["B"],
-            truth="0.9",
+            truth_score="0.9",
             valid="0.95",
-            valid_content="0.9",
-            valid_formal="1.0",
+            content_validity="0.9",
+            formal_validity="1.0",
             formalization="Test formalization"
         )
         
@@ -180,7 +180,7 @@ class TestNormalizedAgentInput:
         assert filtered_input.agent_data.assumptions[0].formalization == "Test formalization"
         assert filtered_input.agent_data.assumptions[0].symbol == "A"
         assert filtered_input.agent_data.assumptions[0].justifiers == ["B"]
-        assert filtered_input.agent_data.assumptions[0].truth == "0.9"
+        assert filtered_input.agent_data.assumptions[0].truth_score == "0.9"
     
 
     
@@ -203,7 +203,7 @@ class TestNormalizedAgentInput:
         """Test that FilteredAgentInput properly inherits from AgentInput"""
         # Create a base agent input
         agent_data = AgentData(
-            assumptions=[Step(symbol="A", proposition="Test", justifiers=[], truth="1.0", valid="1.0")],
+            assumptions=[Step(symbol="A", proposition="Test", justifiers=[], truth_score="1.0", valid="1.0")],
             argument=[],
             latest_results=[],
             target_type="argument",
