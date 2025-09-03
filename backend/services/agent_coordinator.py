@@ -448,6 +448,22 @@ class AgentCoordinator:
                 'snapshot_id': result.snapshot_id,
                 'processed_at': time.time()
             }
+            
+            # Check if improvement agent should be triggered after this agent completes
+            if result.agent_type in ['content_evaluator', 'form_evaluator']:
+                # Create argument data for improvement agent check
+                argument_data = ArgumentData(
+                    argument=task.agent_input.agent_data.argument,
+                    assumptions=task.agent_input.agent_data.assumptions,
+                    file_ids=task.agent_input.file_ids
+                )
+                
+                # Queue improvement agent if ready
+                self.queue_improvement_agent_if_ready(
+                    task.agent_input.conversation_id,
+                    task.agent_input.snapshot_id,
+                    argument_data
+                )
                         
             # Debug logging
             # logger.info(f"Stored result for {task.agent_type} agent in conversation {task.conversation_id}")
@@ -709,6 +725,98 @@ class AgentCoordinator:
 
         self.queue_formal_evaluator_if_ready(conversation_id, snapshot_id, argument_data)
 
+    
+    def queue_improvement_agent_if_ready(self, conversation_id: str, snapshot_id: str, argument_data: ArgumentData):
+        """
+        Queue an improvement agent task if evaluation results are available and improvement agent hasn't run recently.
+        This function checks if the improvement agent should be triggered based on evaluation results.
+        """
+        # logger.debug(f"Queueing improvement agent if ready for conversation {conversation_id}")
+        logger.debug(f"Queueing improvement agent if ready for conversation {conversation_id}")
+
+        # Check if there's already a pending or running improvement agent task
+        active_tasks = self.get_active_tasks()
+        for task in active_tasks:
+            if task.agent_type == 'improver' and task.agent_input.conversation_id == conversation_id and task.agent_input.snapshot_id == snapshot_id:
+                logger.info(f"Improvement agent task already active for conversation {conversation_id}")
+                return
+        
+        # Check if improvement agent should be triggered
+        should_trigger = self._should_queue_improvement_agent(conversation_id, snapshot_id, argument_data)
+        
+        if should_trigger:
+            # Queue improvement agent task
+            improvement_agent_input = AgentInput(
+                conversation_id=conversation_id,
+                snapshot_id=snapshot_id,
+                agent_data=AgentData(
+                    assumptions=argument_data.assumptions,
+                    argument=argument_data.argument,
+                    latest_results=[],
+                    target_type='argument',
+                    target_content=None
+                ),
+                file_ids=argument_data.file_ids,
+                triggered_by='agent_cascade',
+                trigger_source='evaluation_complete'
+            )
+            
+            self.queue_task(
+                agent_type='improver',
+                agent_input=improvement_agent_input
+            )
+            logger.info(f"Queued improvement agent task for conversation {conversation_id}")
+        else:
+            logger.debug(f"Improvement agent not ready for conversation {conversation_id}")
+    
+    def _should_queue_improvement_agent(self, conversation_id: str, snapshot_id: str, argument_data: ArgumentData) -> bool:
+        """
+        Determine if the improvement agent should be queued based on evaluation results and formalization status.
+        Returns True if improvement agent should run, False otherwise.
+        """
+        # Get existing results to understand current state
+        existing_results = self.get_conversation_results(conversation_id)
+        
+        # Check if content evaluation results are available
+        content_evaluation_results = [
+            result for result in existing_results 
+            if result.get('agent_type') == 'content_evaluator' and 
+               result.get('snapshot_id') == snapshot_id
+        ]
+        
+        # Check if formal evaluation results are available
+        formal_evaluation_results = [
+            result for result in existing_results 
+            if result.get('agent_type') == 'form_evaluator' and 
+               result.get('snapshot_id') == snapshot_id
+        ]
+        
+        # Check if all propositions have endorsed formalizations
+        all_propositions_formalized = True
+        for step in argument_data.argument + argument_data.assumptions:
+            if not step.formalization or not step.formalization.endorsed:
+                all_propositions_formalized = False
+                break
+        
+        # Check if improvement agent has already run for this snapshot
+        improvement_results = [
+            result for result in existing_results 
+            if result.get('agent_type') == 'improver' and 
+               result.get('snapshot_id') == snapshot_id
+        ]
+        
+        # Determine trigger conditions based on design document
+        if content_evaluation_results and not all_propositions_formalized:
+            # Content evaluation trigger: when content evaluation results are available AND not all propositions have endorsed formalizations
+            logger.debug(f"Content evaluation trigger for improvement agent in conversation {conversation_id}")
+            return not improvement_results  # Only trigger if improvement agent hasn't run yet
+            
+        elif formal_evaluation_results and all_propositions_formalized:
+            # Formal evaluation trigger: when formal evaluation results are available AND all propositions have endorsed formalizations
+            logger.debug(f"Formal evaluation trigger for improvement agent in conversation {conversation_id}")
+            return not improvement_results  # Only trigger if improvement agent hasn't run yet
+        
+        return False
     
     def queue_formal_evaluator_if_ready(self, conversation_id: str, snapshot_id: str, argument_data: ArgumentData):
         """
