@@ -384,6 +384,19 @@ class ImprovementAgent:
             # Get file_ids from task data
             file_ids = agent_input.file_ids
             
+            # Validate that we have the required evaluation results
+            if not agent_input.agent_data.latest_results:
+                raise ValueError("Improvement agent requires evaluation results to generate recommendations")
+            
+            # Extract evaluation results from latest_results
+            latest_results = agent_input.agent_data.latest_results
+            content_evaluations = [r for r in latest_results if r['agent_type'] == 'content_evaluator']
+            formal_evaluations = [r for r in latest_results if r['agent_type'] == 'form_evaluator']
+            
+            # Check if we have sufficient evaluation data
+            if not content_evaluations and not formal_evaluations:
+                raise ValueError("Improvement agent requires at least content or formal evaluation results")
+            
             # Prepare the input data for the improvement agent
             # The agent needs evaluation results, conclusion information, and current scores
             payload = agent_input.model_dump()
@@ -401,7 +414,14 @@ class ImprovementAgent:
                     **improvement_result,
                     "improvement_mode": "evaluation_driven",
                     "argument": agent_input.agent_data.argument,
-                    "assumptions": agent_input.agent_data.assumptions
+                    "assumptions": agent_input.agent_data.assumptions,
+                    "evaluation_context": {
+                        "content_evaluations_count": len(content_evaluations),
+                        "formal_evaluations_count": len(formal_evaluations),
+                        "conclusion_proposition": agent_input.agent_data.argument[-1].proposition if agent_input.agent_data.argument else None,
+                        "total_evaluations": len(agent_input.agent_data.latest_results)
+                        # Note: current_conclusion_scores available in argument_data.argument[-1]
+                    }
                 },
                 confidence=0.8,  # Default confidence for improvement recommendations
                 reasoning="Generated improvement recommendations based on evaluation results",
@@ -417,10 +437,20 @@ class ImprovementAgent:
             
         except Exception as e:
             logger.error(f"Improvement agent error: {e}")
+            
+            # Provide more specific error information for evaluation-related issues
+            error_content = {"error": str(e)}
+            if "evaluation results" in str(e).lower():
+                error_content["error_type"] = "missing_evaluation_data"
+                error_content["suggestion"] = "Ensure content or formal evaluation agents have run before improvement agent"
+            elif "insufficient" in str(e).lower():
+                error_content["error_type"] = "insufficient_data"
+                error_content["suggestion"] = "Wait for evaluation agents to complete their analysis"
+            
             result = AgentResult(
                 agent_type=self.name,
                 operation="generate_improvements",
-                result_content={"error": str(e)},
+                result_content=error_content,
                 confidence=0.0,
                 reasoning=f"Error in improvement generation: {e}",
                 target_metadata={

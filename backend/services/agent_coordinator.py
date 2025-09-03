@@ -560,22 +560,7 @@ class AgentCoordinator:
         latest_results = self.get_latest_results(conversation_id, snapshot_id)
         
         # Convert StoredAgentResult objects to dict format for AgentData
-        results_dicts = []
-        for result in latest_results:
-            result_dict = {
-                'agent_type': result.agent_type,
-                'operation': result.operation,
-                'result_content': result.result_content,
-                'confidence': result.confidence,
-                'reasoning': result.reasoning,
-                'target_metadata': {
-                    'target_type': result.target_metadata.target_type,
-                    'target_content': result.target_metadata.target_content
-                },
-                'snapshot_id': result.snapshot_id,
-                'processed_at': result.processed_at
-            }
-            results_dicts.append(result_dict)
+        results_dicts = [result.model_dump() for result in latest_results]
         
         # Update agent_data with latest results
         agent_data.latest_results = results_dicts
@@ -588,6 +573,41 @@ class AgentCoordinator:
             triggered_by=triggered_by,
             trigger_source=trigger_source
         )
+    
+    def create_improvement_agent_input(self, conversation_id: str, snapshot_id: str, argument_data: ArgumentData,
+                                     file_ids: List[str] = None) -> AgentInput:
+        """Create specialized input for improvement agent with evaluation results and conclusion context"""
+        # Get all results for this conversation/snapshot
+        all_results = self.get_conversation_results(conversation_id)
+        snapshot_results = [r for r in all_results if r.snapshot_id == snapshot_id]
+        
+        # Extract all evaluation results together (no need to separate by type initially)
+        evaluation_results = [
+            result.model_dump() 
+            for result in snapshot_results 
+            if result.agent_type in ['content_evaluator', 'form_evaluator']
+        ]
+                
+        # Create agent data with evaluation results in latest_results
+        agent_data = AgentData(
+            assumptions=argument_data.assumptions,
+            argument=argument_data.argument,
+            latest_results=evaluation_results,  # All evaluation results together
+            target_type='argument',
+            target_content=None
+        )
+        
+        # Create the input with evaluation results
+        agent_input = AgentInput(
+            conversation_id=conversation_id,
+            snapshot_id=snapshot_id,
+            agent_data=agent_data,
+            file_ids=file_ids or [],
+            triggered_by='agent_cascade',
+            trigger_source='evaluation_complete'
+        )
+                
+        return agent_input
     
     def create_agent_result(self, agent_type: str, operation: str, result_content: Dict[str, Any],
                            confidence: float, reasoning: str, target_metadata: TargetMetadata,
@@ -745,20 +765,9 @@ class AgentCoordinator:
         should_trigger = self._should_queue_improvement_agent(conversation_id, snapshot_id, argument_data)
         
         if should_trigger:
-            # Queue improvement agent task
-            improvement_agent_input = AgentInput(
-                conversation_id=conversation_id,
-                snapshot_id=snapshot_id,
-                agent_data=AgentData(
-                    assumptions=argument_data.assumptions,
-                    argument=argument_data.argument,
-                    latest_results=[],
-                    target_type='argument',
-                    target_content=None
-                ),
-                file_ids=argument_data.file_ids,
-                triggered_by='agent_cascade',
-                trigger_source='evaluation_complete'
+            # Queue improvement agent task using specialized input creation
+            improvement_agent_input = self.create_improvement_agent_input(
+                conversation_id, snapshot_id, argument_data, argument_data.file_ids
             )
             
             self.queue_task(

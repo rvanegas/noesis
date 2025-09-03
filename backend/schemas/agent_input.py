@@ -30,7 +30,7 @@ class AgentInput(BaseModel):
     file_ids: List[str] = []
     triggered_by: Literal["user_action", "agent_cascade", "scheduled", "manual"] = "user_action"
     trigger_source: str = ""
-
+    
 
 class FilteredAgentInput(AgentInput):
     """Agent input with content filtered based on agent type"""
