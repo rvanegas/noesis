@@ -8,7 +8,7 @@ from datetime import datetime
 
 from schemas import agent_input
 from core.utils import logger
-from services.agents import ArgumentBuilderAgent, ContentEvaluationAgent, FormalEvaluatorAgent, FormalizationAgent, RewriterAgent
+from services.agents import ArgumentBuilderAgent, ContentEvaluationAgent, FormalEvaluatorAgent, FormalizationAgent, RewriterAgent, ImprovementAgent
 from schemas.agent_input import AgentInput, AgentData, FilteredAgentInput
 from schemas.arguments import ArgumentData
 
@@ -336,7 +336,8 @@ class AgentCoordinator:
             'content_evaluator': ContentEvaluationAgent(self),
             'form_evaluator': FormalEvaluatorAgent(self),
             'formalizer': FormalizationAgent(self),
-            'rewriter': RewriterAgent(self)
+            'rewriter': RewriterAgent(self),
+            'improver': ImprovementAgent(self)
         }
         
         # Start background workers
@@ -345,7 +346,7 @@ class AgentCoordinator:
     
     def _start_workers(self):
         """Start background worker threads for each agent type"""
-        agent_types = ['builder', 'content_evaluator', 'form_evaluator', 'formalizer', 'rewriter']
+        agent_types = ['builder', 'content_evaluator', 'form_evaluator', 'formalizer', 'rewriter', 'improver']
         
         for agent_type in agent_types:
             worker = threading.Thread(
@@ -409,6 +410,8 @@ class AgentCoordinator:
                 result = agent.formalize_proposition(filtered_input)
             elif task.agent_type == 'rewriter':
                 result = agent.rewrite_proposition(agent_input)
+            elif task.agent_type == 'improver':
+                result = agent.generate_improvements(agent_input)
             else:
                 raise ValueError(f"Unknown agent type: {task.agent_type}")
             

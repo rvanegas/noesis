@@ -4,7 +4,7 @@ from typing import Dict, Any, List
 from dataclasses import dataclass
 
 # from services.conversation import gpt_justify, gpt_evaluate  # DISABLED: Old GPT instances - replaced by new agent system
-from services.agent_prompts import agent_gpt_justify, agent_gpt_evaluate_content, agent_gpt_evaluate_form, agent_gpt_formalize
+from services.agent_prompts import agent_gpt_justify, agent_gpt_evaluate_content, agent_gpt_evaluate_form, agent_gpt_formalize, agent_gpt_improvement
 from schemas.agent_input import AgentInput, FilteredAgentInput
 
 from core.utils import logger
@@ -364,6 +364,73 @@ class RewriterAgent:
     
     def rewrite_proposition(self, conversation_data: Dict[str, Any]) -> AgentResult:
         pass
+
+
+class ImprovementAgent:
+    """Agent that provides intelligent recommendations for argument enhancement based on evaluation results"""
+    
+    def __init__(self, coordinator):
+        if coordinator is None:
+            raise ValueError("ImprovementAgent requires a coordinator")
+        self.name = "improver"
+        self.coordinator = coordinator
+    
+    def generate_improvements(self, agent_input: AgentInput) -> AgentResult:
+        """Generate improvement recommendations based on evaluation results"""
+        try:
+            # logger.info(f"ImprovementAgent starting task for conversation: {agent_input.conversation_id}")
+            # logger.debug(f"ImprovementAgent starting task with data: {agent_input}")
+            
+            # Get file_ids from task data
+            file_ids = agent_input.file_ids
+            
+            # Prepare the input data for the improvement agent
+            # The agent needs evaluation results, conclusion information, and current scores
+            payload = agent_input.model_dump()
+            
+            # Pass the data directly to the agent
+            improvement_response = agent_gpt_improvement.call(json.dumps(payload), file_ids)
+            improvement_result = json.loads(improvement_response)
+            
+            # logger.info(f"ImprovementAgent completed")
+            
+            result = AgentResult(
+                agent_type=self.name,
+                operation="generate_improvements",
+                result_content={
+                    **improvement_result,
+                    "improvement_mode": "evaluation_driven",
+                    "argument": agent_input.agent_data.argument,
+                    "assumptions": agent_input.agent_data.assumptions
+                },
+                confidence=0.8,  # Default confidence for improvement recommendations
+                reasoning="Generated improvement recommendations based on evaluation results",
+                target_metadata={
+                    'target_type': 'argument',
+                    'target_content': agent_input.agent_data.target_content
+                },
+                snapshot_id=agent_input.snapshot_id
+            )
+            
+            # logger.debug(f"ImprovementAgent task completed successfully. Output: {result}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Improvement agent error: {e}")
+            result = AgentResult(
+                agent_type=self.name,
+                operation="generate_improvements",
+                result_content={"error": str(e)},
+                confidence=0.0,
+                reasoning=f"Error in improvement generation: {e}",
+                target_metadata={
+                    'target_type': 'argument',
+                    'target_content': agent_input.agent_data.target_content or ''
+                },
+                snapshot_id=agent_input.snapshot_id
+            )
+            # logger.debug(f"ImprovementAgent task failed. Output: {result}")
+            return result
 
 
 
