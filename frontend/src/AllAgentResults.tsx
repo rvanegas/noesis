@@ -720,9 +720,6 @@ export default function AllAgentResults() {
               </span>
             </div>
             <div className="flex items-center space-x-2">
-              <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                {recommendation.confidence.toFixed(2)} confidence
-              </span>
               {isProcessed && (
                 <span className={`px-2 py-1 rounded text-xs font-medium ${
                   isAccepted ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
