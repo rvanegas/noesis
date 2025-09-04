@@ -1453,7 +1453,7 @@ agent_gpt_improvement = Gpt(
                                         "items": {"type": "string"}
                                     }
                                 },
-                                "required": ["proposition", "type", "placement", "justification_suggestions"],
+                                "required": ["symbol","proposition","type","original_symbol","original_proposition","placement","justifies_symbol","justification_suggestions"],
                                 "additionalProperties": False
                             }
                         }

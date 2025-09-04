@@ -28,6 +28,8 @@ export default function AllAgentResults() {
   const [error, setError] = useState<string | null>(null)
   const [activeTasks, setActiveTasks] = useState<any[]>([])
   const [activeTaskCount, setActiveTaskCount] = useState<number>(0)
+  const [acceptedRecommendations, setAcceptedRecommendations] = useState<Set<string>>(new Set())
+  const [rejectedRecommendations, setRejectedRecommendations] = useState<Set<string>>(new Set())
   const tasksCompleteRef = useRef<boolean>(false)
   const currentPollingSnapshotRef = useRef<number>(-1)
   const intervalRef = useRef<number | null>(null)
@@ -634,8 +636,6 @@ export default function AllAgentResults() {
   }
 
   const renderImprovementResults = (results: AgentResult[]) => {
-    const [acceptedRecommendations, setAcceptedRecommendations] = useState<Set<string>>(new Set())
-    const [rejectedRecommendations, setRejectedRecommendations] = useState<Set<string>>(new Set())
 
     // Get current conversation state to find the concluding proposition
     const { conversation } = getCurrentConversationState()

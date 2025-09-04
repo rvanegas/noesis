@@ -582,11 +582,10 @@ class AgentCoordinator:
         snapshot_results = [r for r in all_results if r.snapshot_id == snapshot_id]
         
         # Extract all evaluation results together (no need to separate by type initially)
-        evaluation_results = [
-            result.model_dump() 
-            for result in snapshot_results 
-            if result.agent_type in ['content_evaluator', 'form_evaluator']
-        ]
+        evaluation_results = []
+        for result in snapshot_results:
+            if result.agent_type in ['content_evaluator', 'form_evaluator']:
+                evaluation_results.append(asdict(result))
                 
         # Create agent data with evaluation results in latest_results
         agent_data = AgentData(
@@ -789,15 +788,15 @@ class AgentCoordinator:
         # Check if content evaluation results are available
         content_evaluation_results = [
             result for result in existing_results 
-            if result.get('agent_type') == 'content_evaluator' and 
-               result.get('snapshot_id') == snapshot_id
+            if result.agent_type == 'content_evaluator' and 
+               result.snapshot_id == snapshot_id
         ]
         
         # Check if formal evaluation results are available
         formal_evaluation_results = [
             result for result in existing_results 
-            if result.get('agent_type') == 'form_evaluator' and 
-               result.get('snapshot_id') == snapshot_id
+            if result.agent_type == 'form_evaluator' and 
+               result.snapshot_id == snapshot_id
         ]
         
         # Check if all propositions have endorsed formalizations
@@ -810,8 +809,8 @@ class AgentCoordinator:
         # Check if improvement agent has already run for this snapshot
         improvement_results = [
             result for result in existing_results 
-            if result.get('agent_type') == 'improver' and 
-               result.get('snapshot_id') == snapshot_id
+            if result.agent_type == 'improver' and 
+               result.snapshot_id == snapshot_id
         ]
         
         # Determine trigger conditions based on design document

@@ -238,8 +238,8 @@ class FormalizationAgent:
             formalizations = []
             
             for result in existing_results:
-                if result.get('agent_type') == 'formalizer':
-                    formalizations.append(result.get('result_content', {}))
+                if result.agent_type == 'formalizer':
+                    formalizations.append(result.result_content)
             
             return formalizations
             
