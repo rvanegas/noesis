@@ -3,4 +3,11 @@ pythonpath = ["."]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
-python_functions = ["test_*"] 
+python_functions = ["test_*"]
+filterwarnings = [
+    "ignore::DeprecationWarning:openai.*",
+    "ignore::DeprecationWarning:openai.resources.beta.threads.*",
+    "ignore::DeprecationWarning:openai._legacy_response.*",
+    "ignore::DeprecationWarning:openai._utils._utils.*",
+    "ignore:The Assistants API is deprecated in favor of the Responses API"
+] 
