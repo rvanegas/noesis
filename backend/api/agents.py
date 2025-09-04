@@ -16,9 +16,9 @@ async def get_conversation_results(
     snapshot_id: str = Query(..., description="Snapshot ID for filtering results")
 ) -> Dict[str, Any]:
     """Get latest agent results for a conversation/snapshot, grouped by agent type"""
-    return coordinator.result_manager.get_formatted_results(conversation_id, snapshot_id)
+    return coordinator.result_manager.get_formatted_results(conversation_id, snapshot_id, coordinator)
 
 @router.get("/active")
 async def get_active_tasks(conversation_id: str = Query(..., description="Conversation ID (format: session_id:conversation_id)")) -> Dict[str, Any]:
     """Get all currently active tasks for a specific conversation"""
-    return coordinator.result_manager.get_active_tasks_formatted(conversation_id) 
+    return coordinator.result_manager.get_active_tasks_formatted(conversation_id, coordinator) 

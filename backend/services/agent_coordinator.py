@@ -223,10 +223,8 @@ class AgentResultManager:
         
         return len(expired_conversations)
     
-    def get_formatted_results(self, conversation_id: str, snapshot_id: str) -> Dict[str, Any]:
+    def get_formatted_results(self, conversation_id: str, snapshot_id: str, coordinator) -> Dict[str, Any]:
         """Get formatted agent results for API response"""
-        from services.agent_coordinator import coordinator
-        
         # Get latest results
         all_results = self.get_latest_results(conversation_id, snapshot_id)
         
@@ -291,10 +289,8 @@ class AgentResultManager:
         
         return results_by_agent
     
-    def get_active_tasks_formatted(self, conversation_id: str) -> Dict[str, Any]:
+    def get_active_tasks_formatted(self, conversation_id: str, coordinator) -> Dict[str, Any]:
         """Get active tasks for the conversation in formatted API response"""
-        from services.agent_coordinator import coordinator
-        
         active_tasks = coordinator.get_active_tasks()
         
         # Filter tasks by conversation_id
@@ -648,6 +644,7 @@ class AgentCoordinator:
         """Get all active tasks"""
         return [task for task in self.task_history.values() 
                 if task.status in ['pending', 'running']]
+    
     
     def react_to_user_argument_change(self, conversation_id: str, snapshot_id: str, argument_data: ArgumentData):
         """
