@@ -3,6 +3,8 @@ import json
 from unittest.mock import patch
 from services.agents import ContentEvaluationAgent
 from services.agent_coordinator import coordinator
+from schemas.agent_input import FilteredAgentInput, AgentData
+from schemas.step import Step
 
 
 class TestEvaluationAgent:
@@ -32,15 +34,26 @@ class TestEvaluationAgent:
             
             mock_gpt.call.return_value = json.dumps(mock_response)
             
-            # Test data
-            conversation_data = {
-                "argument": ["Socrates is a man", "All men are mortal", "Socrates is mortal"],
-                "assumptions": [],
-                "conversation_id": "test_conversation"
-            }
+            # Test data - create proper FilteredAgentInput
+            agent_input = FilteredAgentInput(
+                conversation_id='test_conversation',
+                snapshot_id='test_snapshot',
+                agent_data=AgentData(
+                    assumptions=[],
+                    argument=[
+                        Step(symbol='A', proposition='Socrates is a man', justifiers=[], truth_score='0.9', content_validity='0.9', formal_validity='0.9'),
+                        Step(symbol='B', proposition='All men are mortal', justifiers=[], truth_score='0.95', content_validity='0.95', formal_validity='0.95'),
+                        Step(symbol='C', proposition='Socrates is mortal', justifiers=[], truth_score='0.9', content_validity='0.9', formal_validity='0.9')
+                    ],
+                    latest_results=[],
+                    target_type='argument',
+                    target_content=None
+                ),
+                file_ids=[]
+            )
             
             # Call the evaluation agent
-            result = agent.evaluate_propositions(conversation_data)
+            result = agent.evaluate_propositions(agent_input)
             
             # Verify the result is in content mode
             assert result.agent_type == "content_evaluator"
@@ -78,15 +91,24 @@ class TestEvaluationAgent:
             
             mock_gpt.call.return_value = json.dumps(mock_response)
             
-            # Test data
-            conversation_data = {
-                "argument": ["Socrates is a man"],
-                "assumptions": [],
-                "conversation_id": "test_conversation"
-            }
+            # Test data - create proper FilteredAgentInput
+            agent_input = FilteredAgentInput(
+                conversation_id='test_conversation',
+                snapshot_id='test_snapshot',
+                agent_data=AgentData(
+                    assumptions=[],
+                    argument=[
+                        Step(symbol='A', proposition='Socrates is a man', justifiers=[], truth_score='0.9', content_validity='0.9', formal_validity='0.9')
+                    ],
+                    latest_results=[],
+                    target_type='argument',
+                    target_content=None
+                ),
+                file_ids=[]
+            )
             
             # Call the evaluation agent
-            result = agent.evaluate_propositions(conversation_data)
+            result = agent.evaluate_propositions(agent_input)
             
             # Verify the result is always in content mode
             assert result.agent_type == "content_evaluator"
@@ -111,14 +133,24 @@ class TestEvaluationAgent:
         
         with patch.object(coordinator, 'get_conversation_results', return_value=mock_with_formalizations):
             
-            conversation_data = {
-                "argument": ["Socrates is a man"],
-                "assumptions": [],
-                "conversation_id": "test_conversation"
-            }
+            # Test data - create proper FilteredAgentInput
+            agent_input = FilteredAgentInput(
+                conversation_id='test_conversation',
+                snapshot_id='test_snapshot',
+                agent_data=AgentData(
+                    assumptions=[],
+                    argument=[
+                        Step(symbol='A', proposition='Socrates is a man', justifiers=[], truth_score='0.9', content_validity='0.9', formal_validity='0.9')
+                    ],
+                    latest_results=[],
+                    target_type='argument',
+                    target_content=None
+                ),
+                file_ids=[]
+            )
             
             # The content evaluator should always evaluate content, regardless of formalizations
-            result = agent.evaluate_propositions(conversation_data)
+            result = agent.evaluate_propositions(agent_input)
             assert result.agent_type == "content_evaluator"
             # Note: evaluation_mode is no longer included in the result data
 

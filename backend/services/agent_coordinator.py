@@ -3,7 +3,7 @@ import time
 import uuid
 from queue import Queue
 from typing import Dict, Any, Optional, List
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from datetime import datetime
 
 from schemas import agent_input
@@ -560,7 +560,7 @@ class AgentCoordinator:
         latest_results = self.get_latest_results(conversation_id, snapshot_id)
         
         # Convert StoredAgentResult objects to dict format for AgentData
-        results_dicts = [result.model_dump() for result in latest_results]
+        results_dicts = [asdict(result) for result in latest_results]
         
         # Update agent_data with latest results
         agent_data.latest_results = results_dicts

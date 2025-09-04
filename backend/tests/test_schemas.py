@@ -1,10 +1,10 @@
 """
-Tests for Phase 1 Part 1: Input Normalization
-Tests the Step model updates and normalized agent input schema.
+Tests for Core Schema Functionality
+Tests the Step model, AgentInput, AgentData, and FilteredAgentInput schemas.
 """
 
 import pytest
-from schemas.step import Step
+from schemas.step import Step, Formalization
 from schemas.agent_input import AgentInput, AgentData, FilteredAgentInput
 
 
@@ -18,17 +18,17 @@ class TestStepModelUpdates:
             proposition="Socrates is mortal",
             justifiers=[],
             truth_score="1.0",
-            valid="1.0",
             content_validity="0.9",
             formal_validity="1.0",
-            formalization="∀x(Mortal(x) → Socrates(x))"
+            formalization=Formalization(ascii="∀x(Mortal(x) → Socrates(x))", endorsed=True)
         )
         
         assert step.symbol == "A"
         assert step.proposition == "Socrates is mortal"
         assert step.content_validity == "0.9"
         assert step.formal_validity == "1.0"
-        assert step.formalization == "∀x(Mortal(x) → Socrates(x))"
+        assert step.formalization.ascii == "∀x(Mortal(x) → Socrates(x))"
+        assert step.formalization.endorsed == True
     
     def test_step_backward_compatibility(self):
         """Test that Step maintains backward compatibility"""
@@ -36,8 +36,7 @@ class TestStepModelUpdates:
             symbol="B",
             proposition="All men are mortal",
             justifiers=["A"],
-            truth_score="1.0",
-            valid="1.0"
+            truth_score="1.0"
         )
         
         # New attributes should have default values
@@ -52,10 +51,9 @@ class TestStepModelUpdates:
             proposition="Socrates is a man",
             justifiers=["B"],
             truth_score="1.0",
-            valid="1.0",
             content_validity="0.95",
             formal_validity="1.0",
-            formalization="Man(Socrates)"
+            formalization=Formalization(ascii="Man(Socrates)", endorsed=True)
         )
         
         # Test setting formalization to None for content evaluation
@@ -71,10 +69,10 @@ class TestNormalizedAgentInput:
         """Test creating a normalized AgentInput"""
         agent_data = AgentData(
             assumptions=[
-                Step(symbol="A", proposition="Background assumption", justifiers=[], truth_score="1.0", valid="1.0")
+                Step(symbol="A", proposition="Background assumption", justifiers=[], truth_score="1.0")
             ],
             argument=[
-                Step(symbol="B", proposition="Main argument", justifiers=["A"], truth_score="0.8", valid="0.9")
+                Step(symbol="B", proposition="Main argument", justifiers=["A"], truth_score="0.8")
             ],
             latest_results=[],
             target_type="argument",
@@ -104,8 +102,7 @@ class TestNormalizedAgentInput:
             proposition="Test proposition",
             justifiers=[],
             truth_score="1.0",
-            valid="1.0",
-            formalization="Test formalization"
+            formalization=Formalization(ascii="Test formalization", endorsed=True)
         )
         
         agent_data = AgentData(
@@ -142,10 +139,9 @@ class TestNormalizedAgentInput:
             proposition="Test proposition",
             justifiers=["B"],
             truth_score="0.9",
-            valid="0.95",
             content_validity="0.9",
             formal_validity="1.0",
-            formalization="Test formalization"
+            formalization=Formalization(ascii="Test formalization", endorsed=True)
         )
         
         agent_data = AgentData(
@@ -173,11 +169,11 @@ class TestNormalizedAgentInput:
         assert len(filtered_input.agent_data.argument) == 1
         
         # Content should be stripped out (parallel to for_content_evaluation)
-        assert filtered_input.agent_data.assumptions[0].proposition is None
-        assert filtered_input.agent_data.argument[0].proposition is None
+        assert filtered_input.agent_data.assumptions[0].proposition == ""
+        assert filtered_input.agent_data.argument[0].proposition == ""
         
         # Other attributes should be preserved
-        assert filtered_input.agent_data.assumptions[0].formalization == "Test formalization"
+        assert filtered_input.agent_data.assumptions[0].formalization.ascii == "Test formalization"
         assert filtered_input.agent_data.assumptions[0].symbol == "A"
         assert filtered_input.agent_data.assumptions[0].justifiers == ["B"]
         assert filtered_input.agent_data.assumptions[0].truth_score == "0.9"
@@ -203,7 +199,7 @@ class TestNormalizedAgentInput:
         """Test that FilteredAgentInput properly inherits from AgentInput"""
         # Create a base agent input
         agent_data = AgentData(
-            assumptions=[Step(symbol="A", proposition="Test", justifiers=[], truth_score="1.0", valid="1.0")],
+            assumptions=[Step(symbol="A", proposition="Test", justifiers=[], truth_score="1.0")],
             argument=[],
             latest_results=[],
             target_type="argument",

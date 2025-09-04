@@ -58,9 +58,9 @@ class TestAutomaticFormEvaluator:
                 agent_data=AgentData(
                     assumptions=[],
                     argument=[
-                        Step(symbol='A', proposition='Socrates is a man', justifiers=[], truth='1.0', valid='1.0'),
-                        Step(symbol='B', proposition='All men are mortal', justifiers=[], truth='1.0', valid='1.0'),
-                        Step(symbol='C', proposition='Socrates is mortal', justifiers=[], truth='1.0', valid='1.0')
+                        Step(symbol='A', proposition='Socrates is a man', justifiers=[], truth_score='1.0', content_validity='1.0', formal_validity='1.0'),
+                        Step(symbol='B', proposition='All men are mortal', justifiers=[], truth_score='1.0', content_validity='1.0', formal_validity='1.0'),
+                        Step(symbol='C', proposition='Socrates is mortal', justifiers=[], truth_score='1.0', content_validity='1.0', formal_validity='1.0')
                     ],
                     latest_results=[],
                     target_type='proposition',
@@ -75,8 +75,8 @@ class TestAutomaticFormEvaluator:
             # Verify the result
             assert result.agent_type == "formalizer"
             assert result.operation == "formalize_proposition"
-            assert result.result_content["proposition"] == "Socrates is mortal"
-            assert result.result_content["ascii"] == "Q(a)"
+            assert result.result_content["formalization"]["ascii"] == "Q(a)"
+            assert result.result_content["confidence"] == 0.95
             
             # Verify that queue_formal_evaluator_if_ready was NOT called by the FormalizationAgent
             # (this functionality is handled elsewhere in the coordinator)
@@ -124,9 +124,9 @@ class TestAutomaticFormEvaluator:
                 agent_data=AgentData(
                     assumptions=[],
                     argument=[
-                        Step(symbol='A', proposition='Socrates is a man', justifiers=[], truth='1.0', valid='1.0'),
-                        Step(symbol='B', proposition='All men are mortal', justifiers=[], truth='1.0', valid='1.0'),
-                        Step(symbol='C', proposition='Socrates is mortal', justifiers=[], truth='1.0', valid='1.0')
+                        Step(symbol='A', proposition='Socrates is a man', justifiers=[], truth_score='1.0', content_validity='1.0', formal_validity='1.0'),
+                        Step(symbol='B', proposition='All men are mortal', justifiers=[], truth_score='1.0', content_validity='1.0', formal_validity='1.0'),
+                        Step(symbol='C', proposition='Socrates is mortal', justifiers=[], truth_score='1.0', content_validity='1.0', formal_validity='1.0')
                     ],
                     latest_results=[],
                     target_type='proposition',
@@ -141,8 +141,8 @@ class TestAutomaticFormEvaluator:
             # Verify the result
             assert result.agent_type == "formalizer"
             assert result.operation == "formalize_proposition"
-            assert result.result_content["proposition"] == "All men are mortal"
-            assert result.result_content["ascii"] == "forall x. (P(x) -> Q(x))"
+            assert result.result_content["formalization"]["ascii"] == "forall x. (P(x) -> Q(x))"
+            assert result.result_content["confidence"] == 0.95
             
             # Verify that queue_formal_evaluator_if_ready was NOT called by the FormalizationAgent
             # (this functionality is handled elsewhere in the coordinator)

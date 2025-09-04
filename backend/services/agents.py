@@ -386,7 +386,7 @@ class ImprovementAgent:
             
             # Validate that we have the required evaluation results
             if not agent_input.agent_data.latest_results:
-                raise ValueError("Improvement agent requires evaluation results to generate recommendations")
+                raise ValueError("Improvement agent requires at least content or formal evaluation results")
             
             # Extract evaluation results from latest_results
             latest_results = agent_input.agent_data.latest_results

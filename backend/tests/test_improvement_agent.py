@@ -37,9 +37,9 @@ class TestImprovementAgent:
             symbol="A",
             proposition="Test proposition",
             justifiers=[],
-            truth="0.5",
-            valid_content="0.4",
-            valid_formal="0.3"
+            truth_score="0.5",
+            content_validity="0.4",
+            formal_validity="0.3"
         )
         
         agent_input = AgentInput(
@@ -49,7 +49,18 @@ class TestImprovementAgent:
                 argument=[step],
                 assumptions=[],
                 target_type="argument",
-                target_content=None
+                target_content=None,
+                latest_results=[
+                    {
+                        'agent_type': 'content_evaluator',
+                        'operation': 'evaluate_propositions',
+                        'result_content': {'truth_evaluations': [{'symbol': 'A', 'truth_value': '0.5'}]},
+                        'confidence': 0.8,
+                        'reasoning': 'Test evaluation',
+                        'snapshot_id': 'test_snap',
+                        'processed_at': 1234567890.0
+                    }
+                ]
             ),
             file_ids=[]
         )
@@ -82,9 +93,9 @@ class TestImprovementAgent:
             symbol="A",
             proposition="Test proposition",
             justifiers=[],
-            truth="0.5",
-            valid_content="0.4",
-            valid_formal="0.3"
+            truth_score="0.5",
+            content_validity="0.4",
+            formal_validity="0.3"
         )
         
         agent_input = AgentInput(
@@ -94,7 +105,18 @@ class TestImprovementAgent:
                 argument=[step],
                 assumptions=[],
                 target_type="argument",
-                target_content=None
+                target_content=None,
+                latest_results=[
+                    {
+                        'agent_type': 'content_evaluator',
+                        'operation': 'evaluate_propositions',
+                        'result_content': {'truth_evaluations': [{'symbol': 'A', 'truth_value': '0.5'}]},
+                        'confidence': 0.8,
+                        'reasoning': 'Test evaluation',
+                        'snapshot_id': 'test_snap',
+                        'processed_at': 1234567890.0
+                    }
+                ]
             ),
             file_ids=[]
         )

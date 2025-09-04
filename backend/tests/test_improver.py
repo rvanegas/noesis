@@ -49,7 +49,18 @@ class TestImprovementAgent:
                 argument=[step],
                 assumptions=[],
                 target_type="argument",
-                target_content=None
+                target_content=None,
+                latest_results=[
+                    {
+                        'agent_type': 'content_evaluator',
+                        'operation': 'evaluate_propositions',
+                        'result_content': {'truth_evaluations': [{'symbol': 'A', 'truth_value': '0.5'}]},
+                        'confidence': 0.8,
+                        'reasoning': 'Test evaluation',
+                        'snapshot_id': 'test_snap',
+                        'processed_at': 1234567890.0
+                    }
+                ]
             ),
             file_ids=[]
         )
@@ -94,7 +105,18 @@ class TestImprovementAgent:
                 argument=[step],
                 assumptions=[],
                 target_type="argument",
-                target_content=None
+                target_content=None,
+                latest_results=[
+                    {
+                        'agent_type': 'content_evaluator',
+                        'operation': 'evaluate_propositions',
+                        'result_content': {'truth_evaluations': [{'symbol': 'A', 'truth_value': '0.5'}]},
+                        'confidence': 0.8,
+                        'reasoning': 'Test evaluation',
+                        'snapshot_id': 'test_snap',
+                        'processed_at': 1234567890.0
+                    }
+                ]
             ),
             file_ids=[]
         )

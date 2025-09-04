@@ -81,15 +81,17 @@ class TestAPIArgumentEndpoints:
                             "symbol": "A",
                             "proposition": "Socrates is a man",
                             "justifiers": [],
-                            "truth": "1.0",
-                            "valid": "1.0"
+                            "truth_score": "1.0",
+                            "content_validity": "1.0",
+                            "formal_validity": "1.0"
                         },
                         {
                             "symbol": "B",
                             "proposition": "All men are mortal",
                             "justifiers": ["A"],
-                            "truth": "1.0",
-                            "valid": "1.0"
+                            "truth_score": "1.0",
+                            "content_validity": "1.0",
+                            "formal_validity": "1.0"
                         }
                     ],
                     "loc": "argument",
@@ -121,8 +123,9 @@ class TestAPIArgumentEndpoints:
                             "symbol": "A",
                             "proposition": "Socrates is a man",
                             "justifiers": [],
-                            "truth": "0.8",
-                            "valid": "0.9"
+                            "truth_score": "0.8",
+                            "content_validity": "0.9",
+                            "formal_validity": "0.9"
                         }
                     ],
                     "loc": "argument",
@@ -192,8 +195,9 @@ class TestAPIArgumentEndpoints:
                             "symbol": "A",
                             "proposition": "Socrates is mortal",
                             "justifiers": [],
-                            "truth": "0.8",
-                            "valid": "0.9"
+                            "truth_score": "0.8",
+                            "content_validity": "0.9",
+                            "formal_validity": "0.9"
                         }
                     ],
                     "loc": "argument",
@@ -228,15 +232,17 @@ class TestAPIArgumentEndpoints:
                             "symbol": "A",
                             "proposition": "Socrates is a man",
                             "justifiers": [],
-                            "truth": "1.0",
-                            "valid": "1.0"
+                            "truth_score": "1.0",
+                            "content_validity": "1.0",
+                            "formal_validity": "1.0"
                         },
                         {
                             "symbol": "B",
                             "proposition": "Socrates is mortal",
                             "justifiers": ["A"],
-                            "truth": "1.0",
-                            "valid": "1.0"
+                            "truth_score": "1.0",
+                            "content_validity": "1.0",
+                            "formal_validity": "1.0"
                         }
                     ],
                     "loc": "argument",
