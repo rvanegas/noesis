@@ -48,6 +48,7 @@ export default function AllAgentResults() {
       case 'form_evaluator': return '🧮 Formal Logic Evaluator'
       case 'formalizer': return '📐 Formalization Agent'
       case 'rewriter': return '✏️ Rewriter Agent'
+      case 'improver': return '🎯 Improvement Agent'
       default: return agentType
     }
   }
@@ -632,6 +633,293 @@ export default function AllAgentResults() {
     )
   }
 
+  const renderImprovementResults = (results: AgentResult[]) => {
+    const [acceptedRecommendations, setAcceptedRecommendations] = useState<Set<string>>(new Set())
+    const [rejectedRecommendations, setRejectedRecommendations] = useState<Set<string>>(new Set())
+
+    // Get current conversation state to find the concluding proposition
+    const { conversation } = getCurrentConversationState()
+    const currentSnapshot = conversation.snapshots[conversation.snapshots.length - 1]
+    const concludingProposition = currentSnapshot.argument.length > 0 
+      ? currentSnapshot.argument[currentSnapshot.argument.length - 1] 
+      : null
+
+    const handleAcceptRecommendation = (recommendationId: string) => {
+      setAcceptedRecommendations(prev => new Set([...prev, recommendationId]))
+      setRejectedRecommendations(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(recommendationId)
+        return newSet
+      })
+    }
+
+    const handleRejectRecommendation = (recommendationId: string) => {
+      setRejectedRecommendations(prev => new Set([...prev, recommendationId]))
+      setAcceptedRecommendations(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(recommendationId)
+        return newSet
+      })
+    }
+
+    const getImpactColor = (impact: string) => {
+      switch (impact) {
+        case 'high': return 'bg-red-100 text-red-800 border-red-200'
+        case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
+        case 'low': return 'bg-green-100 text-green-800 border-green-200'
+        default: return 'bg-gray-100 text-gray-800 border-gray-200'
+      }
+    }
+
+    const getImpactIcon = (impact: string) => {
+      switch (impact) {
+        case 'high': return '🔥'
+        case 'medium': return '⚡'
+        case 'low': return '💡'
+        default: return '📈'
+      }
+    }
+
+    const getTypeIcon = (type: string) => {
+      switch (type) {
+        case 'new': return '✨'
+        case 'rewrite': return '✏️'
+        default: return '📝'
+      }
+    }
+
+    const getPlacementIcon = (placement: string) => {
+      switch (placement) {
+        case 'assumption': return '🏗️'
+        case 'argument': return '🔗'
+        default: return '📋'
+      }
+    }
+
+    const renderRecommendation = (recommendation: any) => {
+      const isAccepted = acceptedRecommendations.has(recommendation.id)
+      const isRejected = rejectedRecommendations.has(recommendation.id)
+      const isProcessed = isAccepted || isRejected
+
+      return (
+        <div 
+          key={recommendation.id} 
+          className={`p-4 rounded-lg border shadow-sm transition-all duration-200 ${
+            isAccepted ? 'bg-green-50 border-green-200' :
+            isRejected ? 'bg-red-50 border-red-200' :
+            'bg-white border-gray-200 hover:border-blue-300'
+          }`}
+        >
+          {/* Recommendation Header */}
+          <div className="flex justify-between items-start mb-3">
+            <div className="flex items-center space-x-2">
+              <span className="text-lg">🎯</span>
+              <span className="font-medium text-gray-800">Recommendation {recommendation.id}</span>
+              <span className={`px-2 py-1 rounded text-xs font-medium border ${getImpactColor(recommendation.impact)}`}>
+                {getImpactIcon(recommendation.impact)} {recommendation.impact.toUpperCase()} IMPACT
+              </span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                {recommendation.confidence.toFixed(2)} confidence
+              </span>
+              {isProcessed && (
+                <span className={`px-2 py-1 rounded text-xs font-medium ${
+                  isAccepted ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                }`}>
+                  {isAccepted ? '✅ ACCEPTED' : '❌ REJECTED'}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Reasoning */}
+          <div className="text-sm text-gray-700 mb-4 p-3 bg-gray-50 rounded border">
+            <span className="font-medium text-gray-600">💭 Reasoning:</span> {recommendation.reasoning}
+          </div>
+
+          {/* Target Proposition */}
+          <div className="mb-4">
+            <div className="text-sm font-medium text-gray-700 mb-2 flex items-center">
+              <span className="mr-2">🎯</span>
+              Target Proposition: <span className="font-mono text-blue-600 ml-1">{recommendation.target_proposition}</span>
+            </div>
+            {concludingProposition && (
+              <div className="text-sm text-gray-600 p-2 bg-blue-50 rounded border border-blue-200">
+                <span className="font-medium">Concluding Proposition:</span> {concludingProposition.proposition}
+              </div>
+            )}
+          </div>
+
+          {/* Expected Conclusion Improvements */}
+          <div className="mb-4">
+            <div className="text-sm font-medium text-gray-700 mb-2 flex items-center">
+              <span className="mr-2">📈</span>
+              Expected Conclusion Score Improvements:
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              <div className="p-2 bg-green-50 rounded border border-green-200">
+                <div className="text-xs text-green-600 font-medium">Truth Score</div>
+                <div className="text-sm font-mono text-green-800">
+                  {recommendation.expected_conclusion_improvement.truth_score_improvement}
+                </div>
+              </div>
+              <div className="p-2 bg-blue-50 rounded border border-blue-200">
+                <div className="text-xs text-blue-600 font-medium">Content Validity</div>
+                <div className="text-sm font-mono text-blue-800">
+                  {recommendation.expected_conclusion_improvement.content_validity_improvement}
+                </div>
+              </div>
+              <div className="p-2 bg-purple-50 rounded border border-purple-200">
+                <div className="text-xs text-purple-600 font-medium">Formal Validity</div>
+                <div className="text-sm font-mono text-purple-800">
+                  {recommendation.expected_conclusion_improvement.formal_validity_improvement}
+                </div>
+              </div>
+            </div>
+            <div className="text-xs text-gray-600 mt-2 p-2 bg-gray-50 rounded">
+              <span className="font-medium">Improvement Reasoning:</span> {recommendation.expected_conclusion_improvement.reasoning}
+            </div>
+          </div>
+
+          {/* Propositions in Recommendation Set */}
+          <div className="mb-4">
+            <div className="text-sm font-medium text-gray-700 mb-2 flex items-center">
+              <span className="mr-2">🔗</span>
+              Propositions in This Recommendation Set:
+            </div>
+            <div className="space-y-2">
+              {recommendation.propositions.map((prop: any, propIndex: number) => (
+                <div key={propIndex} className="p-3 bg-gray-50 rounded border border-gray-200">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm">{getTypeIcon(prop.type)}</span>
+                      <span className="text-sm">{getPlacementIcon(prop.placement)}</span>
+                      <span className="text-sm font-medium text-gray-700">
+                        {prop.type === 'rewrite' ? 'Rewrite' : 'New'} Proposition
+                      </span>
+                      {prop.symbol && (
+                        <span className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded font-mono">
+                          {prop.symbol}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                      {prop.placement}
+                    </span>
+                  </div>
+                  
+                  <div className="text-sm text-gray-800 mb-2">
+                    {prop.proposition}
+                  </div>
+
+                  {prop.type === 'rewrite' && prop.original_proposition && (
+                    <div className="text-xs text-gray-600 mb-2 p-2 bg-yellow-50 rounded border border-yellow-200">
+                      <span className="font-medium">Original:</span> {prop.original_proposition}
+                    </div>
+                  )}
+
+                  {prop.justification_suggestions && prop.justification_suggestions.length > 0 && (
+                    <div className="text-xs">
+                      <span className="font-medium text-gray-600">💡 Justification Suggestions:</span>
+                      <ul className="mt-1 space-y-1">
+                        {prop.justification_suggestions.map((suggestion: string, suggIndex: number) => (
+                          <li key={suggIndex} className="text-gray-600 pl-2">
+                            • {suggestion}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          {!isProcessed && (
+            <div className="flex justify-end space-x-2 pt-3 border-t border-gray-200">
+              <button
+                onClick={() => handleRejectRecommendation(recommendation.id)}
+                className="px-4 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors"
+              >
+                ❌ Reject
+              </button>
+              <button
+                onClick={() => handleAcceptRecommendation(recommendation.id)}
+                className="px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded hover:bg-green-100 transition-colors"
+              >
+                ✅ Accept
+              </button>
+            </div>
+          )}
+
+          {isProcessed && (
+            <div className="pt-3 border-t border-gray-200">
+              <div className="text-sm text-gray-600">
+                {isAccepted ? (
+                  <span className="text-green-700">✅ This recommendation has been accepted and will be applied to strengthen the argument.</span>
+                ) : (
+                  <span className="text-red-700">❌ This recommendation has been rejected and will not be applied.</span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    return (
+      <div className="space-y-3">
+        {results.map((result, index) => {
+          const recommendations = result.result_content?.recommendations || []
+          
+          if (recommendations.length === 0) {
+            return null
+          }
+
+          return (
+            <div key={index} className="p-4 bg-white rounded-lg border border-gray-200 shadow-sm">
+              {/* Result Header */}
+              <div className="flex justify-between items-start mb-2">
+                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                  📸 Snapshot {result.snapshot_id}
+                </span>
+                <span className="text-xs text-gray-500">
+                  {new Date(result.processed_at * 1000).toLocaleTimeString()}
+                </span>
+              </div>
+              
+              <div className="flex justify-between items-start mb-3">
+                <span className="font-medium text-indigo-700 flex items-center">
+                  <span className="mr-2">🎯</span>
+                  Improvement Agent
+                </span>
+                <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                  {result.confidence.toFixed(2)} confidence
+                </span>
+              </div>
+
+              <div className="text-sm text-gray-700 mb-4 p-2 bg-gray-50 rounded">
+                💭 {result.reasoning}
+              </div>
+
+              {/* Recommendations */}
+              <div className="space-y-4">
+                <div className="text-sm font-medium text-gray-700 mb-2">
+                  🎯 Improvement Recommendations ({recommendations.length}):
+                </div>
+                {recommendations.map((recommendation: any) => 
+                  renderRecommendation(recommendation)
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
   return (
     <div className="mt-4 space-y-6">
       {/* Formalization Status */}
@@ -700,12 +988,14 @@ export default function AllAgentResults() {
             {agentType === 'form_evaluator' && '🧮 Formal Logic Evaluator'}
             {agentType === 'formalizer' && '📐 Formalization Agent'}
             {agentType === 'rewriter' && '✏️ Rewriter Agent'}
+            {agentType === 'improver' && '🎯 Improvement Agent'}
           </h4>
           
           {agentType === 'builder' && renderBuilderResults(results)}
           {agentType === 'content_evaluator' && renderContentEvaluatorResults(results)}
           {agentType === 'form_evaluator' && renderFormEvaluatorResults(results)}
           {agentType === 'formalizer' && renderFormalizerResults(results)}
+          {agentType === 'improver' && renderImprovementResults(results)}
         </div>
       ))}
 
