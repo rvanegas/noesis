@@ -32,6 +32,7 @@ interface ConversationState {
   
   updateCurrentConversation: (conversation: ConversationType) => void
   saveConversationName: (conversationId: number, name: string) => void
+  getConversationName: (conversationId: number) => string
   saveAgentResults: (conversationId: number, snapshotIndex: number, agentResults: any) => void
   getAgentResults: (conversationId: number, snapshotIndex: number) => { [agentType: string]: any[] }
   setCurrentConversationIndex: (index: number) => void
@@ -77,6 +78,12 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         conversation.name = name
       }
     }))
+  },
+
+  getConversationName: (conversationId) => {
+    const state = get()
+    const conversation = state.conversations.find((c: ConversationType) => c.id === conversationId)
+    return conversation?.name || ''
   },
 
   saveAgentResults: (conversationId: number, snapshotIndex: number, agentResults: { [agentType: string]: any[] }) => {

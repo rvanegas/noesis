@@ -167,6 +167,17 @@ export default function AllAgentResults() {
         const newTasksComplete = response.data.tasks_complete || false
         const newActiveTasks = response.data.active_tasks || []
         const newActiveTaskCount = response.data.active_task_count || 0
+        const conversationName = response.data.conversation_name
+        
+        // Handle conversation name if present and different from current
+        if (conversationName) {
+          const { saveConversationName, getConversationName } = useConversationStore.getState()
+          const currentName = getConversationName(conversationId)
+          if (currentName !== conversationName) {
+            saveConversationName(conversationId, conversationName)
+            // console.log(`💾 Saved conversation name: ${conversationName}`)
+          }
+        }
         
         // Only update if we have new results
         if (JSON.stringify(newResultsByAgent) !== JSON.stringify(resultsByAgent)) {

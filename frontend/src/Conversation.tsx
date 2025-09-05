@@ -328,10 +328,9 @@ function Conversation({
 
         // Display agent result values for assumptions
         const agentValuesDisplay = () => {
-                  // Assumptions always have truth=1.0 and are never evaluated by agents
-        const hasTruth = step.truth_score && step.truth_score !== ""
-        const hasContentValidity = step.content_validity && step.content_validity !== "" && step.justifiers.length > 0
-        const hasFormalValidity = step.formal_validity && step.formal_validity !== "" && step.justifiers.length > 0
+          const hasTruth = step.truth_score && step.truth_score !== ""
+          const hasContentValidity = step.content_validity && step.content_validity !== "" && step.justifiers.length > 0
+          const hasFormalValidity = step.formal_validity && step.formal_validity !== "" && step.justifiers.length > 0
           const hasFormalization = step.formalization
 
           if (!hasTruth && !hasContentValidity && !hasFormalValidity && !hasFormalization) {

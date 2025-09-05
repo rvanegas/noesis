@@ -8,7 +8,7 @@ from datetime import datetime
 
 from schemas import agent_input
 from core.utils import logger
-from services.agents import ArgumentBuilderAgent, ContentEvaluationAgent, FormalEvaluatorAgent, FormalizationAgent, RewriterAgent, ImprovementAgent
+from services.agents import ArgumentBuilderAgent, ContentEvaluationAgent, FormalEvaluatorAgent, FormalizationAgent, RewriterAgent, ImprovementAgent, NameGenerationAgent
 from schemas.agent_input import AgentInput, AgentData, FilteredAgentInput
 from schemas.arguments import ArgumentData
 
@@ -62,6 +62,7 @@ class AgentResultManager:
     def __init__(self):
         self.results_by_conversation: Dict[str, List[StoredAgentResult]] = {}
         self.conversation_timestamps: Dict[str, float] = {}  # Track last activity per conversation
+        self.conversation_names: Dict[str, str] = {}  # conversation_id -> name
     
     def add_result(self, conversation_id: str, result: StoredAgentResult):
         """Add a new result and clean up outdated ones"""
@@ -217,11 +218,24 @@ class AgentResultManager:
         for conversation_id in expired_conversations:
             del self.results_by_conversation[conversation_id]
             del self.conversation_timestamps[conversation_id]
+            # Also remove conversation names
+            if conversation_id in self.conversation_names:
+                del self.conversation_names[conversation_id]
         
         if expired_conversations:
             logger.info(f"Cleaned up {len(expired_conversations)} expired conversations")
         
         return len(expired_conversations)
+    
+    def store_conversation_name(self, conversation_id: str, name: str):
+        """Store a conversation name"""
+        self.conversation_names[conversation_id] = name
+        # Update timestamp to keep conversation alive
+        self.conversation_timestamps[conversation_id] = time.time()
+    
+    def get_conversation_name(self, conversation_id: str) -> Optional[str]:
+        """Get the stored conversation name for a conversation"""
+        return self.conversation_names.get(conversation_id)
     
     def get_formatted_results(self, conversation_id: str, snapshot_id: str, coordinator) -> Dict[str, Any]:
         """Get formatted agent results for API response"""
@@ -242,6 +256,9 @@ class AgentResultManager:
                task.agent_input.snapshot_id == snapshot_id
         ]
         
+        # Get conversation name if available
+        conversation_name = coordinator.result_manager.get_conversation_name(conversation_id)
+        
         return {
             "conversation_id": conversation_id,
             "snapshot_id": snapshot_id,
@@ -259,7 +276,8 @@ class AgentResultManager:
                 }
                 for task in conversation_active_tasks
             ],
-            "active_task_count": len(conversation_active_tasks)
+            "active_task_count": len(conversation_active_tasks),
+            "conversation_name": conversation_name
         }
     
     def _group_results_by_agent(self, all_results: List[StoredAgentResult]) -> Dict[str, List[Dict[str, Any]]]:
@@ -333,7 +351,8 @@ class AgentCoordinator:
             'form_evaluator': FormalEvaluatorAgent(self),
             'formalizer': FormalizationAgent(self),
             'rewriter': RewriterAgent(self),
-            'improver': ImprovementAgent(self)
+            'improver': ImprovementAgent(self),
+            'name_generator': NameGenerationAgent(self)
         }
         
         # Start background workers
@@ -342,7 +361,7 @@ class AgentCoordinator:
     
     def _start_workers(self):
         """Start background worker threads for each agent type"""
-        agent_types = ['builder', 'content_evaluator', 'form_evaluator', 'formalizer', 'rewriter', 'improver']
+        agent_types = ['builder', 'content_evaluator', 'form_evaluator', 'formalizer', 'rewriter', 'improver', 'name_generator']
         
         for agent_type in agent_types:
             worker = threading.Thread(
@@ -377,6 +396,8 @@ class AgentCoordinator:
     def _process_task(self, task: AgentTask):
         """Process a single task"""
         try:
+            # logger.info(f"🔤 Processing task: {task.agent_type} for conversation {task.agent_input.conversation_id}")
+            
             task.status = 'running'
             task.completed_at = None
             self._update_task(task)
@@ -385,6 +406,8 @@ class AgentCoordinator:
             agent = self.agents.get(task.agent_type)
             if not agent:
                 raise ValueError(f"Unknown agent type: {task.agent_type}")
+            
+            # logger.info(f"🔤 Found agent for {task.agent_type}: {type(agent).__name__}")
             
             # Process the task based on agent type
             # Use the agent_input directly from the task
@@ -408,6 +431,8 @@ class AgentCoordinator:
                 result = agent.rewrite_proposition(agent_input)
             elif task.agent_type == 'improver':
                 result = agent.generate_improvements(agent_input)
+            elif task.agent_type == 'name_generator':
+                result = agent.generate_name(agent_input)
             else:
                 raise ValueError(f"Unknown agent type: {task.agent_type}")
             
@@ -430,7 +455,26 @@ class AgentCoordinator:
                 processed_at=time.time()
             )
             
-            # Store result using the disciplined result manager
+            # Special handling for name generation - store conversation name separately, not as agent result
+            if task.agent_type == 'name_generator':
+                # logger.info(f"🔤 Processing name generation result for conversation {task.agent_input.conversation_id}")
+                # logger.info(f"🔤 Result content: {result.result_content}")
+                
+                # Check if name generation was successful (no error in result_content)
+                if 'error' not in result.result_content:
+                    name = result.result_content.get('name')
+                    # logger.info(f"🔤 Extracted name: {name}")
+                    if name:
+                        # Store conversation name in the result manager
+                        self.result_manager.store_conversation_name(task.agent_input.conversation_id, name)
+                        # logger.info(f"🔤 Stored conversation name '{name}' for conversation {task.agent_input.conversation_id}")
+                    else:
+                        logger.warning(f"🔤 No name found in result content: {result.result_content}")
+                else:
+                    logger.error(f"🔤 Name generation failed: {result.result_content.get('error')}")
+                return  # Don't store as regular agent result
+            
+            # Store result using the disciplined result manager for all other agent types
             self.result_manager.add_result(task.agent_input.conversation_id, stored_result)
             
             # Keep task.result as dict for backward compatibility with task history
@@ -461,10 +505,6 @@ class AgentCoordinator:
                     argument_data
                 )
                         
-            # Debug logging
-            # logger.info(f"Stored result for {task.agent_type} agent in conversation {task.conversation_id}")
-            # logger.debug(f"Current results for conversation {task.conversation_id}: {self.result_manager.get_results(task.conversation_id)}")
-            
             task.status = 'completed'
             task.completed_at = time.time()
             
@@ -773,6 +813,48 @@ class AgentCoordinator:
             logger.info(f"Queued improvement agent task for conversation {conversation_id}")
         else:
             logger.debug(f"Improvement agent not ready for conversation {conversation_id}")
+    
+    def queue_name_generation_task(self, conversation_id: str, proposition: str, assumptions: list, argument: list, file_ids: list = None):
+        """Queue a name generation task for a conversation"""
+        # logger.info(f"🔤 Queuing name generation task for conversation {conversation_id}")
+        # logger.info(f"🔤 Proposition: {proposition}")
+        # logger.info(f"🔤 Assumptions: {len(assumptions)} items, Argument: {len(argument)} items")
+        
+        # Create argument data from the parameters
+        from schemas.arguments import ArgumentData
+        argument_data = ArgumentData(
+            assumptions=assumptions,
+            argument=argument
+        )
+        
+        agent_input = self.create_name_generation_agent_input(conversation_id, proposition, argument_data, file_ids)
+        # logger.info(f"🔤 Created agent input for name generation, snapshot_id: {agent_input.snapshot_id}")
+        self.queue_task("name_generator", agent_input)
+        # logger.info(f"🔤 Name generation task added to queue")
+    
+    def create_name_generation_agent_input(self, conversation_id: str, proposition: str, argument_data: ArgumentData, file_ids: list = None) -> AgentInput:
+        """Create agent input for name generation task"""
+        if file_ids is None:
+            file_ids = []
+            
+        agent_data = AgentData(
+            assumptions=argument_data.assumptions,
+            argument=argument_data.argument,
+            target_type="proposition",
+            target_content=proposition
+        )
+        
+        return AgentInput(
+            conversation_id=conversation_id,
+            snapshot_id="0",  # Name generation is not snapshot-specific
+            agent_type="name_generator",
+            agent_data=agent_data,
+            assumptions=argument_data.assumptions,
+            argument=argument_data.argument,
+            proposition=proposition,
+            file_ids=file_ids
+        )
+    
     
     def _should_queue_improvement_agent(self, conversation_id: str, snapshot_id: str, argument_data: ArgumentData) -> bool:
         """

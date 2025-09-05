@@ -50,7 +50,7 @@ export function useConversationActions(
   targetLoc: string,
   targetIndex: number
 ) {
-  const { saveConversationName, sessionId, userMode, setUserMode, currentSnapshotIndex,
+  const { sessionId, userMode, setUserMode, currentSnapshotIndex,
     getCurrentConversationId, createConversationFromProposition, lastFailedOperation, 
     setLastFailedOperation, applyNewArgument, getCurrentConversationState } = useConversationStore()
   const conversationId = getCurrentConversationId()
@@ -151,9 +151,8 @@ export function useConversationActions(
     }
 
     await makeApiCall({
-      url, data: apiPrompt, onSuccess: (responseObject) => {
-        saveConversationName(getCurrentConversationId(), responseObject.name)
-      }, 
+      url, data: apiPrompt, 
+      onSuccess: () => {}, 
       onFinally: () => {}, 
       operationName: 'Generate Name'
     })

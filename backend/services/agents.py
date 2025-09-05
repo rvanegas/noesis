@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 # from services.conversation import gpt_justify, gpt_evaluate  # DISABLED: Old GPT instances - replaced by new agent system
 from services.agent_prompts import agent_gpt_justify, agent_gpt_evaluate_content, agent_gpt_evaluate_form, agent_gpt_formalize, agent_gpt_improvement
+from services.conversation import gpt_gen_name
 from schemas.agent_input import AgentInput, FilteredAgentInput
 
 from core.utils import logger
@@ -460,6 +461,69 @@ class ImprovementAgent:
                 snapshot_id=agent_input.snapshot_id
             )
             # logger.debug(f"ImprovementAgent task failed. Output: {result}")
+            return result
+
+
+class NameGenerationAgent:
+    """Agent that generates conversation names from propositions"""
+    
+    def __init__(self, coordinator):
+        if coordinator is None:
+            raise ValueError("NameGenerationAgent requires a coordinator")
+        self.name = "name_generator"
+        self.coordinator = coordinator
+    
+    def generate_name(self, agent_input: AgentInput) -> AgentResult:
+        """Generate a conversation name from the proposition"""
+        try:
+            # Extract the proposition from the agent input
+            proposition = agent_input.agent_data.target_content
+            # logger.info(f"🔤 NameGenerationAgent: Starting name generation for conversation {agent_input.conversation_id}")
+            # logger.info(f"🔤 NameGenerationAgent: Proposition: {proposition}")
+            # logger.info(f"🔤 NameGenerationAgent: Assumptions: {len(agent_input.agent_data.assumptions)} items")
+            # logger.info(f"🔤 NameGenerationAgent: Argument: {len(agent_input.agent_data.argument)} items")
+            
+            # Create the input format expected by gpt_gen_name
+            # Convert Step objects to dictionaries for JSON serialization
+            gpt_input = {
+                "assumptions": [step.model_dump() for step in agent_input.agent_data.assumptions],
+                "argument": [step.model_dump() for step in agent_input.agent_data.argument],
+                "proposition": proposition
+            }
+            
+            # Call the GPT model
+            # logger.info(f"🔤 NameGenerationAgent: Calling gpt_gen_name.call()")
+            prompt_json = json.dumps(gpt_input, indent=2)
+            # logger.info(f"🔤 NameGenerationAgent: GPT input: {prompt_json}")
+            name_response = gpt_gen_name.call(prompt_json, agent_input.file_ids)
+            # logger.info(f"🔤 NameGenerationAgent: Generated name response: {name_response}")
+            
+            # Parse the JSON response to extract the name
+            name_data = json.loads(name_response)
+            name = name_data.get('name', '')
+            # logger.info(f"🔤 NameGenerationAgent: Extracted name: {name}")
+            
+            result = AgentResult(
+                agent_type="name_generator",
+                operation="generate_name",
+                result_content={"name": name},
+                confidence=1.0,
+                reasoning="Generated conversation name from proposition",
+                target_metadata={"proposition": proposition}
+            )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"NameGenerationAgent task failed: {e}")
+            result = AgentResult(
+                agent_type="name_generator",
+                operation="generate_name",
+                result_content={"error": str(e)},
+                confidence=0.0,
+                reasoning=f"Name generation failed: {str(e)}",
+                target_metadata={"proposition": agent_input.agent_data.target_content if agent_input.agent_data.target_content else None}
+            )
             return result
 
 
