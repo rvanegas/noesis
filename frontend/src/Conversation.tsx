@@ -235,7 +235,7 @@ function Conversation({
       return (
         <div key={step_index}>
           <FlexRow chevron={actions}>
-            ({step.symbol}) {step.proposition} {justifierSpan()}
+            ({step.symbol}) {step.proposition} {argument.length > 1 && justifierSpan()}
           </FlexRow>
           {agentValuesDisplay()}
         </div>

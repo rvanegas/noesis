@@ -8,7 +8,7 @@ from datetime import datetime
 
 from schemas import agent_input
 from core.utils import logger
-from services.agents import ArgumentBuilderAgent, ContentEvaluationAgent, FormalEvaluatorAgent, FormalizationAgent, RewriterAgent, ImprovementAgent, NameGenerationAgent
+from services.agents import ContentEvaluationAgent, FormalEvaluatorAgent, FormalizationAgent, ImprovementAgent, NameGenerationAgent
 from schemas.agent_input import AgentInput, AgentData, FilteredAgentInput
 from schemas.arguments import ArgumentData
 
@@ -107,21 +107,13 @@ class AgentResultManager:
         target_content = target_metadata.target_content
         snapshot_id = result.snapshot_id
         
-        if agent_type == 'builder':
-            # Builder targets a specific proposition
-            return f"builder:{target_type}:{target_content}:{snapshot_id}"
-        
-        elif agent_type == 'formalizer':
+        if agent_type == 'formalizer':
             # Formalizer targets a specific proposition
             return f"formalizer:{target_type}:{target_content}:{snapshot_id}"
         
         elif agent_type in ['content_evaluator', 'form_evaluator']:
             # Evaluators target the entire argument as a whole
             return f"{agent_type}:{target_type}:{snapshot_id}"
-        
-        elif agent_type == 'rewriter':
-            # Rewriter targets a specific proposition
-            return f"rewriter:{target_type}:{target_content}:{snapshot_id}"
         
         # Fallback to using the entire result as identifier
         return f"{agent_type}:{hash(str(result))}:{snapshot_id}"
@@ -346,11 +338,9 @@ class AgentCoordinator:
         
         # Create agents with coordinator dependency injected
         self.agents = {
-            'builder': ArgumentBuilderAgent(self),
             'content_evaluator': ContentEvaluationAgent(self),
             'form_evaluator': FormalEvaluatorAgent(self),
             'formalizer': FormalizationAgent(self),
-            'rewriter': RewriterAgent(self),
             'improver': ImprovementAgent(self),
             'name_generator': NameGenerationAgent(self)
         }
@@ -361,7 +351,7 @@ class AgentCoordinator:
     
     def _start_workers(self):
         """Start background worker threads for each agent type"""
-        agent_types = ['builder', 'content_evaluator', 'form_evaluator', 'formalizer', 'rewriter', 'improver', 'name_generator']
+        agent_types = ['content_evaluator', 'form_evaluator', 'formalizer', 'improver', 'name_generator']
         
         for agent_type in agent_types:
             worker = threading.Thread(
@@ -413,9 +403,7 @@ class AgentCoordinator:
             # Use the agent_input directly from the task
             agent_input = task.agent_input
             
-            if task.agent_type == 'builder':
-                result = agent.build_argument(agent_input)
-            elif task.agent_type == 'content_evaluator':
+            if task.agent_type == 'content_evaluator':
                 # Create FilteredAgentInput for content evaluation
                 filtered_input = FilteredAgentInput.for_content_evaluation(agent_input)
                 result = agent.evaluate_propositions(filtered_input)
@@ -427,8 +415,6 @@ class AgentCoordinator:
                 # Create FilteredAgentInput for formalization
                 filtered_input = FilteredAgentInput.for_formalization(agent_input)
                 result = agent.formalize_proposition(filtered_input)
-            elif task.agent_type == 'rewriter':
-                result = agent.rewrite_proposition(agent_input)
             elif task.agent_type == 'improver':
                 result = agent.generate_improvements(agent_input)
             elif task.agent_type == 'name_generator':
@@ -704,25 +690,6 @@ class AgentCoordinator:
         # Get existing results to understand current state
         existing_results = self.get_conversation_results(conversation_id)
         
-        # Queue builder agent for content discovery
-        builder_agent_input = AgentInput(
-            conversation_id=conversation_id,
-            snapshot_id=snapshot_id,
-            agent_data=AgentData(
-                assumptions=argument_data.assumptions,
-                argument=argument_data.argument,
-                latest_results=[],
-                target_type='argument',
-                target_content=None
-            ),
-            file_ids=argument_data.file_ids,
-            triggered_by='user_action',
-            trigger_source='argument_change'
-        )
-        self.queue_task(
-            agent_type='builder',
-            agent_input=builder_agent_input
-        )
         
         # Queue formalizer for the entire argument
         # Check if we need to formalize any steps

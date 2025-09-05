@@ -3,7 +3,6 @@ import json
 from typing import Dict, Any, List
 from dataclasses import dataclass
 
-# from services.conversation import gpt_justify, gpt_evaluate  # DISABLED: Old GPT instances - replaced by new agent system
 from services.agent_prompts import agent_gpt_justify, agent_gpt_evaluate_content, agent_gpt_evaluate_form, agent_gpt_formalize, agent_gpt_improvement
 from services.conversation import gpt_gen_name
 from schemas.agent_input import AgentInput, FilteredAgentInput
@@ -26,75 +25,6 @@ class AgentResult:
         if self.target_metadata is None:
             self.target_metadata = {}
 
-
-class ArgumentBuilderAgent:
-    """Agent that builds arguments from content"""
-    
-    def __init__(self, coordinator):
-        if coordinator is None:
-            raise ValueError("ArgumentBuilderAgent requires a coordinator")
-        self.name = "builder"
-        self.coordinator = coordinator
-    
-    def build_argument(self, agent_input: AgentInput) -> AgentResult:
-        """Build additional argument steps for a proposition with optional formalization guidance"""
-        try:
-            # logger.debug(f"ArgumentBuilderAgent starting task with data: {agent_input}")
-            
-            # Get file_ids from task data
-            file_ids = agent_input.file_ids
-            
-            # Pass the data directly to the agent without taking it apart
-            basic_response = agent_gpt_justify.call(json.dumps(agent_input.model_dump()), file_ids)
-            basic_propositions = json.loads(basic_response)["propositions"]
-            
-            basic_justification = {
-                "type": "basic",
-                "propositions": basic_propositions,
-                "used_formalization": None,
-                "confidence": 0.8,
-                "reasoning": "Generated justification without formalization guidance"
-            }
-            justifications = [basic_justification]
-            
-            result = AgentResult(
-                agent_type=self.name,
-                operation="build_argument",
-                result_content={
-                    "proposition": agent_input.agent_data.target_content or '',
-                    "location": "argument",
-                    "justifications": justifications,
-                    "total_justifications": len(justifications)
-                },
-                confidence=0.8,
-                reasoning=f"Generated {len(justifications)} justification options",
-                target_metadata={
-                    'target_type': 'proposition',
-                    'target_content': agent_input.agent_data.target_content or ''
-                },
-                snapshot_id=agent_input.snapshot_id
-            )
-            
-            # logger.debug(f"ArgumentBuilderAgent task completed successfully. Output: {result}")
-            return result
-            
-        except Exception as e:
-            logger.error(f"Builder agent error: {e}")
-            result = AgentResult(
-                agent_type=self.name,
-                operation="build_argument",
-                result_content={"error": str(e)},
-                confidence=0.0,
-                reasoning=f"Error in argument building: {e}",
-                target_metadata={
-                    'target_type': 'proposition',
-                    'target_content': agent_input.agent_data.target_content or ''
-                },
-                snapshot_id=agent_input.snapshot_id
-            )
-            # logger.debug(f"ArgumentBuilderAgent task failed. Output: {result}")
-            return result
-    
 
 class ContentEvaluationAgent:
     """Agent that evaluates the truth and validity of argument propositions"""
@@ -354,17 +284,6 @@ class FormalizationAgent:
             return result
     
 
-class RewriterAgent:
-    """Agent that recommends proposition rewrites, rephrasing, and splitting (STUB)"""
-    
-    def __init__(self, coordinator):
-        if coordinator is None:
-            raise ValueError("RewriterAgent requires a coordinator")
-        self.name = "rewriter"
-        self.coordinator = coordinator
-    
-    def rewrite_proposition(self, conversation_data: Dict[str, Any]) -> AgentResult:
-        pass
 
 
 class ImprovementAgent:

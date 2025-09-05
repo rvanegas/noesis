@@ -45,11 +45,9 @@ export default function AllAgentResults() {
   // Helper function to get agent display name
   const getAgentDisplayName = (agentType: string) => {
     switch (agentType) {
-      case 'builder': return '🔨 Argument Builder'
       case 'content_evaluator': return '🔍 Content Evaluator'
       case 'form_evaluator': return '🧮 Formal Logic Evaluator'
       case 'formalizer': return '📐 Formalization Agent'
-      case 'rewriter': return '✏️ Rewriter Agent'
       case 'improver': return '🎯 Improvement Agent'
       default: return agentType
     }
@@ -257,50 +255,6 @@ export default function AllAgentResults() {
   // Check if all formalizations are endorsed
   const allFormalizationsEndorsed = areAllFormalizationsEndorsed()
 
-  const renderBuilderResults = (results: AgentResult[]) => {
-    return (
-      <div className="space-y-3">
-        {results.map((result, index) => (
-          <div key={index} className="p-4 bg-white rounded-lg border border-gray-200 shadow-sm">
-            <div className="flex justify-between items-start mb-2">
-              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                📸 Snapshot {result.snapshot_id}
-              </span>
-              <span className="text-xs text-gray-500">
-                {new Date(result.processed_at * 1000).toLocaleTimeString()}
-              </span>
-            </div>
-            <div className="flex justify-between items-start mb-3">
-              <span className="font-medium text-blue-700 flex items-center">
-                <span className="mr-2">🔨</span>
-                Argument Builder
-              </span>
-              <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                {result.confidence.toFixed(2)} confidence
-              </span>
-            </div>
-            <div className="text-sm text-gray-700 mb-3 p-2 bg-gray-50 rounded">
-              💭 {result.reasoning}
-            </div>
-            {result.result_content?.justifications && result.result_content.justifications.length > 0 && (
-              <div className="mt-3">
-                <div className="text-sm font-medium text-gray-700 mb-2">
-                  💡 Suggested Justifications:
-                </div>
-                <ul className="space-y-2">
-                  {result.result_content.justifications.map((justification: any, jIndex: number) => (
-                    <li key={jIndex} className="text-sm text-gray-700 p-2 bg-green-50 rounded border border-green-200">
-                      {justification.propositions?.join(', ') || 'No propositions'}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    )
-  }
 
   const renderContentEvaluatorResults = (results: AgentResult[]) => {
     return (
@@ -991,15 +945,12 @@ export default function AllAgentResults() {
       {Object.keys(resultsByAgent).length > 0 && Object.entries(resultsByAgent).map(([agentType, results]) => (
         <div key={agentType} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
           <h4 className="text-md font-semibold mb-3 text-gray-800">
-            {agentType === 'builder' && '🔨 Argument Builder'}
             {agentType === 'content_evaluator' && '🔍 Content Evaluator'}
             {agentType === 'form_evaluator' && '🧮 Formal Logic Evaluator'}
             {agentType === 'formalizer' && '📐 Formalization Agent'}
-            {agentType === 'rewriter' && '✏️ Rewriter Agent'}
             {agentType === 'improver' && '🎯 Improvement Agent'}
           </h4>
           
-          {agentType === 'builder' && renderBuilderResults(results)}
           {agentType === 'content_evaluator' && renderContentEvaluatorResults(results)}
           {agentType === 'form_evaluator' && renderFormEvaluatorResults(results)}
           {agentType === 'formalizer' && renderFormalizerResults(results)}

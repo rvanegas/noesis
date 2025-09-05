@@ -912,7 +912,7 @@ Generate cohesive recommendation sets that work together to strengthen the argum
 
 1. **Conclusion-Supporting Premises**: New propositions that provide evidence or reasoning to directly support the concluding proposition
 2. **Proposition Strengthening**: New propositions that support any existing proposition (conclusion, lemmas, or intermediate conclusions), thereby strengthening the overall argument structure
-3. **Proposition Refinements**: Rewrites of existing propositions to improve clarity, logic, or precision
+3. **Proposition Refinements**: Rewrites of existing propositions to improve clarity, logic, or precision. For concluding propositions, rewrites must preserve truth conditions and only improve clarity or precision.
 4. **Mixed Recommendations**: Combinations of new supporting propositions and refined existing propositions
 5. **Justification Sets**: Multiple propositions that together provide comprehensive justification for any target proposition
 
@@ -925,6 +925,7 @@ Generate cohesive recommendation sets that work together to strengthen the argum
 6. **Detailed Reasoning**: Explain why each improvement is suggested and how it will help strengthen the argument
 7. **Avoid Repetition**: Don't suggest improvements that duplicate existing propositions
 8. **Consider Context**: Use assumptions and existing argument structure to inform recommendations
+9. **Conclusion Rewrite Constraints**: When rewriting the concluding proposition, ONLY make changes that improve clarity, precision, or logical structure WITHOUT changing the truth conditions or core meaning. Do not add new commitments, change the scope, or alter the fundamental claim being made.
 
 ### Output Structure
 Each recommendation should include:
@@ -1116,7 +1117,7 @@ Output:
   "recommendations": [
     {
       "id": "rec_003",
-      "reasoning": "The conclusion has moderate scores but could be significantly improved by making it more specific and adding supporting evidence. This mixed approach will strengthen both the conclusion and its justification.",
+      "reasoning": "The conclusion has moderate scores but could be significantly improved by making it more precise and adding supporting evidence. The conclusion rewrite improves clarity by specifying the type of action (decisive) and the target (climate change) without changing the fundamental claim. This mixed approach will strengthen both the conclusion and its justification.",
       "impact": "medium",
       "target_proposition": "B",
       "expected_conclusion_improvement": {
@@ -1127,12 +1128,12 @@ Output:
       "propositions": [
         {
           "symbol": "B",
-          "proposition": "We should implement carbon pricing policies to reduce emissions",
+          "proposition": "We should take decisive action to address climate change",
           "type": "rewrite",
           "original_symbol": "B",
           "original_proposition": "We should take action",
           "placement": "argument",
-          "justification_suggestions": ["Economic analysis of carbon pricing effectiveness", "Policy recommendations from climate scientists"]
+          "justification_suggestions": ["Policy analysis documents", "Expert testimony on climate action"]
         },
         {
           "symbol": null,
@@ -1236,6 +1237,94 @@ Output:
           "placement": "argument",
           "justifies_symbol": "A",
           "justification_suggestions": ["Medical literature review", "Healthcare provider surveys"]
+        }
+      ]
+    }
+  ]
+}
+
+# Conclusion Rewrite Constraints - What NOT to do
+
+Input:
+{
+  "agent_data": {
+    "argument": [
+      {
+        "symbol": "A",
+        "proposition": "We should take action on climate change",
+        "justifiers": [],
+        "truth_score": "0.6",
+        "content_validity": "0.5",
+        "formal_validity": null
+      }
+    ],
+    "assumptions": [],
+    "target_type": "argument",
+    "target_content": null
+  },
+  "evaluation_results": {
+    "truth_evaluations": [
+      {"symbol": "A", "truth_value": "0.6", "reasoning": "Vague conclusion needs more specificity"}
+    ]
+  },
+  "conclusion_proposition": "We should take action on climate change",
+  "current_conclusion_scores": {
+    "truth": "0.6",
+    "content_validity": "0.5",
+    "formal_validity": null
+  }
+}
+
+CORRECT Output (preserves truth conditions):
+{
+  "recommendations": [
+    {
+      "id": "rec_clarity",
+      "reasoning": "The conclusion has moderate scores due to vagueness. A clarity-focused rewrite will improve precision without changing the fundamental claim.",
+      "impact": "medium",
+      "target_proposition": "A",
+      "expected_conclusion_improvement": {
+        "truth_score_improvement": "+0.1",
+        "content_validity_improvement": "+0.3",
+        "formal_validity_improvement": "+0.2"
+      },
+      "propositions": [
+        {
+          "symbol": "A",
+          "proposition": "We should take decisive action to address climate change",
+          "type": "rewrite",
+          "original_symbol": "A",
+          "original_proposition": "We should take action on climate change",
+          "placement": "argument",
+          "justification_suggestions": ["Policy analysis documents", "Expert testimony on climate action"]
+        }
+      ]
+    }
+  ]
+}
+
+INCORRECT Output (changes truth conditions - DO NOT DO THIS):
+{
+  "recommendations": [
+    {
+      "id": "rec_wrong",
+      "reasoning": "The conclusion needs more specificity",
+      "impact": "high",
+      "target_proposition": "A",
+      "expected_conclusion_improvement": {
+        "truth_score_improvement": "+0.4",
+        "content_validity_improvement": "+0.5",
+        "formal_validity_improvement": "+0.3"
+      },
+      "propositions": [
+        {
+          "symbol": "A",
+          "proposition": "We should implement carbon pricing policies to reduce emissions",
+          "type": "rewrite",
+          "original_symbol": "A",
+          "original_proposition": "We should take action on climate change",
+          "placement": "argument",
+          "justification_suggestions": ["Economic analysis", "Policy documents"]
         }
       ]
     }
