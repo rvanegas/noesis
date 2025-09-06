@@ -79,6 +79,14 @@ async def remove(args: ArgumentsWithStep,
     result = service.remove()
     return {"reply": result}
 
+@router.post("/replace")
+async def replace(args: Arguments,
+        handler = Depends(get_conversation_handler("Replace"))):
+    args, snapshot_id = handler(args)
+    service = ArgumentService(args, snapshot_id)
+    result = service.replace()
+    return {"reply": result}
+
 @router.post("/user-justify")
 async def user_justify(args: ArgumentsWithStepAndProposition,
         handler = Depends(get_conversation_handler("User justify"))):

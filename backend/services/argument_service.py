@@ -107,6 +107,12 @@ class ArgumentService:
         """Arguments json to return to frontend used by theses()"""
         return self.arguments.model_dump_json(include={"proposition"})
 
+    def replace(self) -> str:
+        """Replace the entire argument structure and trigger agents"""
+        # Queue analysis and discovery for the argument state change
+        self.queue_argument_state_change()
+        return self.gptjson()
+
 
 class ArgumentStepService(ArgumentService):
     """Service for argument operations involving specific steps"""
