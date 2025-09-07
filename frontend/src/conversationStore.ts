@@ -53,6 +53,7 @@ interface ConversationState {
     formalValidityUpdates?: { symbol: string, value: string }[]
     formalizationDefinitions?: any
   }) => void
+  constructUpdatedSnapshot: (recommendation: any) => any
 }
 
 export const useConversationStore = create<ConversationState>((set, get) => ({
@@ -275,11 +276,72 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
           hasChanges = true
         }
 
+
         // Increment render count if there were changes
         if (hasChanges) {
           state.snapshotRenderCount += 1
         }
       }
     }))
+  },
+
+
+  constructUpdatedSnapshot: (recommendation) => {
+    const state = get()
+    const conversation = state.conversations[state.currentConversationIndex]
+    if (!conversation) return null
+
+    const currentSnapshot = conversation.snapshots[state.currentSnapshotIndex]
+    
+    // Use Immer to create updated snapshot with proper deep copy
+    const updatedSnapshot = produce(currentSnapshot, (draft) => {
+      // Apply both new propositions and rewrites
+      recommendation.propositions.forEach((prop: any) => {
+        if (prop.type === 'new') {
+          // Add new proposition
+          // Generate next available single letter symbol
+          const existingSymbols = new Set([
+            ...draft.argument.map(s => s.symbol),
+            ...draft.assumptions.map(s => s.symbol)
+          ])
+          
+          let nextSymbol = 'A'
+          while (existingSymbols.has(nextSymbol)) {
+            nextSymbol = String.fromCharCode(nextSymbol.charCodeAt(0) + 1)
+          }
+          
+          const newStep = {
+            symbol: nextSymbol,
+            proposition: prop.proposition,
+            justifiers: prop.justifies_symbol ? [prop.justifies_symbol] : [],
+            truth_score: '',
+            content_validity: undefined,
+            formal_validity: undefined,
+            formalization: undefined
+          }
+          
+          if (prop.placement === 'assumption') {
+            draft.assumptions.push(newStep)
+          } else {
+            draft.argument.push(newStep)
+          }
+        } else if (prop.type === 'rewrite' && prop.symbol) {
+          // Apply proposition rewrites
+          // Check argument steps
+          const argStepIndex = draft.argument.findIndex((s: any) => s.symbol === prop.symbol)
+          if (argStepIndex !== -1) {
+            draft.argument[argStepIndex].proposition = prop.proposition
+          }
+          
+          // Check assumption steps
+          const assumptionStepIndex = draft.assumptions.findIndex((s: any) => s.symbol === prop.symbol)
+          if (assumptionStepIndex !== -1) {
+            draft.assumptions[assumptionStepIndex].proposition = prop.proposition
+          }
+        }
+      })
+    })
+    
+    return updatedSnapshot
   }
 }))

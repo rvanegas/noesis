@@ -52,7 +52,8 @@ export function useConversationActions(
 ) {
   const { sessionId, userMode, setUserMode, currentSnapshotIndex,
     getCurrentConversationId, createConversationFromProposition, lastFailedOperation, 
-    setLastFailedOperation, applyNewArgument, getCurrentConversationState } = useConversationStore()
+    setLastFailedOperation, applyNewArgument, getCurrentConversationState, 
+    constructUpdatedSnapshot } = useConversationStore()
   const conversationId = getCurrentConversationId()
   const currentSnapshot = getCurrentConversationState().conversation.snapshots[currentSnapshotIndex]
 
@@ -239,6 +240,30 @@ export function useConversationActions(
     createConversationFromProposition(step.proposition)
   }
 
+  const handleApplyImprovementRecommendation = async (recommendation: any) => {
+    setUserMode('waiting')
+    
+    // Use store to construct updated snapshot
+    const updatedSnapshot = constructUpdatedSnapshot(recommendation)
+    if (!updatedSnapshot) {
+      throw new Error('Failed to construct updated snapshot')
+    }
+    
+    const operationInfo: ApiOperationInfo = {
+      url: `${import.meta.env.VITE_API_BASE_URL}/api/argument/replace`,
+      data: updatedSnapshot,
+      operationName: 'Apply Improvement Recommendation',
+      onSuccess: (responseObject: any) => {
+        applyNewArgument(responseObject)
+      },
+      onFinally: () => {
+        setUserMode('ready')
+      }
+    }
+    
+    await makeApiCall(operationInfo)
+  }
+
   return {
     handleThesis,
     handleUserJustify,
@@ -246,6 +271,7 @@ export function useConversationActions(
     handleEndorseFormalization,
     handleRejectFormalization,
     handleDispute,
+    handleApplyImprovementRecommendation,
     retryLastOperation,
     lastFailedOperation
   }

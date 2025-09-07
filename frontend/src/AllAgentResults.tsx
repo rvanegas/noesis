@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import { useConversationStore } from './conversationStore'
+import { useConversationActions } from './ConversationHooks'
 
 const VITE_API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 
@@ -21,7 +22,8 @@ type ResultsByAgent = {
 
 export default function AllAgentResults() {
   const { sessionId, getCurrentConversationState, getCurrentConversationId, currentSnapshotIndex, 
-    applyAgentResults, saveAgentResults, getAgentResults } = useConversationStore()
+    applyAgentResults, saveAgentResults, getAgentResults, setUserMode } = useConversationStore()
+  const { handleApplyImprovementRecommendation } = useConversationActions(() => {}, '', 0)
   const conversationId = getCurrentConversationId()
   
   const [resultsByAgent, setResultsByAgent] = useState<ResultsByAgent>({})
@@ -29,7 +31,7 @@ export default function AllAgentResults() {
   const [activeTasks, setActiveTasks] = useState<any[]>([])
   const [activeTaskCount, setActiveTaskCount] = useState<number>(0)
   const [acceptedRecommendations, setAcceptedRecommendations] = useState<Set<string>>(new Set())
-  const [rejectedRecommendations, setRejectedRecommendations] = useState<Set<string>>(new Set())
+  const [applyingRecommendation, setApplyingRecommendation] = useState<string | null>(null)
   const tasksCompleteRef = useRef<boolean>(false)
   const currentPollingSnapshotRef = useRef<number>(-1)
   const intervalRef = useRef<number | null>(null)
@@ -157,8 +159,7 @@ export default function AllAgentResults() {
           params: {
             conversation_id: `${sessionId}:${conversationId}`,
             snapshot_id: String(currentSnapshotIndex)
-          },
-          timeout: 15000 // 15 second timeout
+          }
         })
         
         const newResultsByAgent = response.data.results_by_agent || {}
@@ -609,22 +610,26 @@ export default function AllAgentResults() {
       ? currentSnapshot.argument[currentSnapshot.argument.length - 1] 
       : null
 
-    const handleAcceptRecommendation = (recommendationId: string) => {
-      setAcceptedRecommendations(prev => new Set([...prev, recommendationId]))
-      setRejectedRecommendations(prev => {
-        const newSet = new Set(prev)
-        newSet.delete(recommendationId)
-        return newSet
-      })
-    }
-
-    const handleRejectRecommendation = (recommendationId: string) => {
-      setRejectedRecommendations(prev => new Set([...prev, recommendationId]))
-      setAcceptedRecommendations(prev => {
-        const newSet = new Set(prev)
-        newSet.delete(recommendationId)
-        return newSet
-      })
+    const handleAcceptRecommendation = async (recommendation: any) => {
+      // Mark as accepted
+      setAcceptedRecommendations(prev => new Set([...prev, recommendation.id]))
+      setApplyingRecommendation(recommendation.id)
+      setUserMode('waiting')
+      
+      try {
+        await handleApplyImprovementRecommendation(recommendation)
+      } catch (error: any) {
+        console.error('Error applying improvement recommendation:', error)
+        setError('Failed to apply recommendation')
+        // Remove from accepted if it failed
+        setAcceptedRecommendations(prev => {
+          const newSet = new Set(prev)
+          newSet.delete(recommendation.id)
+          return newSet
+        })
+      } finally {
+        setApplyingRecommendation(null)
+      }
     }
 
     const getImpactColor = (impact: string) => {
@@ -663,15 +668,12 @@ export default function AllAgentResults() {
 
     const renderRecommendation = (recommendation: any) => {
       const isAccepted = acceptedRecommendations.has(recommendation.id)
-      const isRejected = rejectedRecommendations.has(recommendation.id)
-      const isProcessed = isAccepted || isRejected
 
       return (
         <div 
           key={recommendation.id} 
           className={`p-4 rounded-lg border shadow-sm transition-all duration-200 ${
             isAccepted ? 'bg-green-50 border-green-200' :
-            isRejected ? 'bg-red-50 border-red-200' :
             'bg-white border-gray-200 hover:border-blue-300'
           }`}
         >
@@ -685,11 +687,9 @@ export default function AllAgentResults() {
               </span>
             </div>
             <div className="flex items-center space-x-2">
-              {isProcessed && (
-                <span className={`px-2 py-1 rounded text-xs font-medium ${
-                  isAccepted ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                }`}>
-                  {isAccepted ? '✅ ACCEPTED' : '❌ REJECTED'}
+              {isAccepted && (
+                <span className="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
+                  ✅ ACCEPTED
                 </span>
               )}
             </div>
@@ -799,31 +799,30 @@ export default function AllAgentResults() {
           </div>
 
           {/* Action Buttons */}
-          {!isProcessed && (
-            <div className="flex justify-end space-x-2 pt-3 border-t border-gray-200">
+          {!isAccepted && (
+            <div className="flex justify-end pt-3 border-t border-gray-200">
               <button
-                onClick={() => handleRejectRecommendation(recommendation.id)}
-                className="px-4 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors"
+                onClick={() => handleAcceptRecommendation(recommendation)}
+                disabled={applyingRecommendation === recommendation.id}
+                className={`px-4 py-2 text-sm font-medium rounded transition-colors ${
+                  applyingRecommendation === recommendation.id
+                    ? 'text-gray-500 bg-gray-100 border border-gray-200 cursor-not-allowed'
+                    : 'text-green-700 bg-green-50 border border-green-200 hover:bg-green-100'
+                }`}
               >
-                ❌ Reject
-              </button>
-              <button
-                onClick={() => handleAcceptRecommendation(recommendation.id)}
-                className="px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded hover:bg-green-100 transition-colors"
-              >
-                ✅ Accept
+                {applyingRecommendation === recommendation.id ? (
+                  <>⏳ Applying...</>
+                ) : (
+                  <>✅ Accept & Apply</>
+                )}
               </button>
             </div>
           )}
 
-          {isProcessed && (
+          {isAccepted && (
             <div className="pt-3 border-t border-gray-200">
               <div className="text-sm text-gray-600">
-                {isAccepted ? (
-                  <span className="text-green-700">✅ This recommendation has been accepted and will be applied to strengthen the argument.</span>
-                ) : (
-                  <span className="text-red-700">❌ This recommendation has been rejected and will not be applied.</span>
-                )}
+                <span className="text-green-700">✅ This recommendation has been accepted and applied to strengthen the argument.</span>
               </div>
             </div>
           )}
