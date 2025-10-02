@@ -562,13 +562,27 @@ class AgentCoordinator:
     
     def get_latest_results(self, conversation_id: str, snapshot_id: str) -> List[StoredAgentResult]:
         """Get latest results for a conversation/snapshot context"""
-        # Update most recent conversation/snapshot for prioritization
-        self.most_recent_conversation = conversation_id
-        self.most_recent_snapshot = int(snapshot_id)
+        # Move tasks for this conversation/snapshot to front of queue
+        self._prioritize_tasks_for_snapshot(conversation_id, int(snapshot_id))
         
         return self.result_manager.get_latest_results(conversation_id, snapshot_id)
     
-
+    def _prioritize_tasks_for_snapshot(self, conversation_id: str, snapshot_id: int):
+        """Move tasks for specific conversation/snapshot to front of queue"""
+        with self.task_queue_lock:
+            # Find tasks for this conversation/snapshot
+            target_tasks = []
+            remaining_tasks = []
+            
+            for task in self.task_queue:
+                if (task.agent_input.conversation_id == conversation_id and 
+                    int(task.agent_input.snapshot_id) == snapshot_id):
+                    target_tasks.append(task)
+                else:
+                    remaining_tasks.append(task)
+            
+            # Put target tasks first, then remaining tasks
+            self.task_queue = target_tasks + remaining_tasks
     
     def get_results_by_target_type(self, conversation_id: str, target_type: str, snapshot_id: str) -> List[StoredAgentResult]:
         """Get results filtered by target type (argument vs proposition level)"""
