@@ -925,7 +925,9 @@ Generate cohesive recommendation sets that work together to strengthen the argum
 6. **Detailed Reasoning**: Explain why each improvement is suggested and how it will help strengthen the argument
 7. **Avoid Repetition**: Don't suggest improvements that duplicate existing propositions
 8. **Consider Context**: Use assumptions and existing argument structure to inform recommendations
-9. **Conclusion Rewrite Constraints**: When rewriting the concluding proposition, ONLY make changes that improve clarity, precision, or logical structure WITHOUT changing the truth conditions or core meaning. Do not add new commitments, change the scope, or alter the fundamental claim being made.
+9. **Conclusion Rewrite Prohibition**: NEVER rewrite or modify the concluding proposition under any circumstances. The conclusion must remain exactly as provided.
+10. **Single Proposition Arguments**: When an argument contains only one proposition (the conclusion), recommendations must ONLY suggest new propositions to add as supporting premises. Do not suggest any rewrites or refinements of the existing proposition.
+11. **New Proposition Positioning**: All new propositions must be inserted BEFORE the conclusion in the argument structure and must directly justify the existing conclusion.
 
 ### Output Structure
 Each recommendation should include:
