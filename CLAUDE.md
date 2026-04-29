@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-### Frontend (run from `frontend/`)
+### Frontend
 
 ```bash
 npm run dev          # dev server (press 'o' to open browser, 'q' to quit)
@@ -46,7 +46,7 @@ Noesis (React/Zustand) → FastAPI routes on Dianoia → Agent results (polled)
 ## Configuration
 
 ```
-frontend/.env
+.env
 ```
 
 ```
