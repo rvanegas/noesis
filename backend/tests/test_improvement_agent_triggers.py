@@ -37,16 +37,13 @@ class TestImprovementAgentTriggers:
         """Test that improvement agent is triggered after content evaluation when not all propositions are formalized"""
         conversation_id = "test_conv"
         snapshot_id = "test_snap"
-        
-        # Mock existing results to include content evaluation but no formalization
-        mock_results = [
-            {
-                'agent_type': 'content_evaluator',
-                'snapshot_id': snapshot_id,
-                'result_content': {'truth_evaluations': []}
-            }
-        ]
-        
+
+        r = Mock()
+        r.agent_type = 'content_evaluator'
+        r.snapshot_id = snapshot_id
+        r.result_content = {'truth_evaluations': []}
+        mock_results = [r]
+
         with patch.object(self.coordinator, 'get_conversation_results', return_value=mock_results):
             should_trigger = self.coordinator._should_queue_improvement_agent(
                 conversation_id, snapshot_id, self.argument_data
@@ -77,15 +74,12 @@ class TestImprovementAgentTriggers:
             file_ids=[]
         )
         
-        # Mock existing results to include formal evaluation
-        mock_results = [
-            {
-                'agent_type': 'form_evaluator',
-                'snapshot_id': snapshot_id,
-                'result_content': {'validity_evaluations': []}
-            }
-        ]
-        
+        r = Mock()
+        r.agent_type = 'form_evaluator'
+        r.snapshot_id = snapshot_id
+        r.result_content = {'validity_evaluations': []}
+        mock_results = [r]
+
         with patch.object(self.coordinator, 'get_conversation_results', return_value=mock_results):
             should_trigger = self.coordinator._should_queue_improvement_agent(
                 conversation_id, snapshot_id, formalized_argument_data
@@ -98,15 +92,12 @@ class TestImprovementAgentTriggers:
         conversation_id = "test_conv"
         snapshot_id = "test_snap"
         
-        # Mock existing results with no evaluation results
-        mock_results = [
-            {
-                'agent_type': 'builder',
-                'snapshot_id': snapshot_id,
-                'result_content': {'propositions': []}
-            }
-        ]
-        
+        r = Mock()
+        r.agent_type = 'builder'
+        r.snapshot_id = snapshot_id
+        r.result_content = {'propositions': []}
+        mock_results = [r]
+
         with patch.object(self.coordinator, 'get_conversation_results', return_value=mock_results):
             should_trigger = self.coordinator._should_queue_improvement_agent(
                 conversation_id, snapshot_id, self.argument_data
@@ -119,20 +110,16 @@ class TestImprovementAgentTriggers:
         conversation_id = "test_conv"
         snapshot_id = "test_snap"
         
-        # Mock existing results to include content evaluation and improvement agent
-        mock_results = [
-            {
-                'agent_type': 'content_evaluator',
-                'snapshot_id': snapshot_id,
-                'result_content': {'truth_evaluations': []}
-            },
-            {
-                'agent_type': 'improver',
-                'snapshot_id': snapshot_id,
-                'result_content': {'recommendations': []}
-            }
-        ]
-        
+        r1 = Mock()
+        r1.agent_type = 'content_evaluator'
+        r1.snapshot_id = snapshot_id
+        r1.result_content = {'truth_evaluations': []}
+        r2 = Mock()
+        r2.agent_type = 'improver'
+        r2.snapshot_id = snapshot_id
+        r2.result_content = {'recommendations': []}
+        mock_results = [r1, r2]
+
         with patch.object(self.coordinator, 'get_conversation_results', return_value=mock_results):
             should_trigger = self.coordinator._should_queue_improvement_agent(
                 conversation_id, snapshot_id, self.argument_data

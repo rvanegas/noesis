@@ -49,13 +49,12 @@ class TestArgumentRemove:
             assert "argument" in result_dict
             assert len(result_dict["argument"]) == 2
             
-            # Verify that argument state change was queued (builder, formalizer, content evaluator, and potentially form evaluator)
-            assert mock_queue.call_count >= 3
-            
+            # Verify that argument state change was queued (formalizer + content evaluator)
+            assert mock_queue.call_count >= 2
+
             # Verify the calls were made with correct parameters
             calls = mock_queue.call_args_list
             agent_types = [call[1]['agent_type'] for call in calls]
-            assert 'builder' in agent_types
             assert 'content_evaluator' in agent_types
             assert 'formalizer' in agent_types
     
@@ -179,13 +178,12 @@ class TestArgumentRemove:
         with patch.object(coordinator, 'queue_task') as mock_queue:
             service.remove()
             
-            # Verify that queue_task was called for multiple agents (builder, formalizer, content evaluator, and potentially form evaluator)
-            assert mock_queue.call_count >= 3
-            
+            # Verify that queue_task was called for multiple agents (formalizer + content evaluator)
+            assert mock_queue.call_count >= 2
+
             # Verify the calls were made with correct parameters
             calls = mock_queue.call_args_list
             agent_types = [call[1]['agent_type'] for call in calls]
-            assert 'builder' in agent_types
             assert 'content_evaluator' in agent_types
             assert 'formalizer' in agent_types
             

@@ -47,13 +47,6 @@ npm run build        # production build
 docker-compose up --build
 ```
 
-### Database migrations (from `backend/`)
-
-```bash
-alembic revision --autogenerate -m "description"
-alembic upgrade head
-```
-
 ## Architecture
 
 ### Request Flow
@@ -70,32 +63,43 @@ Frontend polls GET /api/agents/results ─────────────�
 
 ### Backend Structure
 
-- `api/` — FastAPI routers: `argument.py` (argue, assume, remove, gen-name), `agents.py` (results, active tasks)
-- `services/agents.py` — Agent implementations (ContentEvaluation, FormalEvaluator, Formalization, Improvement, NameGeneration)
-- `services/agent_coordinator.py` — Thread-based task queue; `AgentResultManager` stores results keyed by `(conversation_id, snapshot_id)`
+- `api/argument.py` — Routes: `argue`, `assume`, `remove`, `replace`, `user-justify`, `explain`, `reject-formalization`, `endorse-formalization`, `upload`, `gen-name`
+- `api/agents.py` — Routes: `GET /api/agents/results` (grouped by type, filtered by snapshot), `GET /api/agents/active`
+- `services/agents.py` — Agent implementations: `ContentEvaluationAgent`, `FormalEvaluatorAgent`, `FormalizationAgent`, `ImprovementAgent`, `NameGenerationAgent`
+- `services/agent_coordinator.py` — Thread-based task queue; `AgentResultManager` stores results keyed by `(conversation_id, snapshot_id)`; handles TTL cleanup and cooldown periods
 - `services/agent_prompts.py` — All LLM prompt templates
-- `services/argument_service.py` — Core argument manipulation logic
-- `core/logic.py` — Mathematical logic formalization classes (terms, predicates, quantifiers, binary ops, modal operators)
-- `models/` — SQLAlchemy ORM models; `schemas/` — Pydantic request/response schemas
+- `services/argument_service.py` — Core argument manipulation (`next_symbol()`, `new_step()`, `clean_citations()`)
+- `services/conversation.py` — `Gpt` wrapper class for name generation and explanations
+- `core/logic.py` — Mathematical logic formalization: `Term` (Variable, Constant), `Formula` (Predicate, PropVar, Equality, Quantifier, BinaryOp, Modal), each with `to_dict()` / `to_unicode()` / `to_ascii()`
+- `schemas/` — Pydantic request/response schemas
+- `startup_init.py` — Background thread that pre-warms GPT instances at server startup to avoid first-request delays
 
 ### Agent System
 
 Agents run in background threads after each user action. The **ImprovementAgent** is the primary user-facing agent; it triggers after content/formal evaluation results are available and generates cohesive recommendation sets to strengthen the concluding proposition. Results are filtered by `snapshot_id` so stale results from earlier conversation states are not shown.
 
-Agent trigger logic lives in `agent_coordinator.py`. Cooldown periods prevent duplicate runs.
+**Agent filtering:** `FilteredAgentInput` (in `schemas/agent_input.py`) strips irrelevant data before passing to each agent — the `ContentEvaluationAgent` never sees formalization data, the `FormalEvaluatorAgent` never sees natural-language proposition text. Use the class methods `for_content_evaluation()`, `for_formal_evaluation()`, `for_formalization()` when constructing agent inputs.
+
+**Conversation ID format:** Composite key `"session_id:conversation_id"` — enables multi-conversation sessions from a single browser session.
+
+Agent trigger logic and cooldown periods live in `agent_coordinator.py`.
 
 ### Frontend Structure
 
-- `conversationStore.ts` — Zustand store; single source of truth for conversation state, snapshots, agent results, endorsements
-- `ConversationHooks.tsx` — Custom hooks wrapping Axios calls to the backend API
+- `conversationStore.ts` — Zustand store (with Immer); single source of truth for conversation state, snapshots, agent results, endorsements. `sessionId` is a `crypto.randomUUID()` generated once per browser session.
+- `ConversationHooks.tsx` — Custom hooks wrapping Axios calls; `makeApiCall()` and `handleApiError()` handle 422 `AssistantResponseError` responses
 - `AllAgentResults.tsx` — Renders improvement recommendations from agents
 - State is snapshot-based: each argument modification creates a new snapshot, enabling isolated agent results per state
 
 ### Key Concepts
 
 - **Snapshot**: Immutable capture of argument state at a point in time. Agent results are bound to a snapshot so recommendations remain coherent.
-- **Formalization**: Each proposition can be given a formal logical representation (from `core/logic.py`) that a user can endorse. Once all propositions in an argument are endorsed, the FormalEvaluator runs.
-- **Improvement recommendations**: Sets of suggested proposition additions/rewrites produced by the ImprovementAgent, each with expected score improvements and reasoning.
+- **Formalization**: Each proposition can be given a formal logical representation (from `core/logic.py`) that a user can endorse. Once all propositions in an argument are endorsed, the `FormalEvaluatorAgent` runs.
+- **Improvement recommendations**: Sets of suggested proposition additions/rewrites produced by the `ImprovementAgent`, each with expected score improvements and reasoning.
+
+### Test Patterns
+
+Tests use FastAPI `TestClient`, mock `coordinator.queue_task()`, and patch GPT calls. Key test files: `test_api_argument.py` (route integration), `test_improvement_agent*.py` (trigger logic), `test_api_agents_stale_results.py` (snapshot filtering), `test_result_manager.py` (TTL/cleanup), `test_dual_evaluators.py` (content + formal interaction).
 
 ## Environment Variables
 
@@ -103,7 +107,7 @@ Backend (`.env` in `backend/`):
 ```
 OPENAI_API_KEY=...
 OPENAI_MODEL=gpt-4o
-DATABASE_URL=postgresql://user:pass@host:5432/db
+OPENAI_ASSISTANT_ID=...   # optional
 ```
 
 Frontend (`.env` in `frontend/`):

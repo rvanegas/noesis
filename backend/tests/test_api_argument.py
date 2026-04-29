@@ -9,6 +9,7 @@ from unittest.mock import patch, MagicMock
 
 from main import app
 from schemas.step import Step
+from services.agent_coordinator import coordinator
 
 client = TestClient(app)
 
@@ -42,10 +43,8 @@ class TestAPIArgumentEndpoints:
             mock_queue.assert_called()
 
     def test_gen_name_endpoint(self):
-        """Test the /api/argument/gen-name endpoint"""
-        with patch('services.conversation.gpt_gen_name.call') as mock_gen_name:
-            mock_gen_name.return_value = "Socrates Mortality Argument"
-            
+        """Test the /api/argument/gen-name endpoint queues the task and returns immediately"""
+        with patch.object(coordinator, 'queue_name_generation_task') as mock_queue:
             response = client.post(
                 "/api/argument/gen-name",
                 params={
@@ -59,11 +58,9 @@ class TestAPIArgumentEndpoints:
                     "file_ids": []
                 }
             )
-            
+
             assert response.status_code == 200
-            result = response.json()
-            assert "reply" in result
-            assert result["reply"] == "Socrates Mortality Argument"
+            mock_queue.assert_called_once()
 
     def test_remove_endpoint(self):
         """Test the /api/argument/remove endpoint"""

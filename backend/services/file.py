@@ -1,8 +1,6 @@
-import io
 import json
 from dataclasses import dataclass, asdict
 
-from config import OPENAI_MODEL
 from core.utils import logger
 from services.openaiclient import client
 
@@ -17,11 +15,10 @@ class FileRef:
     filename: str
 
 def create_file(file_data: FileData):
-    file_obj = io.BytesIO(file_data.content)
-    file_obj.name = file_data.filename
-    f_response = client.files.create(
-        file=file_obj,
-        purpose="assistants")
+    f_response = client.beta.files.upload(
+        file=(file_data.filename, file_data.content, "application/octet-stream"),
+        betas=["files-api-2025-04-14"]
+    )
     file_ref = FileRef(
         file_id=f_response.id,
         filename=f_response.filename)

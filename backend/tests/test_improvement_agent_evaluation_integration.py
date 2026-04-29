@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import Mock, patch, MagicMock
-from services.agent_coordinator import AgentCoordinator
+from services.agent_coordinator import AgentCoordinator, StoredAgentResult, TargetMetadata
 from services.agents import ImprovementAgent
 from schemas.agent_input import AgentInput, AgentData
 from schemas.step import Step
@@ -39,43 +39,28 @@ class TestImprovementAgentEvaluationIntegration:
         snapshot_id = "test_snap"
         
         # Mock conversation results to include evaluation data
+        target = TargetMetadata(target_type='argument', target_content='test')
         mock_results = [
-            Mock(
+            StoredAgentResult(
                 agent_type='content_evaluator',
                 operation='evaluate_propositions',
                 result_content={'truth_evaluations': [{'symbol': 'A', 'truth_value': '0.5'}]},
                 confidence=0.8,
                 reasoning='Test evaluation',
+                target_metadata=target,
                 snapshot_id=snapshot_id,
                 processed_at=1234567890.0,
-                model_dump=Mock(return_value={
-                    'agent_type': 'content_evaluator',
-                    'operation': 'evaluate_propositions',
-                    'result_content': {'truth_evaluations': [{'symbol': 'A', 'truth_value': '0.5'}]},
-                    'confidence': 0.8,
-                    'reasoning': 'Test evaluation',
-                    'snapshot_id': snapshot_id,
-                    'processed_at': 1234567890.0
-                })
             ),
-            Mock(
+            StoredAgentResult(
                 agent_type='form_evaluator',
                 operation='evaluate_propositions',
                 result_content={'validity_evaluations': [{'symbol': 'A', 'validity_value': '0.6'}]},
                 confidence=0.7,
                 reasoning='Test formal evaluation',
+                target_metadata=target,
                 snapshot_id=snapshot_id,
                 processed_at=1234567890.0,
-                model_dump=Mock(return_value={
-                    'agent_type': 'form_evaluator',
-                    'operation': 'evaluate_propositions',
-                    'result_content': {'validity_evaluations': [{'symbol': 'A', 'validity_value': '0.6'}]},
-                    'confidence': 0.7,
-                    'reasoning': 'Test formal evaluation',
-                    'snapshot_id': snapshot_id,
-                    'processed_at': 1234567890.0
-                })
-            )
+            ),
         ]
         
         with patch.object(self.coordinator, 'get_conversation_results', return_value=mock_results):
