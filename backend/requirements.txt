@@ -1,6 +1,0 @@
-pydantic==2.13.3
-fastapi==0.136.1
-anthropic
-python-dotenv==1.2.2
-uvicorn==0.46.0
-python-multipart==0.0.27

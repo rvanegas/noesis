@@ -1,6 +1,0 @@
-#!/bin/bash
-
-cd ~/dianoia
-git pull
-docker-compose down
-docker-compose up --build -d
