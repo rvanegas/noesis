@@ -303,11 +303,12 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
             ...draft.argument.map(s => s.symbol),
             ...draft.assumptions.map(s => s.symbol)
           ])
-          
-          let nextSymbol = 'A'
-          while (existingSymbols.has(nextSymbol)) {
-            nextSymbol = String.fromCharCode(nextSymbol.charCodeAt(0) + 1)
+
+          let nextSymbolNum = 1
+          while (existingSymbols.has(String(nextSymbolNum))) {
+            nextSymbolNum++
           }
+          const nextSymbol = String(nextSymbolNum)
           
           const newStep = {
             symbol: nextSymbol,
