@@ -47,7 +47,8 @@ export default function AllAgentResults() {
   // Helper function to get agent display name
   const getAgentDisplayName = (agentType: string) => {
     switch (agentType) {
-      case 'content_evaluator': return '🔍 Content Evaluator'
+      case 'truth_evaluator': return '🔍 Truth Evaluator'
+      case 'content_validity_evaluator': return '🔗 Content Validity Evaluator'
       case 'form_evaluator': return '🧮 Formal Logic Evaluator'
       case 'formalizer': return '📐 Formalization Agent'
       case 'improver': return '🎯 Improvement Agent'
@@ -78,21 +79,24 @@ export default function AllAgentResults() {
   const applyAgentResultsToSnapshot = (newResultsByAgent: ResultsByAgent) => {
     const changes: any = {}
 
-    // Parse ContentEvaluationAgent results
-    const contentResults = newResultsByAgent['content_evaluator']
-    if (contentResults && contentResults.length > 0) {
-      const latestContentResult = contentResults[contentResults.length - 1]
-      const resultContent = latestContentResult.result_content
-
-      // Parse truth evaluations
+    // Parse TruthEvaluationAgent results
+    const truthResults = newResultsByAgent['truth_evaluator']
+    if (truthResults && truthResults.length > 0) {
+      const latestTruthResult = truthResults[truthResults.length - 1]
+      const resultContent = latestTruthResult.result_content
       if (resultContent.truth_evaluations) {
         changes.truthUpdates = resultContent.truth_evaluations.map((evaluation: any) => ({
           symbol: evaluation.symbol,
           value: evaluation.truth_value.toString()
         }))
       }
+    }
 
-      // Parse validity evaluations
+    // Parse ContentValidityEvaluationAgent results
+    const contentValidityResults = newResultsByAgent['content_validity_evaluator']
+    if (contentValidityResults && contentValidityResults.length > 0) {
+      const latestValidityResult = contentValidityResults[contentValidityResults.length - 1]
+      const resultContent = latestValidityResult.result_content
       if (resultContent.validity_evaluations) {
         changes.validityUpdates = resultContent.validity_evaluations.map((evaluation: any) => ({
           symbol: evaluation.symbol,
@@ -257,7 +261,7 @@ export default function AllAgentResults() {
   const allFormalizationsEndorsed = areAllFormalizationsEndorsed()
 
 
-  const renderContentEvaluatorResults = (results: AgentResult[]) => {
+  const renderTruthEvaluatorResults = (results: AgentResult[]) => {
     return (
       <div className="space-y-3">
         {results.map((result, index) => (
@@ -273,7 +277,7 @@ export default function AllAgentResults() {
             <div className="flex justify-between items-start mb-3">
               <span className="font-medium text-purple-700 flex items-center">
                 <span className="mr-2">🔍</span>
-                Content Evaluator
+                Truth Evaluator
               </span>
               <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">
                 {result.confidence.toFixed(2)} confidence
@@ -281,15 +285,14 @@ export default function AllAgentResults() {
             </div>
             {result.result_content && (
               <div className="mt-3 space-y-2">
-                {/* Truth Evaluations */}
                 {result.result_content.truth_evaluations && result.result_content.truth_evaluations.length > 0 && (
                   <div className="mt-3">
                     <div className="text-sm font-medium text-gray-700 mb-2">
                       📊 Truth Evaluations:
                     </div>
                     <div className="space-y-1">
-                      {result.result_content.truth_evaluations.map((evaluation: any, index: number) => (
-                        <div key={index} className="text-sm p-2 bg-gray-50 rounded border border-gray-200">
+                      {result.result_content.truth_evaluations.map((evaluation: any, i: number) => (
+                        <div key={i} className="text-sm p-2 bg-gray-50 rounded border border-gray-200">
                           <div className="flex justify-between items-start">
                             <span className="text-gray-700 flex-1">
                               <span className="font-medium">{evaluation.symbol}:</span> {evaluation.reasoning}
@@ -308,15 +311,66 @@ export default function AllAgentResults() {
                   </div>
                 )}
 
-                {/* Validity Evaluations */}
+                {result.result_content.incoherent_sets && result.result_content.incoherent_sets.length > 0 && (
+                  <div className="mt-3">
+                    <div className="text-sm font-medium text-red-700 mb-2">
+                      ⚠️ Incoherent Sets:
+                    </div>
+                    <div className="space-y-2">
+                      {result.result_content.incoherent_sets.map((incoherentSet: any, i: number) => (
+                        <div key={i} className="text-sm p-2 bg-red-50 rounded border border-red-200">
+                          <span className="text-red-700">
+                            <span className="font-medium">Steps {incoherentSet.symbols.join(', ')}:</span>
+                            <span className="ml-2 text-xs">
+                              {incoherentSet.incoherence_value === 1.0 ? 'Logical Contradiction' :
+                               `Incoherence Level: ${(incoherentSet.incoherence_value * 100).toFixed(0)}%`}
+                            </span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  const renderContentValidityEvaluatorResults = (results: AgentResult[]) => {
+    return (
+      <div className="space-y-3">
+        {results.map((result, index) => (
+          <div key={index} className="p-4 bg-white rounded-lg border border-gray-200 shadow-sm">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                📸 Snapshot {result.snapshot_id}
+              </span>
+              <span className="text-xs text-gray-500">
+                {new Date(result.processed_at * 1000).toLocaleTimeString()}
+              </span>
+            </div>
+            <div className="flex justify-between items-start mb-3">
+              <span className="font-medium text-blue-700 flex items-center">
+                <span className="mr-2">🔗</span>
+                Content Validity Evaluator
+              </span>
+              <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                {result.confidence.toFixed(2)} confidence
+              </span>
+            </div>
+            {result.result_content && (
+              <div className="mt-3 space-y-2">
                 {result.result_content.validity_evaluations && result.result_content.validity_evaluations.length > 0 && (
                   <div className="mt-3">
                     <div className="text-sm font-medium text-gray-700 mb-2">
                       🔗 Validity Evaluations:
                     </div>
                     <div className="space-y-1">
-                      {result.result_content.validity_evaluations.map((evaluation: any, index: number) => (
-                        <div key={index} className="text-sm p-2 bg-blue-50 rounded border border-blue-200">
+                      {result.result_content.validity_evaluations.map((evaluation: any, i: number) => (
+                        <div key={i} className="text-sm p-2 bg-blue-50 rounded border border-blue-200">
                           <div className="flex justify-between items-start">
                             <span className="text-gray-700 flex-1">
                               <span className="font-medium">{evaluation.symbol}:</span> {evaluation.reasoning}
@@ -335,39 +389,14 @@ export default function AllAgentResults() {
                   </div>
                 )}
 
-                {/* Incoherent Sets */}
-                {result.result_content.incoherent_sets && result.result_content.incoherent_sets.length > 0 && (
-                  <div className="mt-3">
-                    <div className="text-sm font-medium text-red-700 mb-2">
-                      ⚠️ Incoherent Sets:
-                    </div>
-                    <div className="space-y-2">
-                      {result.result_content.incoherent_sets.map((incoherentSet: any, iIndex: number) => (
-                        <div key={iIndex} className="text-sm p-2 bg-red-50 rounded border border-red-200">
-                          <div className="flex justify-between items-start">
-                            <span className="text-red-700 flex-1">
-                              <span className="font-medium">Steps {incoherentSet.symbols.join(', ')}:</span>
-                              <span className="ml-2 text-xs">
-                                {incoherentSet.incoherence_value === 1.0 ? 'Logical Contradiction' : 
-                                 `Incoherence Level: ${(incoherentSet.incoherence_value * 100).toFixed(0)}%`}
-                              </span>
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Logical Issues */}
                 {result.result_content.logical_issues && result.result_content.logical_issues.length > 0 && (
                   <div className="mt-3">
                     <div className="text-sm font-medium text-red-700 mb-2">
                       ⚠️ Logical Issues:
                     </div>
                     <ul className="space-y-1">
-                      {result.result_content.logical_issues.map((issue: string, iIndex: number) => (
-                        <li key={iIndex} className="text-sm text-red-700 p-2 bg-red-50 rounded border border-red-200">
+                      {result.result_content.logical_issues.map((issue: string, i: number) => (
+                        <li key={i} className="text-sm text-red-700 p-2 bg-red-50 rounded border border-red-200">
                           {issue}
                         </li>
                       ))}
@@ -375,15 +404,14 @@ export default function AllAgentResults() {
                   </div>
                 )}
 
-                {/* Recommendations */}
                 {result.result_content.recommendations && result.result_content.recommendations.length > 0 && (
                   <div className="mt-3">
                     <div className="text-sm font-medium text-blue-700 mb-2">
                       💡 Recommendations:
                     </div>
                     <ul className="space-y-1">
-                      {result.result_content.recommendations.map((rec: string, rIndex: number) => (
-                        <li key={rIndex} className="text-sm text-blue-700 p-2 bg-blue-50 rounded border border-blue-200">
+                      {result.result_content.recommendations.map((rec: string, i: number) => (
+                        <li key={i} className="text-sm text-blue-700 p-2 bg-blue-50 rounded border border-blue-200">
                           {rec}
                         </li>
                       ))}
@@ -944,13 +972,15 @@ export default function AllAgentResults() {
       {Object.keys(resultsByAgent).length > 0 && Object.entries(resultsByAgent).map(([agentType, results]) => (
         <div key={agentType} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
           <h4 className="text-md font-semibold mb-3 text-gray-800">
-            {agentType === 'content_evaluator' && '🔍 Content Evaluator'}
+            {agentType === 'truth_evaluator' && '🔍 Truth Evaluator'}
+            {agentType === 'content_validity_evaluator' && '🔗 Content Validity Evaluator'}
             {agentType === 'form_evaluator' && '🧮 Formal Logic Evaluator'}
             {agentType === 'formalizer' && '📐 Formalization Agent'}
             {agentType === 'improver' && '🎯 Improvement Agent'}
           </h4>
-          
-          {agentType === 'content_evaluator' && renderContentEvaluatorResults(results)}
+
+          {agentType === 'truth_evaluator' && renderTruthEvaluatorResults(results)}
+          {agentType === 'content_validity_evaluator' && renderContentValidityEvaluatorResults(results)}
           {agentType === 'form_evaluator' && renderFormEvaluatorResults(results)}
           {agentType === 'formalizer' && renderFormalizerResults(results)}
           {agentType === 'improver' && renderImprovementResults(results)}
