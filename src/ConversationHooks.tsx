@@ -4,7 +4,7 @@ import axios from 'axios'
 import type { StepType, ArgMode } from './types'
 import { useConversationStore } from './conversationStore'
 
-type ActionType = 'remove' | 'assume' | 'explain' | 'endorse-formalization'
+type ActionType = 'remove' | 'explain' | 'endorse-formalization'
 
 // Type for API operation information
 type ApiOperationInfo = {

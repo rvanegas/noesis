@@ -1,6 +1,6 @@
 import ActionMenu from './ActionMenu'
 
-type ActionType = 'remove' | 'assume' | 'explain' | 'endorse-formalization'
+type ActionType = 'remove' | 'explain' | 'endorse-formalization'
 type UserMode = 'waiting' | 'ready' | 'input'
 
 interface PropositionActionsProps {
@@ -10,7 +10,6 @@ interface PropositionActionsProps {
   argumentLength: number
   userMode: UserMode
   onUserJustify: (loc: string, stepIndex: number) => void
-  onAssume: (action: ActionType, loc: string, stepIndex: number, errorLabel: string) => Promise<void>
   onRemove: (action: ActionType, loc: string, stepIndex: number, errorLabel: string) => Promise<void>
   onDispute: (step: any) => Promise<void>
   onExplain: (action: ActionType, loc: string, stepIndex: number, errorLabel: string) => Promise<void>
@@ -27,7 +26,6 @@ export default function PropositionActions({
   loc,
   argumentLength,
   userMode,
-  onAssume,
   onRemove,
   onDispute,
   onExplain,
@@ -48,35 +46,28 @@ export default function PropositionActions({
         setTargetLoc(loc)
         setTargetIndex(stepIndex)
       },
-      show: loc !== 'assumptions'
-    },
-    {
-      label: 'Assume',
-      onClick: async () => {
-        await onAssume('assume', loc, stepIndex, `Assume proposition (${step.symbol})`)
-      },
-      show: loc !== 'assumptions' && !isLastStep && !hasJustifiers
+      show: true
     },
     {
       label: 'Remove',
       onClick: async () => {
         await onRemove('remove', loc, stepIndex, `Remove proposition (${step.symbol})`)
       },
-      show: loc === 'assumptions' || !isLastStep
+      show: !isLastStep
     },
     {
       label: 'Dispute',
       onClick: async () => {
         await onDispute(step)
       },
-      show: loc === 'assumptions' || !isLastStep
+      show: !isLastStep
     },
     {
       label: 'Explain',
       onClick: async () => {
         await onExplain('explain', loc, stepIndex, `Explain inference to proposition (${step.symbol})`)
       },
-      show: loc !== 'assumptions' && hasJustifiers
+      show: hasJustifiers
     },
     {
       label: 'Endorse Formalization',

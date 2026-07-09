@@ -12,7 +12,6 @@ type ApiOperationInfo = {
 
 export function initialSnapshot(): ConversationSnapshot {
   return {
-    assumptions: [],
     argument: [],
     explanation: '',
     argMode: 'thesis',
@@ -226,20 +225,12 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
           })
         }
 
-        // Apply formal validity updates (to both argument and assumption steps)
+        // Apply formal validity updates
         if (changes.formalValidityUpdates) {
           changes.formalValidityUpdates.forEach(({ symbol, value }) => {
-            // Check argument steps
             const argStepIndex = currentSnapshot.argument.findIndex((s: any) => s.symbol === symbol)
             if (argStepIndex !== -1) {
               currentSnapshot.argument[argStepIndex].formal_validity = value
-              hasChanges = true
-            }
-
-            // Check assumption steps
-            const assumptionStepIndex = currentSnapshot.assumptions.findIndex((s: any) => s.symbol === symbol)
-            if (assumptionStepIndex !== -1) {
-              currentSnapshot.assumptions[assumptionStepIndex].formal_validity = value
               hasChanges = true
             }
           })
@@ -299,10 +290,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         if (prop.type === 'new') {
           // Add new proposition
           // Generate next available single letter symbol
-          const existingSymbols = new Set([
-            ...draft.argument.map(s => s.symbol),
-            ...draft.assumptions.map(s => s.symbol)
-          ])
+          const existingSymbols = new Set(draft.argument.map(s => s.symbol))
 
           let nextSymbolNum = 1
           while (existingSymbols.has(String(nextSymbolNum))) {
@@ -320,23 +308,12 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
             formalization: undefined
           }
           
-          if (prop.placement === 'assumption') {
-            draft.assumptions.push(newStep)
-          } else {
-            draft.argument.push(newStep)
-          }
+          draft.argument.push(newStep)
         } else if (prop.type === 'rewrite' && prop.symbol) {
           // Apply proposition rewrites
-          // Check argument steps
           const argStepIndex = draft.argument.findIndex((s: any) => s.symbol === prop.symbol)
           if (argStepIndex !== -1) {
             draft.argument[argStepIndex].proposition = prop.proposition
-          }
-          
-          // Check assumption steps
-          const assumptionStepIndex = draft.assumptions.findIndex((s: any) => s.symbol === prop.symbol)
-          if (assumptionStepIndex !== -1) {
-            draft.assumptions[assumptionStepIndex].proposition = prop.proposition
           }
         }
       })

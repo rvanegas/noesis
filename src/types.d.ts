@@ -17,7 +17,6 @@ export type StepType = {
 
 type ConversationSnapshot = {
   argument: StepType[]
-  assumptions: StepType[]
   argMode: ArgMode
   explanation: string | undefined
   file_ids: string[]

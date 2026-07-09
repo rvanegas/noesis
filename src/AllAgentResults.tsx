@@ -41,7 +41,7 @@ export default function AllAgentResults() {
   const getCurrentSnapshot = () => {
     const { conversation, snapshotIndex: currentSnapshotIndex } = getCurrentConversationState()
     const lastSnapshot = conversation.snapshots[currentSnapshotIndex]
-    return lastSnapshot || { assumptions: [], argument: [], explanation: '', file_ids: [] }
+    return lastSnapshot || { argument: [], explanation: '', file_ids: [] }
   }
 
   // Helper function to get agent display name
@@ -69,8 +69,8 @@ export default function AllAgentResults() {
   // Check if all formalizations are endorsed (for UI display purposes)
   const areAllFormalizationsEndorsed = () => {
     const currentSnapshot = getCurrentSnapshot()
-    const allSteps = [...currentSnapshot.argument, ...currentSnapshot.assumptions]
-    
+    const allSteps = currentSnapshot.argument
+
     // Check that all steps have formalizations and all formalizations are endorsed
     return allSteps.length > 0 && allSteps.every((step: any) => step.formalization?.endorsed)
   }
@@ -686,14 +686,6 @@ export default function AllAgentResults() {
       }
     }
 
-    const getPlacementIcon = (placement: string) => {
-      switch (placement) {
-        case 'assumption': return '🏗️'
-        case 'argument': return '🔗'
-        default: return '📋'
-      }
-    }
-
     const renderRecommendation = (recommendation: any) => {
       const isAccepted = acceptedRecommendations.has(recommendation.id)
 
@@ -784,7 +776,6 @@ export default function AllAgentResults() {
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center space-x-2">
                       <span className="text-sm">{getTypeIcon(prop.type)}</span>
-                      <span className="text-sm">{getPlacementIcon(prop.placement)}</span>
                       <span className="text-sm font-medium text-gray-700">
                         {prop.type === 'rewrite' ? 'Rewrite' : 'New'} Proposition
                       </span>
@@ -794,9 +785,6 @@ export default function AllAgentResults() {
                         </span>
                       )}
                     </div>
-                    <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                      {prop.placement}
-                    </span>
                   </div>
                   
                   <div className="text-sm text-gray-800 mb-2">
