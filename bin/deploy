@@ -5,14 +5,12 @@
 #
 #   bin/deploy              refuses unless the tree is clean
 #   bin/deploy --dirty      ships the working tree as it stands, and says so
-#   bin/deploy --box-only   checks the files on the box only: before the DNS
-#                           cutover, noesis.rvanegas.co does not reach it
 #
 # Static files, so there is nothing to restart: Caddy serves whatever is in
 # /srv/noesis. deployed.json goes with them and is what the check reads.
 set -euo pipefail
 
-HOST=${COMMONS_HOST:?set COMMONS_HOST=ubuntu@<commons ip>}
+HOST=${COMMONS_HOST:-ubuntu@32.190.173.222}
 KEY=${COMMONS_KEY:-~/.ssh/lightsail-ubuntu}
 SSH="ssh -i $KEY -o BatchMode=yes"
 URL=${NOESIS_URL:-https://noesis.rvanegas.co}
@@ -20,11 +18,9 @@ URL=${NOESIS_URL:-https://noesis.rvanegas.co}
 cd "$(dirname "$0")/.."
 
 allow_dirty=false
-box_only=false
 for arg in "$@"; do
   case "$arg" in
     --dirty) allow_dirty=true ;;
-    --box-only) box_only=true ;;
     -h|--help)
       awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "$0"
       exit 0
@@ -78,11 +74,6 @@ got=$($SSH "$HOST" 'cat /srv/noesis/deployed.json' | check)
 if [ "$got" != "$SHA" ]; then
   echo "✗ /srv/noesis holds ${got:-nothing}, not $SHA" >&2
   exit 1
-fi
-
-if $box_only; then
-  echo "✓ deployed $SHA to /srv/noesis (box only; $URL not checked)"
-  exit 0
 fi
 
 echo "→ health at $URL"
