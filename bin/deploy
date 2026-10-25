@@ -1,0 +1,94 @@
+#!/bin/bash
+#
+# Builds noesis and ships dist/ to /srv/noesis on the commons box, where Caddy
+# serves it at noesis.rvanegas.co with /api/* proxied to dianoia.
+#
+#   bin/deploy              refuses unless the tree is clean
+#   bin/deploy --dirty      ships the working tree as it stands, and says so
+#   bin/deploy --box-only   checks the files on the box only: before the DNS
+#                           cutover, noesis.rvanegas.co does not reach it
+#
+# Static files, so there is nothing to restart: Caddy serves whatever is in
+# /srv/noesis. deployed.json goes with them and is what the check reads.
+set -euo pipefail
+
+HOST=${COMMONS_HOST:?set COMMONS_HOST=ubuntu@<commons ip>}
+KEY=${COMMONS_KEY:-~/.ssh/lightsail-ubuntu}
+SSH="ssh -i $KEY -o BatchMode=yes"
+URL=${NOESIS_URL:-https://noesis.rvanegas.co}
+
+cd "$(dirname "$0")/.."
+
+allow_dirty=false
+box_only=false
+for arg in "$@"; do
+  case "$arg" in
+    --dirty) allow_dirty=true ;;
+    --box-only) box_only=true ;;
+    -h|--help)
+      awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "$0"
+      exit 0
+      ;;
+    *) echo "unknown argument: $arg" >&2; exit 2 ;;
+  esac
+done
+
+if [ -n "$(git status --porcelain)" ] && ! $allow_dirty; then
+  echo "✗ the tree is dirty; this ships the working tree, not a commit" >&2
+  echo >&2
+  git status --short >&2
+  echo >&2
+  echo "  commit first, or 'bin/deploy --dirty' to ship it as it is" >&2
+  exit 1
+fi
+
+SHA=$(git rev-parse --short HEAD)
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+if [ -n "$(git status --porcelain)" ]; then
+  SHA="$SHA-dirty"
+  echo "⚠ deploying a dirty tree — the box will record $SHA" >&2
+fi
+if [ "$BRANCH" != "master" ]; then
+  echo "⚠ deploying from $BRANCH, not master" >&2
+fi
+
+# `tsc -b && vite build`, so a type error stops the deploy. Vite reads
+# .env.production here, which is what points the API at this origin.
+echo "→ build"
+npm run build --silent >/dev/null
+
+# A leftover localhost base URL is the one mistake a static build cannot
+# report about itself: it builds, serves, and fails in every visitor's browser.
+if grep -q "localhost:8000" dist/assets/*.js; then
+  echo "✗ the build still calls localhost:8000; see .env.production" >&2
+  exit 1
+fi
+
+printf '{"commit":"%s","branch":"%s","deployedAt":"%s"}\n' \
+  "$SHA" "$BRANCH" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > dist/deployed.json
+
+echo "→ sync to $HOST:/srv/noesis"
+rsync -az --delete -e "$SSH" dist/ "$HOST:/srv/noesis/"
+
+check() {
+  sed -n 's/.*"commit":"\([^"]*\)".*/\1/p'
+}
+
+got=$($SSH "$HOST" 'cat /srv/noesis/deployed.json' | check)
+if [ "$got" != "$SHA" ]; then
+  echo "✗ /srv/noesis holds ${got:-nothing}, not $SHA" >&2
+  exit 1
+fi
+
+if $box_only; then
+  echo "✓ deployed $SHA to /srv/noesis (box only; $URL not checked)"
+  exit 0
+fi
+
+echo "→ health at $URL"
+got=$(curl -fsS --max-time 10 "$URL/deployed.json" | check || true)
+if [ "$got" != "$SHA" ]; then
+  echo "✗ $URL/deployed.json answers ${got:-nothing}, not $SHA" >&2
+  exit 1
+fi
+echo "✓ deployed $SHA, answering at $URL"
