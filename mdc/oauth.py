@@ -20,6 +20,13 @@ The MCP SDK serves the protocol (metadata, /register, /authorize, /token,
 
 `/mcp` also takes a minted mdc token as a bearer token directly (Claude Code,
 the CLI), through `load_access_token`.
+
+- **mdc's own web client** (`mdc/web/`, at /web/) is a built-in client,
+  `mdc-web`, not a registered one: a public client (PKCE, no secret) whose
+  only redirect is /web/ on this server. Registration cannot claim that
+  redirect, since `allowed_redirect` does not name this host. Its tokens are
+  the only OAuth tokens the file and run API takes (`API_CLIENTS`); claude.ai's
+  reach /mcp alone.
 """
 
 from __future__ import annotations
@@ -54,6 +61,26 @@ ALLOWED_CALLBACKS = {
     ("https", "claude.ai", "/api/mcp/auth_callback"),
     ("https", "claude.com", "/api/mcp/auth_callback"),
 }
+
+
+WEB_CLIENT_ID = "mdc-web"
+
+# Who may call the file and run API besides a minted mdc token ("mdc-token",
+# as load_access_token names it): only mdc's own web client. A connector's
+# token stays on /mcp, which writes nothing.
+API_CLIENTS = frozenset({"mdc-token", WEB_CLIENT_ID})
+
+
+def web_client() -> OAuthClientInformationFull:
+    from mdc.mcp_server import public_url
+    return OAuthClientInformationFull(
+        client_id=WEB_CLIENT_ID,
+        client_name="mdc on the web",
+        redirect_uris=[f"{public_url()}/web/"],
+        token_endpoint_auth_method="none",
+        grant_types=["authorization_code", "refresh_token"],
+        response_types=["code"],
+    )
 
 
 def allowed_redirect(uri: str) -> bool:
@@ -105,6 +132,8 @@ class MdcOAuthProvider:
     # --- clients -----------------------------------------------------------
 
     async def get_client(self, client_id: str) -> OAuthClientInformationFull | None:
+        if client_id == WEB_CLIENT_ID:
+            return web_client()
         raw = self._load()["clients"].get(client_id)
         return OAuthClientInformationFull.model_validate(raw) if raw else None
 

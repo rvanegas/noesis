@@ -29,7 +29,7 @@ mdc = "mdc.cli:main"
 packages = ["mdc"]
 
 [tool.setuptools.package-data]
-mdc = ["*.toml", "*.md", "deployed.json"]
+mdc = ["*.toml", "*.md", "deployed.json", "web/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

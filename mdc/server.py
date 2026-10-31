@@ -1,9 +1,11 @@
 """mdc's HTTP API, run by `mdc serve` (SERVER.md, Phase 2).
 
-Every route but /healthz needs a bearer token. /data/users.toml maps the
-SHA-256 of each token to a user, or to "*" for a service (the nightly
-index), and a user reaches only their own libraries, /data/libraries/<user>/
-<library>. A library is files to sync and commands to run:
+Every route but /healthz and the web client's pages needs a bearer token:
+a minted one, which /data/users.toml maps by its SHA-256 to a user, or to "*"
+for a service (the nightly index); or an OAuth access token issued to mdc's
+own web client (oauth.API_CLIENTS). A user reaches only their own libraries,
+/data/libraries/<user>/<library>. A library is files to sync and commands to
+run:
 
 - GET    /libraries                          the caller's library ids
 - GET    /libraries/{user}/{library}/files   {rel_path: sha256}
@@ -11,6 +13,7 @@ index), and a user reaches only their own libraries, /data/libraries/<user>/
 - PUT    …/files/{rel_path}                  If-None-Match: * creates; If-Match: "<sha>" replaces
 - DELETE …/files/{rel_path}                  If-Match: "<sha>"
 - POST   …/run {argv, user_names}            server-sent events: output, then done
+- POST   …/import?filename=…[&only=…&replace=true]   the body is the file; as /run
 
 /run runs `mdc --lib <library> <argv>` in a subprocess from the library root:
 file arguments are names, which mdc resolves across the library. Its output
@@ -19,7 +22,15 @@ last event says which files the run changed or deleted. One run at a time
 per library; while it runs, writes to the library get 409. The run belongs
 to the server, not the request: a client that goes away does not cut it short.
 
+/import is how a conversation from elsewhere enters a library without a
+client's own copy of it (a claude.ai export, saveai.net Markdown, any text):
+the upload is kept outside the library, `mdc import` writes from it into the
+year directories, and it is deleted when the run ends.
+
 Dotfiles, and so the index state in .mdc/, are never listed, read or written.
+
+/web/ serves mdc's web client (mdc/web/): static files, which sign in through
+mdc's OAuth server and then call this API like any other client.
 """
 
 from __future__ import annotations
@@ -30,7 +41,9 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sys
+import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path, PurePosixPath
 
@@ -39,7 +52,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse,
 from pydantic import BaseModel
 
 from mdc import service
-from mdc.service import LibraryError, library_ids, library_root, lock_for, user_for_token
+from mdc.service import LibraryError, library_ids, library_root, lock_for
 
 # Written by bin/deploy into the package before the image is built, so it is
 # baked in with the code it describes. Absent in a checkout, where the answer
@@ -88,14 +101,15 @@ def healthz() -> dict:
 # Callers and libraries
 # ---------------------------------------------------------------------------
 
-def caller(authorization: str | None = Header(default=None)) -> str:
+async def caller(authorization: str | None = Header(default=None)) -> str:
     """The user a bearer token belongs to, or "*" for a service."""
+    from mdc.oauth import API_CLIENTS, provider
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "a bearer token is required")
-    who = user_for_token(authorization.removeprefix("Bearer "))
-    if who is None:
+    token = await provider.load_access_token(authorization.removeprefix("Bearer "))
+    if token is None or token.client_id not in API_CLIENTS or not token.subject:
         raise HTTPException(401, "unknown token")
-    return who
+    return token.subject
 
 
 def library(user: str, library: str, who: str = Depends(caller)) -> Path:
@@ -247,8 +261,45 @@ async def run_command(run: Run, root: Path = Depends(library)) -> StreamingRespo
     if lock.locked():
         raise HTTPException(409, "a run is in progress in this library")
     await lock.acquire()
+    return _stream(root, run.argv, run.user_names, lock)
+
+
+@app.post("/libraries/{user}/{library}/import")
+async def import_file(
+    request: Request,
+    filename: str,
+    only: str | None = None,
+    replace: bool = False,
+    root: Path = Depends(library),
+) -> StreamingResponse:
+    """`mdc import` on an uploaded file, kept outside the library while it runs."""
+    if "/" in filename or "\\" in filename or filename.startswith(".") or not filename.strip():
+        raise HTTPException(400, f"a file name, not a path: {filename!r}")
+    lock = lock_for(root)
+    if lock.locked():
+        raise HTTPException(409, "a run is in progress in this library")
+    await lock.acquire()
+    try:
+        data = await request.body()
+        staging = Path(tempfile.mkdtemp(prefix="mdc-import-"))
+        upload = staging / filename
+        upload.write_bytes(data)
+    except BaseException:
+        lock.release()
+        raise
+    argv = ["import", str(upload)]
+    if only:
+        argv += ["--only", only]
+    if replace:
+        argv.append("--replace")
+    return _stream(root, argv, [], lock, cleanup=lambda: shutil.rmtree(staging, ignore_errors=True))
+
+
+def _stream(root: Path, argv: list[str], user_names: list[str], lock: asyncio.Lock,
+            cleanup=None) -> StreamingResponse:
+    """Runs mdc in the library, whose lock the caller holds, as server-sent events."""
     events: asyncio.Queue = asyncio.Queue()
-    task = asyncio.create_task(_execute(root, run, events, lock))
+    task = asyncio.create_task(_execute(root, argv, user_names, events, lock, cleanup))
     _runs.add(task)
     task.add_done_callback(_runs.discard)
 
@@ -261,14 +312,15 @@ async def run_command(run: Run, root: Path = Depends(library)) -> StreamingRespo
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-async def _execute(root: Path, run: Run, events: asyncio.Queue, lock: asyncio.Lock) -> None:
+async def _execute(root: Path, argv: list[str], user_names: list[str], events: asyncio.Queue,
+                   lock: asyncio.Lock, cleanup=None) -> None:
     try:
         before = await asyncio.to_thread(tree_hashes, root)
         env = {k: v for k, v in os.environ.items() if k != "MDC_LIBRARY"}
         # MDC_RUN_LOCAL: this mdc is the server's, never a client of it.
-        env.update(MDC_USER_NAMES=",".join(run.user_names), PYTHONUNBUFFERED="1", MDC_RUN_LOCAL="1")
+        env.update(MDC_USER_NAMES=",".join(user_names), PYTHONUNBUFFERED="1", MDC_RUN_LOCAL="1")
         process = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "mdc", "--lib", str(root), *run.argv,
+            sys.executable, "-m", "mdc", "--lib", str(root), *argv,
             cwd=root, env=env,
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
@@ -290,6 +342,8 @@ async def _execute(root: Path, run: Run, events: asyncio.Queue, lock: asyncio.Lo
     except Exception as exc:  # the stream must end, whatever happened
         await events.put(("error", {"message": str(exc)}))
     finally:
+        if cleanup is not None:
+            cleanup()
         lock.release()
         await events.put(None)
 
@@ -353,6 +407,38 @@ async def oauth_login_submit(request: Request) -> Response:
                            urlparse(str(sign_in.params.redirect_uri)).hostname or "",
                            error="That is not an mdc token.")
     return RedirectResponse(target, status_code=302)
+
+
+# ---------------------------------------------------------------------------
+# The web client (mdc/web/): static, signed in through the OAuth server above
+# ---------------------------------------------------------------------------
+
+_WEB = Path(__file__).resolve().parent / "web"
+_WEB_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
+              ".css": "text/css; charset=utf-8"}
+# The page holds a refresh token, so nothing but this origin's own files may
+# run in it, and nobody may frame it.
+_WEB_HEADERS = {
+    "Content-Security-Policy": "default-src 'self'; img-src 'self' blob: data:; frame-ancestors 'none'; "
+                               "base-uri 'none'; form-action 'self'; object-src 'none'",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Cache-Control": "no-cache",
+}
+
+
+@app.get("/web")
+def web_root() -> Response:
+    return RedirectResponse("/web/", status_code=308)
+
+
+@app.get("/web/{name}")
+@app.get("/web/", include_in_schema=False)
+def web_file(name: str = "index.html") -> Response:
+    path = _WEB / name
+    if "/" in name or name.startswith(".") or path.suffix not in _WEB_TYPES or not path.is_file():
+        raise HTTPException(404, "Not Found")
+    return Response(path.read_bytes(), media_type=_WEB_TYPES[path.suffix], headers=_WEB_HEADERS)
 
 
 # Last, so the API's own routes answer first.

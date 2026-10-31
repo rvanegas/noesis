@@ -70,6 +70,18 @@ def test_fix_moves_the_file_and_its_companions(library, monkeypatch):
     assert [p.name for p in here.iterdir()] == ["2025-04-25-other.md"]
 
 
+def test_fix_yes_applies_and_moves_without_asking(library, monkeypatch):
+    here = library / "2025" / "_private"
+    here.mkdir(parents=True)
+    (here / "2025-04-25-x.chat.md").write_text(DOC.replace("\n\n## ", "\n## ", 1))
+    monkeypatch.chdir(here)
+    with patch("builtins.input", side_effect=AssertionError("asked")):
+        main(["fix", "--yes", "2025-04-25-x.chat.md"])
+    moved = library / "2025" / "2025-04-25-x.chat.md"
+    assert moved.read_text() == DOC
+    assert not (here / "2025-04-25-x.chat.md").exists()
+
+
 def test_validate_runs_inside_a_library(library, monkeypatch, capsys):
     path = library / "2025" / "2025-04-25-old-roman.chat.md"
     path.parent.mkdir(parents=True)

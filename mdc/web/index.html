@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mdc</title>
+<link rel="stylesheet" href="style.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<header class="bar">
+  <h1>mdc</h1>
+  <select id="library" aria-label="Library" hidden></select>
+  <button id="sign-out" class="quiet" hidden>Sign out</button>
+</header>
+
+<main>
+  <p id="message" role="status" hidden></p>
+
+  <section id="signed-out" hidden>
+    <p>Sign in with your mdc token to keep your libraries.</p>
+    <button id="sign-in">Sign in</button>
+  </section>
+
+  <section id="signed-in" hidden>
+    <div class="toolbar">
+      <label class="button">Upload<input id="upload-pick" type="file" hidden></label>
+      <label class="button">Import<input id="import-pick" type="file" hidden></label>
+      <button id="index">Index</button>
+    </div>
+
+    <form id="upload" class="panel" hidden>
+      <h2>Upload</h2>
+      <label>Path in the library<input id="upload-path" required spellcheck="false" autocapitalize="off"></label>
+      <label class="check"><input id="upload-replace" type="checkbox"> Replace it if it exists</label>
+      <div class="actions"><button>Upload</button><button type="button" class="quiet" data-close>Cancel</button></div>
+    </form>
+
+    <form id="import" class="panel" hidden>
+      <h2>Import <span id="import-name"></span></h2>
+      <p class="hint">A claude.ai export (its zip or <code>conversations.json</code>), saveai.net Markdown, or any
+        text, which becomes a document. Each lands in its year’s directory.</p>
+      <label>Only this conversation (name or uuid; empty for all)<input id="import-only" spellcheck="false" autocapitalize="off"></label>
+      <label class="check"><input id="import-replace" type="checkbox"> Replace a conversation already imported</label>
+      <div class="actions"><button>Import</button><button type="button" class="quiet" data-close>Cancel</button></div>
+    </form>
+
+    <form id="command">
+      <label for="argv">mdc</label>
+      <input id="argv" placeholder="check, validate, fix, index, diff, …" spellcheck="false" autocapitalize="off" autocomplete="off">
+      <button>Run</button>
+    </form>
+
+    <section id="output" class="panel" hidden>
+      <div class="heading"><h2 id="output-title"></h2><button class="quiet" data-close>Close</button></div>
+      <pre id="output-text"></pre>
+      <ul id="output-changes"></ul>
+      <div class="actions"><button id="output-apply" hidden>Apply these fixes</button></div>
+    </section>
+
+    <section id="file" class="panel" hidden>
+      <div class="heading"><h2 id="file-name"></h2><button class="quiet" data-close>Close</button></div>
+      <div class="actions" id="file-actions">
+        <button data-run="check">Check</button>
+        <button data-run="validate">Validate</button>
+        <button data-run="fix">Fix</button>
+        <button id="file-download" class="quiet">Download</button>
+        <label class="button quiet">Replace<input id="file-replace" type="file" hidden></label>
+        <button id="file-delete" class="danger">Delete</button>
+      </div>
+      <pre id="file-text"></pre>
+    </section>
+
+    <div class="list-head">
+      <input id="filter" type="search" placeholder="Filter by name" aria-label="Filter by name" spellcheck="false" autocapitalize="off">
+      <label class="check"><input id="show-revisions" type="checkbox"> Revisions</label>
+    </div>
+    <p id="count" class="hint"></p>
+    <ul id="files"></ul>
+  </section>
+</main>
+</body>
+</html>

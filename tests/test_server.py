@@ -152,6 +152,49 @@ def test_one_run_at_a_time_and_no_writes_meanwhile(client, data):
         service.locks.clear()
 
 
+def test_import_writes_into_the_library_and_keeps_nothing_else(client, data):
+    import tempfile
+    staged = set(Path(tempfile.gettempdir()).glob("mdc-import-*"))
+    body = b"# Notes on Quine\n\nTwo dogmas, one paragraph.\n"
+    response = client.post(f"{BASE}/import", headers=ANN, params={"filename": "notes-on-quine.md"}, content=body)
+    events = _events(response.text)
+    assert events[-1][0] == "done" and events[-1][1]["exit_code"] == 0
+    changed = list(events[-1][1]["changed"])
+    assert len(changed) == 1 and changed[0].endswith("-notes-on-quine.document.md")
+    assert "Two dogmas" in (data / "libraries/ann/philosophy" / changed[0]).read_text()
+    assert set(Path(tempfile.gettempdir()).glob("mdc-import-*")) == staged
+
+
+@pytest.mark.parametrize("filename", ["../x.md", "a/b.md", ".hidden", " "])
+def test_import_takes_a_name_not_a_path(client, filename):
+    assert client.post(f"{BASE}/import", headers=ANN, params={"filename": filename}, content=b"x").status_code == 400
+
+
+def test_import_is_a_run(client, data):
+    import asyncio
+    from mdc import service
+    lock = service.lock_for(data / "libraries/ann/philosophy")
+    asyncio.run(lock.acquire())
+    try:
+        assert client.post(f"{BASE}/import", headers=ANN, params={"filename": "x.md"}, content=b"x").status_code == 409
+    finally:
+        lock.release()
+        service.locks.clear()
+    assert client.post("/libraries/ann/philosophy/import", params={"filename": "x.md"}, content=b"x").status_code == 401
+
+
+def test_the_web_client_is_served_with_its_policy(client):
+    assert client.get("/web", follow_redirects=False).headers["location"] == "/web/"
+    page = client.get("/web/")
+    assert page.status_code == 200 and page.headers["content-type"].startswith("text/html")
+    assert "default-src 'self'" in page.headers["content-security-policy"]
+    assert '<script src="app.js"' in page.text
+    assert client.get("/web/app.js").headers["content-type"].startswith("text/javascript")
+    assert client.get("/web/style.css").status_code == 200
+    for missing in ("/web/nothing.js", "/web/..%2Fserver.py", "/web/README.md"):
+        assert client.get(missing).status_code == 404
+
+
 def test_add_token(tmp_path):
     import importlib.util
     spec = importlib.util.spec_from_file_location("add_token", REPO / "scripts" / "add_token.py")

@@ -215,3 +215,59 @@ def test_deny_sends_access_denied(library, live):
     request_id = _authorize(url, client, challenge, state="s2")
     back = httpx.post(f"{url}/oauth/login", data={"request": request_id, "action": "deny"})
     assert back.status_code == 302 and "error=access_denied" in back.headers["location"] and "state=s2" in back.headers["location"]
+
+
+def test_the_web_client_signs_in_and_reaches_the_api(library, live):
+    from urllib.parse import parse_qs, urlparse
+    data, url = live
+    redirect = f"{url}/web/"
+    verifier, challenge = _pkce()
+    r = httpx.get(f"{url}/authorize", params={
+        "response_type": "code", "client_id": "mdc-web", "redirect_uri": redirect,
+        "code_challenge": challenge, "code_challenge_method": "S256", "state": "w1"})
+    assert r.status_code == 302, r.text
+    request_id = r.headers["location"].split("request=")[1]
+    page = httpx.get(f"{url}/oauth/login", params={"request": request_id})
+    assert "mdc on the web" in page.text
+    back = httpx.post(f"{url}/oauth/login", data={"request": request_id, "token": "ann", "action": "allow"})
+    assert back.status_code == 302 and back.headers["location"].startswith(redirect)
+    code = parse_qs(urlparse(back.headers["location"]).query)["code"][0]
+    # A public client: no secret, the verifier alone.
+    tokens = httpx.post(f"{url}/token", data={
+        "grant_type": "authorization_code", "code": code, "redirect_uri": redirect,
+        "client_id": "mdc-web", "code_verifier": verifier}).json()
+    bearer = {"Authorization": f"Bearer {tokens['access_token']}"}
+    assert httpx.get(f"{url}/libraries", headers=bearer).json() == {"libraries": ["ann/philosophy"]}
+    assert "2026/2026-10-27-essay.document.md" in httpx.get(
+        f"{url}/libraries/ann/philosophy/files", headers=bearer).json()["files"]
+    assert httpx.get(f"{url}/libraries/bob/notes/files", headers=bearer).status_code == 403
+    # Signing out revokes, as the page sends it: a public client, an empty secret.
+    revoked = httpx.post(f"{url}/revoke", data={
+        "client_id": "mdc-web", "client_secret": "", "token": tokens["refresh_token"]})
+    assert revoked.status_code == 200
+    assert httpx.get(f"{url}/libraries", headers=bearer).status_code == 401
+    # Its only redirect is the page: a code cannot be sent anywhere else.
+    elsewhere = httpx.get(f"{url}/authorize", params={
+        "response_type": "code", "client_id": "mdc-web", "redirect_uri": "https://evil.example/web/",
+        "code_challenge": challenge, "code_challenge_method": "S256", "state": "w2"})
+    assert elsewhere.status_code == 400
+
+
+def test_a_connectors_token_does_not_reach_the_api(library, live):
+    from urllib.parse import parse_qs, urlparse
+    data, url = live
+    client = _register(url).json()
+    verifier, challenge = _pkce()
+    request_id = _authorize(url, client, challenge)
+    back = httpx.post(f"{url}/oauth/login", data={"request": request_id, "token": "ann", "action": "allow"})
+    code = parse_qs(urlparse(back.headers["location"]).query)["code"][0]
+    tokens = httpx.post(f"{url}/token", data={
+        "grant_type": "authorization_code", "code": code, "redirect_uri": CALLBACK,
+        "client_id": client["client_id"], "client_secret": client["client_secret"],
+        "code_verifier": verifier}).json()
+    bearer = {"Authorization": f"Bearer {tokens['access_token']}"}
+    # It reads through /mcp, and the API, which writes, refuses it.
+    assert "Prose here." in text(call(url, tokens["access_token"], "read_file", {"name": "2026-10-27-essay.document.md"}))
+    assert httpx.get(f"{url}/libraries", headers=bearer).status_code == 401
+    assert httpx.delete(f"{url}/libraries/ann/philosophy/files/2026/2026-10-27-essay.document.md",
+                        headers={**bearer, "If-Match": "*"}).status_code == 401

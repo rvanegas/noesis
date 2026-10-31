@@ -255,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
                 if resolved is None:
                     return 1
                 paths.append(resolved)
-            return run_fix(paths)
+            return run_fix(paths, yes=args.yes)
         if args.command == "reply":
             if args.terms and not args.library:
                 print("Error: -t/--term requires -l/--library.")
@@ -530,6 +530,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Auto-fix correctable mdc format violations (modifies files in place).",
     )
     fix_parser.add_argument("paths", nargs="+", metavar="file.md")
+    fix_parser.add_argument(
+        "-y", "--yes",
+        action="store_true",
+        default=False,
+        help="Apply every fix and move without asking (a run on the server has no one to ask).",
+    )
 
     # reply
     reply_parser = subparsers.add_parser(
@@ -865,7 +871,18 @@ def _misplaced(path: Path) -> Path | None:
     return misplaced(library, path) if library else None
 
 
-def _offer_move(path: Path) -> Path | None:
+def _ask(question: str, yes: bool) -> bool:
+    """A y/N question, answered yes in advance by --yes."""
+    if yes:
+        print(f"{question} y")
+        return True
+    try:
+        return input(f"{question} ").strip().lower() == "y"
+    except EOFError:
+        return False
+
+
+def _offer_move(path: Path, yes: bool = False) -> Path | None:
     """Offer to move a misplaced file, with its companions, into its year directory."""
     from mdc.library import move_documents, same_stem_files
     target = _misplaced(path)
@@ -875,11 +892,7 @@ def _offer_move(path: Path) -> Path | None:
     print(f"{path}:")
     for p in group:
         print(f"  would move: {p.name} → {target.parent.name}/")
-    try:
-        answer = input("Move? [y/N] ").strip().lower()
-    except EOFError:
-        answer = ""
-    if answer != "y":
+    if not _ask("Move? [y/N]", yes):
         print("  Skipped.")
         return None
     move_documents(load_config().library_path, {p: target.parent / p.name for p in group})
@@ -931,7 +944,7 @@ def run_validate(paths: list[Path], force_transcript: bool = False) -> int:
     return 1 if any_errors else 0
 
 
-def run_fix(paths: list[Path]) -> int:
+def run_fix(paths: list[Path], yes: bool = False) -> int:
     any_errors = False
     for path in paths:
         if _require_md(path):
@@ -958,11 +971,7 @@ def run_fix(paths: list[Path]) -> int:
             print()
             sys.stdout.writelines(diff)
             print()
-            try:
-                answer = input("Apply changes? [y/N] ").strip().lower()
-            except EOFError:
-                answer = ""
-            if answer == "y":
+            if _ask("Apply changes? [y/N]", yes):
                 path.with_suffix(".md.bak").write_text(raw, encoding="utf-8")
                 path.write_text(new_text, encoding="utf-8")
                 print("  Applied.")
@@ -971,7 +980,7 @@ def run_fix(paths: list[Path]) -> int:
                 print()
                 continue
 
-        moved_to = _offer_move(path)
+        moved_to = _offer_move(path, yes)
         if moved_to:
             applied.append("moved into its year directory")
             path = moved_to

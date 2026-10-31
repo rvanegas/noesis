@@ -665,6 +665,41 @@ resource server; Roxana's user pool is the authorization server.
 
 ---
 
+## The web client — built 2026-10-31, not yet landed
+
+A library kept without the CLI, by Rodrigo alone for now: `mdc/web/`, at
+`https://mdc.rvanegas.co/web/`. The larger question, one identity across the
+suite (rvanegas-site), is deliberately postponed; this signs in through 5b's
+OAuth server as it stands, so the day that question is settled only the login
+page changes.
+
+- **A built-in client, `mdc-web`:** public (PKCE, no secret), its one
+  redirect `/web/` on this server, returned by the provider rather than
+  registered, so registration cannot claim it. The refresh token is kept in
+  the browser's localStorage, the access token in memory; the page's CSP
+  admits no script but its own.
+- **The API takes its tokens and no other OAuth token** (`oauth.API_CLIENTS`):
+  a claude.ai connector's token, which Anthropic holds, still reaches only
+  `/mcp`, which writes nothing.
+- **`POST …/import`**, since importing was the CLI's alone: the body is
+  staged outside the library, `mdc import` writes into the year directories,
+  the staging is deleted when the run ends. A run like `/run`: the lock,
+  the stream, the changed files.
+- **`mdc fix --yes`:** fix asked twice on stdin, which a run on the server
+  does not have, so through `/run` it never applied anything. The page's
+  Fix previews, and *Apply these fixes* runs it again with `--yes`.
+
+**Verified** with tests (the sign-in end to end, a connector's token refused
+by the API, import, the page's headers, `fix --yes`) and by driving the page
+headless in Chrome against a local server, at 375 points: sign in, list and
+filter, open, check, fix and apply, upload and its refusal to overwrite,
+import, two-press delete, a refused command, a reload keeping the sign-in,
+sign out revoking.
+
+**Not done:** deploying, and the first sign-in on the box. `fix` writes a
+`<name>.md.bak` beside what it fixes, which in a library is a visible file
+nobody cleans up; and run output names files by the server's absolute path.
+
 ## Files touched
 
 - **mdc:** `SERVER.md`, `mdc/dianoia_client.py`, `mdc/config.py`,
