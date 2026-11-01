@@ -787,6 +787,14 @@ open account could cost is capped instead.
   and `MDC_TURNSTILE_SECRET` are set; without them, no challenge.
 - **`GET /me`**: the caller's plan, month's spend and allowance, storage; the
   web client shows it to a free account and refreshes it after each run.
+- **Applications as clients** (2026-11-01): one whose server is its own, The
+  Floor first, is registered by the operator, `scripts/add_client.py <id>
+  --name … --redirect https://…`, as a confidential client whose only
+  redirect is its callback; its id and secret are printed once, for its own
+  configuration. Its people sign in on the same page (“The Floor asks to read
+  your mdc libraries”), and its tokens reach `/mcp` and `/me` — which any
+  client's token may read, to say whose library it reached — and not the file
+  and run API.
 - **The container** gets `mem_limit: 1g`, so mdc's runs cannot starve the
   rest of `commons`.
 

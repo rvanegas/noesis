@@ -248,3 +248,43 @@ def test_speaker_names_are_any_users_and_replaced_whole(data):
     for bad in (["a,b"], ["x" * 81], [f"n{i}" for i in range(accounts.MOST_SPEAKER_NAMES + 1)]):
         with pytest.raises(ValueError):
             accounts.set_speaker_names("rod", bad)
+
+
+def test_the_operator_registers_an_application(data):
+    import asyncio
+    from mdc.oauth import provider
+    spec = importlib.util.spec_from_file_location("add_client", REPO / "scripts" / "add_client.py")
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    out = io.StringIO()
+    with redirect_stdout(out):
+        script.main(["thefloor", "--name", "The Floor", "--redirect", "https://floor.example/mdc/callback",
+                     "--prefix", "MDC"])
+    lines = dict(line.split("=", 1) for line in out.getvalue().split())
+    assert lines["MDC_CLIENT_ID"] == "thefloor" and len(lines["MDC_CLIENT_SECRET"]) > 30
+    client = asyncio.run(provider.get_client("thefloor"))
+    assert client.client_name == "The Floor" and client.client_secret == lines["MDC_CLIENT_SECRET"]
+    assert [str(u) for u in client.redirect_uris] == ["https://floor.example/mdc/callback"]
+    for bad in (["mdc-web", "--name", "x", "--redirect", "https://a.example/cb"],
+                ["floor", "--name", "x", "--redirect", "http://a.example/cb"]):
+        with pytest.raises(SystemExit):
+            script.main(bad)
+
+
+def test_me_answers_an_applications_token_and_the_api_does_not(data):
+    import asyncio
+    from mdc.oauth import provider
+    accounts.link("ann@example.com", "ann", accounts.FREE)
+    issued = asyncio.run(_issue_for("thefloor", "ann"))
+    client = TestClient(server.app)
+    bearer = {"Authorization": f"Bearer {issued.access_token}"}
+    assert client.get("/me", headers=bearer).json()["user"] == "ann"
+    assert client.get("/libraries", headers=bearer).status_code == 401
+
+
+async def _issue_for(client_id, user):
+    from mdc.oauth import provider
+    data = provider._load()
+    token = provider._issue(data, client_id, user, [], None)
+    provider._save(data)
+    return token

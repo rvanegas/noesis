@@ -32,6 +32,6 @@
 
 - account deletion: a person removes their own account, libraries and grants (open sign-up holds strangers' email addresses); today only the operator disables one
 
-- The Floor as an OAuth client of mdc: a "Connect mdc" step, its refresh token per person on The Floor's server, the access token passed to Claude through the API's MCP connector; replaces The Floor's one MDC_TOKEN (rvanegas-site, Calls between projects)
+- The Floor as an OAuth client of mdc (its client: `scripts/add_client.py`, 2026-11-01; The Floor's side on its own branch): a "Connect mdc" step, its refresh token per person on The Floor's server, the access token passed to Claude through the API's MCP connector; replaces The Floor's one MDC_TOKEN (rvanegas-site, Calls between projects)
 
 - a paid or bring-your-own-key plan, if a free allowance proves too small for anyone but the operator

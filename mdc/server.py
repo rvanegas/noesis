@@ -16,6 +16,7 @@ run:
 - POST   …/run {argv}                        server-sent events: output, then done
 - POST   …/import?filename=…[&only=…&replace=true]   the body is the file; as /run
 - GET    /me                                 the caller's account: plan, spend, storage, names
+                                             (any client's token, not only the API's)
 - PUT    /me/names {names}                   the headings that are the caller's voice in chats
 
 /run runs `mdc --lib <library> <argv>` in a subprocess from the library root:
@@ -129,6 +130,17 @@ async def caller(authorization: str | None = Header(default=None)) -> str:
     return token.subject
 
 
+async def anyone(authorization: str | None = Header(default=None)) -> str:
+    """As caller, but any client's token: for what a person may read about themselves."""
+    from mdc.oauth import provider
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "a bearer token is required")
+    token = await provider.load_access_token(authorization.removeprefix("Bearer "))
+    if token is None or not token.subject:
+        raise HTTPException(401, "unknown token")
+    return token.subject
+
+
 def library(user: str, library: str, who: str = Depends(caller)) -> Path:
     try:
         return library_root(user, library, who)
@@ -141,8 +153,10 @@ def libraries(who: str = Depends(caller)) -> dict:
     return {"libraries": library_ids(who)}
 
 
+# Any client's token: an application a person connected (The Floor, a
+# connector) may say whose library it reaches, which writes nothing.
 @app.get("/me")
-def me(who: str = Depends(caller)) -> dict:
+def me(who: str = Depends(anyone)) -> dict:
     from mdc import accounts
     found = accounts.account(who)
     free = accounts.is_free(who)
