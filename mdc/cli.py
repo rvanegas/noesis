@@ -965,6 +965,9 @@ def run_validate(paths: list[Path]) -> int:
 
 
 def run_fix(paths: list[Path], yes: bool = False) -> int:
+    # A library keeps no backups beside its files: the diff is shown before
+    # anything is applied, and a mirrored library's server holds a copy.
+    library = load_config().library_path
     any_errors = False
     for path in paths:
         if _require_md(path):
@@ -1003,7 +1006,8 @@ def run_fix(paths: list[Path], yes: bool = False) -> int:
             sys.stdout.writelines(diff)
             print()
             if _ask("Apply changes? [y/N]", yes):
-                path.with_suffix(".md.bak").write_text(raw, encoding="utf-8")
+                if not (library and _is_within(path.resolve(), library.resolve())):
+                    path.with_suffix(".md.bak").write_text(raw, encoding="utf-8")
                 path.write_text(new_text, encoding="utf-8")
                 print("  Applied.")
             else:

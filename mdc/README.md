@@ -172,7 +172,7 @@ Exits 0 only if all files pass.
 
 ### `mdc fix`
 
-Auto-fix correctable format violations. Shows a unified diff of proposed changes and prompts for confirmation before modifying each file. A `.bak` backup is created before writing.
+Auto-fix correctable format violations. Shows a unified diff of proposed changes and prompts for confirmation before modifying each file. Outside a library, a `.bak` backup is created before writing; inside one, none is.
 
 ```bash
 mdc fix conversation.md

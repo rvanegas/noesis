@@ -713,8 +713,8 @@ import, two-press delete, a refused command, a reload keeping the sign-in,
 sign out revoking.
 
 **Not done:** deploying, and the first sign-in on the box. `fix` writes a
-`<name>.md.bak` beside what it fixes, which in a library is a visible file
-nobody cleans up (sync leaves it where it is, 2026-11-01); and run output names files by the server's absolute path.
+`<name>.md.bak` beside what it fixes, which in a library was a visible file
+nobody cleaned up (no longer written in a library, 2026-11-01); and run output names files by the server's absolute path.
 
 ## Files touched
 

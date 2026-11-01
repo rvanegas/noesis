@@ -100,3 +100,16 @@ def test_argument(library, capsys):
     assert check_argument("## Notes\n\n- 1: a\n")[0].startswith("expected exactly one section")
     _put(library, "2025-04-25-x.argument.md", good)
     assert main(["validate", "2025-04-25-x.argument.md"]) == 0
+
+
+def test_fix_keeps_no_backup_in_a_library(library, tmp_path, monkeypatch):
+    path = _put(library, "2025-04-25-x.document.md", PROSE)
+    main(["fix", "--yes", path.name])
+    assert "rtl" not in path.read_text()
+    assert sorted(p.name for p in path.parent.iterdir()) == [path.name]
+    outside = tmp_path / "loose"
+    outside.mkdir()
+    (outside / "notes.md").write_text(PROSE)
+    monkeypatch.chdir(outside)
+    main(["fix", "--yes", "notes.md"])
+    assert (outside / "notes.md.bak").read_text() == PROSE
