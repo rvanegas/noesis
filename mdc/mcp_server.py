@@ -14,10 +14,11 @@ gone: claude.ai edits with its own documents, and a conversation reaches the
 library by its export and `mdc import`, which is whole where a turn-by-turn
 write depended on Claude remembering to make it.
 
-A chat or document comes back with its voices labelled ([VOICE: …], as the
-indexer labels them): the library owner's by the names they keep
-(accounts.speaker_names), the model's, anyone else's. Without labels a chat
-of several people says nothing of which of them is the user.
+Files come back as they are. A chat whose headings go beyond Prompt and the
+model's comes after one line saying whose voice each heading is: the
+library owner's by the names they keep (accounts.speaker_names), the
+model's, anyone else's. Without it a chat of several people says nothing of
+which of them is the user.
 """
 
 from __future__ import annotations
@@ -44,10 +45,9 @@ INSTRUCTIONS = "\n\n".join([
     "analysis, review; a name is unique across the library. Use list_documents to find "
     "names and read_file to read one. Nothing in the library is written from here.",
     lib.LIBRARY_TOOLS_PROMPT,
-    "A chat or document is read with its voices labelled: [VOICE: user] marks the "
-    "user's own words, [VOICE: llm …] a model's replies, [VOICE: third-party] anyone "
-    "else's; a document is the user's own writing throughout. guide names the "
-    "headings that are the user's.",
+    "A chat's ## headings name its speakers. A chat with more speakers than Prompt and "
+    "a model is read after a 'Voices:' line saying which headings are the user; any "
+    "other heading is someone else, however much it sounds like the user.",
 ])
 
 
@@ -147,14 +147,32 @@ def _root(library: str | None) -> Path:
 
 
 def _voiced(root: Path, name: str, text: str) -> str:
-    """A chat or document labelled by voice, the library owner's by their names."""
+    """A chat of more than Prompt and a model, after a line saying whose each heading is."""
     from mdc import accounts
     from mdc.config import PROMPT_HEADING, load_config
-    role = lib.role_of(name)
-    if role not in ("chat", "document"):
+    from mdc.library import _STRUCTURAL_HEADINGS
+    from mdc.transcript import HEADING_RE
+    if lib.role_of(name) != "chat":
         return text
-    names = (PROMPT_HEADING, *accounts.speaker_names(root.parent.name))
-    return lib.annotate_voice(text, role, names, load_config().llm_names)
+    speakers = list(dict.fromkeys(
+        m.group(2).strip() for m in HEADING_RE.finditer(text) if m.group(2).strip() not in _STRUCTURAL_HEADINGS))
+    llm = set(load_config().llm_names)
+    if set(speakers) <= {PROMPT_HEADING} | llm:
+        return text
+    mine = {PROMPT_HEADING, *accounts.speaker_names(root.parent.name)}
+
+    def headings(group: list[str], one: str, many: str) -> str:
+        return f"{', '.join(f'## {s}' for s in group)} {one if len(group) == 1 else many}"
+
+    users = [s for s in speakers if s in mine]
+    models = [s for s in speakers if s in llm]
+    others = [s for s in speakers if s not in mine and s not in llm]
+    parts = [headings(users, "is the user", "are the user") if users else "no heading is the user"]
+    if models:
+        parts.append(headings(models, "is a model", "are models"))
+    if others:
+        parts.append(headings(others, "is someone else", "are other people"))
+    return f"Voices: {'; '.join(parts)}.\n" + text
 
 
 def _find(root: Path, name: str) -> Path:
@@ -215,8 +233,8 @@ def lookup_term(term: str, library: str | None = None) -> str:
 @_tool
 def read_document(path: str, library: str | None = None) -> str:
     """Read an indexed document in full, by the path lookup_term gives (e.g.
-    2026/<name>). A chat comes back with each section labelled by voice:
-    [VOICE: user] is the user's own words. Cite a library document only after
+    2026/<name>). A chat of several people comes after a 'Voices:' line
+    saying which headings are the user. Cite a library document only after
     reading it, under a '## Related' section, one per line as '| *Exact Title*'."""
     root = _root(library)
     text = lib.read_document(root, path)
@@ -234,8 +252,8 @@ def read_file(name: str, library: str | None = None) -> str:
     """Read any text file of the library by its name. Files are named <date>-<slug>.<role>.<ext> (role: chat, document, source, argument, analysis or review; e.g. 2026-06-29-the-eleatic-critique.chat.md), kept in a folder per year, and a name is unique across the library. A source is
     third-party material, not the user's writing, and is not indexed: it is
     reached by name from the documents that cite it. An analysis or review is
-    written by mdc. A chat comes back with each section labelled by voice:
-    [VOICE: user] is the user's own words."""
+    written by mdc. A chat of several people comes after a 'Voices:' line
+    saying which headings are the user."""
     root = _root(library)
     path = _find(root, name)
     try:

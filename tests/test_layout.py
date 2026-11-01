@@ -119,9 +119,9 @@ def test_index_refuses_a_library_with_unnamed_roles(library, capsys):
 
 
 def test_voice_by_role():
-    from mdc.library import annotate_voice
-    assert "user's own writing" in annotate_voice("text", "document", ("Prompt",), ("Claude",))
-    chat = annotate_voice("\n# T\n\n## Prompt\n\nQ\n\n## Claude\n\nA\n", "chat", ("Prompt",), ("Claude",))
+    from mdc.cmd_index import _annotate_voice
+    assert "user's own writing" in _annotate_voice("text", "document", ("Prompt",), ("Claude",))
+    chat = _annotate_voice("\n# T\n\n## Prompt\n\nQ\n\n## Claude\n\nA\n", "chat", ("Prompt",), ("Claude",))
     assert "[VOICE: user]" in chat and "[VOICE: llm" in chat
 
 

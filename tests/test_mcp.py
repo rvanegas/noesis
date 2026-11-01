@@ -106,7 +106,7 @@ def test_tools_and_auth(library):
     assert "<date>-<slug>.<role>.<ext>" in text(call(url, "ann", "guide", {}))
     assert "<date>-<slug>.<role>.<ext>" in tools["list_documents"]
     assert "| *Exact Title*" in tools["read_document"]
-    assert "[VOICE: user]" in tools["read_document"] and "[VOICE: user]" in tools["read_file"]
+    assert "'Voices:'" in tools["read_document"] and "'Voices:'" in tools["read_file"]
     assert httpx.post(f"{url}/mcp", json={}).status_code == 401
     assert httpx.post(f"{url}/mcp", json={}, headers={"Authorization": "Bearer nope"}).status_code == 401
     meta = httpx.get(f"{url}/.well-known/oauth-protected-resource/mcp").json()
@@ -339,22 +339,22 @@ FLOOR = ("\n# Lunch\n2026-10-30\n\n## Ann\n\nMine.\n\n## Bea\n\nHers.\n\n"
          "## Claude\n\nThe model's.\n\n## Related\n\n| *Essay*\n")
 
 
-def test_a_chat_comes_back_labelled_by_the_owners_names(library):
+def test_a_chat_of_several_people_says_whose_voice_each_heading_is(library):
     from mdc import accounts
     root, url = library
     (root / "2026" / "2026-10-30-lunch.chat.md").write_text(FLOOR)
     accounts.set_speaker_names("ann", ["Ann"])
     try:
-        for got in (text(call(url, "ann", "read_file", {"name": "2026-10-30-lunch.chat.md"})),
-                    text(call(url, "ann", "read_document", {"path": "2026/2026-10-30-lunch.chat.md"}))):
-            assert "## Ann\n\n[VOICE: user]\nMine." in got
-            assert "## Bea\n\n[VOICE: third-party]\nHers." in got
-            assert "## Claude\n\n[VOICE: llm" in got
-            assert "## Related\n\n" in got
+        voices = "Voices: ## Ann is the user; ## Claude is a model; ## Bea is someone else.\n"
+        assert text(call(url, "ann", "read_file", {"name": "2026-10-30-lunch.chat.md"})) == voices + FLOOR
+        assert text(call(url, "ann", "read_document", {"path": "2026/2026-10-30-lunch.chat.md"})) == voices + FLOOR
         assert "the sections headed ## Prompt, ## Ann are the user's own words" in text(call(url, "ann", "guide", {}))
-        assert "[VOICE: this entire document is the user's own writing]" in text(
-            call(url, "ann", "read_file", {"name": "2026-10-27-essay.document.md"}))
-        assert "[VOICE" not in text(call(url, "ann", "read_file", {"name": "2026-10-19-parfit2011.source.md"}))
+        # Prompt and a model need no saying; nor does anything but a chat.
+        assert text(call(url, "ann", "read_file", {"name": "2025-04-25-old-roman.chat.md"})) == CHAT
+        assert text(call(url, "ann", "read_file", {"name": "2026-10-27-essay.document.md"})) == DOC
+        accounts.set_speaker_names("ann", [])
+        assert text(call(url, "ann", "read_file", {"name": "2026-10-30-lunch.chat.md"})).startswith(
+            "Voices: no heading is the user; ## Claude is a model; ## Ann, ## Bea are other people.\n")
         assert "Error" in text(call(url, "ann", "read_document", {"path": "../../bob/x.chat.md"}))
     finally:
         accounts.set_speaker_names("ann", [])
