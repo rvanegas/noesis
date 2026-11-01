@@ -243,24 +243,28 @@ async function loadFiles() {
   renderFiles();
 }
 
+// The library's own files first, folded but for the settings, so the
+// user's own are never below a long list of mdc's.
 function renderFiles() {
   const words = $("filter").value.toLowerCase().split(/\s+/).filter(Boolean);
-  const records = $("show-records").checked;
   const paths = Object.keys(files)
-    .filter((p) => records || !RECORDS.test(p))
     .filter((p) => words.every((w) => p.toLowerCase().includes(w)))
     .sort((a, b) => sortKey(b).localeCompare(sortKey(a)));
-  const settings = paths.filter((p) => SETTINGS.has(p)).sort();
-  const generated = paths.filter((p) => GENERATED.has(p)).sort();
-  const own = paths.filter((p) => !SETTINGS.has(p) && !GENERATED.has(p));
-  fill("settings-files", settings);
-  fill("files", own);
-  fill("generated-files", generated);
-  $("generated").hidden = !generated.length;
-  $("generated-count").textContent = `(${generated.length})`;
-  if (words.length && generated.length) $("generated").open = true;
+  fill("settings-files", paths.filter((p) => SETTINGS.has(p)).sort());
+  group("generated", paths.filter((p) => GENERATED.has(p)).sort(), words.length > 0);
+  group("records", paths.filter((p) => RECORDS.test(p)), false);
+  fill("files", paths.filter((p) => !SETTINGS.has(p) && !GENERATED.has(p) && !RECORDS.test(p)));
   const total = Object.keys(files).length;
   $("count").textContent = paths.length === total ? `${total} files` : `${paths.length} of ${total} files`;
+}
+
+// A folded group, hidden when empty; a filter opens the generated files,
+// which are few, but not the records, which are many.
+function group(id, paths, open) {
+  fill(`${id}-files`, paths);
+  $(id).hidden = !paths.length;
+  $(`${id}-count`).textContent = `(${paths.length})`;
+  if (open) $(id).open = true;
 }
 
 function fill(id, paths) {
@@ -531,7 +535,6 @@ function wire() {
   $("new-library").addEventListener("click", pickLibraryName);
   $("create-library").addEventListener("submit", guard(createLibrary));
   $("filter").addEventListener("input", renderFiles);
-  $("show-records").addEventListener("change", renderFiles);
   $("index").addEventListener("click", guard(() => run(["index"])));
   $("command").addEventListener("submit", guard(async (event) => {
     event.preventDefault();

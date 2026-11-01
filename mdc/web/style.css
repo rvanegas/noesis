@@ -141,9 +141,12 @@ pre {
 .hint { color: var(--muted); font-size: .9rem; margin: .4rem 0; }
 
 .files li { border-bottom: 1px solid var(--line); }
-#settings-files:not(:empty) { margin-bottom: .75rem; border-top: 1px solid var(--line); }
-#generated { margin-top: 1rem; }
-#generated summary { cursor: pointer; color: var(--muted); padding: .4rem 0; }
+#settings-files:not(:empty) { border-top: 1px solid var(--line); }
+.group { border-bottom: 1px solid var(--line); }
+.group summary { cursor: pointer; color: var(--muted); padding: .4rem 0; }
+.group .files { margin-left: 1rem; }
+.group .files li:last-child { border-bottom: 0; }
+#files { margin-top: .75rem; border-top: 1px solid var(--line); }
 
 button.file {
   display: block;
