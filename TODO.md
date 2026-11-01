@@ -24,10 +24,14 @@
 
 - API for clients other than the CLI (SERVER.md, Phase 2, Later): structured endpoints (create a session, list documents, reply with a JSON result) by having cmd_* return results and stream through on_delta, which retires the /run subprocess; wait for a client that needs it (The Floor)
 
-- sign-in for those users with Roxana's Cognito pool rather than minted tokens (dianoia verifies them since SITE Phase 4)
-
 - POST /libraries/{user}/{library} to create a library, with the first client that needs it
 
-- a real identity plan, for mdc's tools, The Floor and claude.ai together: The Floor signs in with emailed codes and no passwords; mdc's OAuth server (oauth.py) meanwhile signs people in by pasting their mdc token, the one step such a plan replaces (SERVER.md, Phase 5b)
-
 - manual tests for mdc import (SERVER.md, Phase 4; the tests use fixtures written from the formats as documented, not real files): run `mdc import` on a real claude.ai data export (Settings → Privacy → Export data; the zip, then `--only` one conversation) and on a real saveai.net Claude export; check turns, the branch kept for edited messages, attachments, and that each imported chat passes `mdc check`; then `mdc reply` to one imported chat. If either format differs from tests/fixtures/, re-record the fixture from the real file and adjust cmd_import.py
+
+## After Phase 6 (noted 2026-11-01)
+
+- account deletion: a person removes their own account, libraries and grants (open sign-up holds strangers' email addresses); today only the operator disables one
+
+- The Floor as an OAuth client of mdc: a "Connect mdc" step, its refresh token per person on The Floor's server, the access token passed to Claude through the API's MCP connector; replaces The Floor's one MDC_TOKEN (rvanegas-site, Calls between projects)
+
+- a paid or bring-your-own-key plan, if a free allowance proves too small for anyone but the operator

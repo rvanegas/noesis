@@ -17,6 +17,9 @@ import uvicorn
 CHAT = "\n# Old Roman\n2025-04-25\n\n## Prompt\n\nHello.\n\n## Claude\n\nHi.\n\n## Related\n\n| *Essay*\n"
 DOC = "\n# Essay\n2026-10-27\n\nProse here.\n"
 
+# The codes the server mailed, by address: mail.send_code, replaced.
+SENT: dict[str, str] = {}
+
 
 @pytest.fixture(scope="module")
 def live(tmp_path_factory):
@@ -28,11 +31,16 @@ def live(tmp_path_factory):
     mp.setenv("MDC_DATA_DIR", str(data))
     mp.setenv("MDC_CONFIG_DIR", str(data / "config"))
     mp.setenv("MDC_PUBLIC_URL", f"http://127.0.0.1:{port}")
+    mp.setattr("mdc.mail.send_code", lambda to, code, client_name: SENT.__setitem__(to, code))
+    # Every test here signs in from 127.0.0.1; the limits have tests of their own.
+    mp.setattr("mdc.accounts.SEND_LIMITS", (("email", 3600, 100), ("ip", 3600, 100), ("all", 86400, 1000)))
     (data / "users.toml").write_text(
         f'[[tokens]]\nuser = "ann"\nsha256 = "{hashlib.sha256(b"ann").hexdigest()}"\n'
         f'[[tokens]]\nuser = "bob"\nsha256 = "{hashlib.sha256(b"bob").hexdigest()}"\n'
     )
-    from mdc import server
+    from mdc import accounts, server
+    # ann was the operator's before she signed in by email: linked, as scripts/accounts.py does.
+    accounts.link("ann@example.com", "ann", accounts.UNLIMITED)
     uv = uvicorn.Server(uvicorn.Config(server.app, host="127.0.0.1", port=port, log_level="warning"))
     thread = threading.Thread(target=uv.run, daemon=True)
     thread.start()
@@ -164,7 +172,13 @@ def _authorize(url, client, challenge, state="s1"):
     return login.split("request=")[1]
 
 
-def test_claude_ai_signs_in_with_an_mdc_token(library, live):
+def _sign_in(url, request_id, email="ann@example.com"):
+    sent = httpx.post(f"{url}/oauth/login", data={"request": request_id, "email": email, "action": "send"})
+    assert sent.status_code == 200 and "on its way" in sent.text, sent.text
+    return httpx.post(f"{url}/oauth/login", data={"request": request_id, "code": SENT[email], "action": "verify"})
+
+
+def test_claude_ai_signs_in_with_an_emailed_code(library, live):
     from urllib.parse import parse_qs, urlparse
     data, url = live
     root, _ = library
@@ -175,9 +189,16 @@ def test_claude_ai_signs_in_with_an_mdc_token(library, live):
     request_id = _authorize(url, client, challenge)
     page = httpx.get(f"{url}/oauth/login", params={"request": request_id})
     assert page.status_code == 200 and "Claude" in page.text and "claude.ai" in page.text
-    wrong = httpx.post(f"{url}/oauth/login", data={"request": request_id, "token": "nope", "action": "allow"})
-    assert wrong.status_code == 200 and "not an mdc token" in wrong.text
-    back = httpx.post(f"{url}/oauth/login", data={"request": request_id, "token": "ann", "action": "allow"})
+    assert "to read your mdc libraries" in page.text and 'type="email"' in page.text
+    bad = httpx.post(f"{url}/oauth/login", data={"request": request_id, "email": "nope", "action": "send"})
+    assert "not an email address" in bad.text
+    sent = httpx.post(f"{url}/oauth/login", data={"request": request_id, "email": " Ann@Example.com ", "action": "send"})
+    assert "on its way to <b>ann@example.com</b>" in sent.text
+    code = SENT["ann@example.com"]
+    wrong = httpx.post(f"{url}/oauth/login", data={
+        "request": request_id, "code": f"{(int(code) + 1) % 10**6:06d}", "action": "verify"})
+    assert wrong.status_code == 200 and "not the code" in wrong.text
+    back = httpx.post(f"{url}/oauth/login", data={"request": request_id, "code": code, "action": "verify"})
     assert back.status_code == 302 and back.headers["location"].startswith(CALLBACK)
     query = parse_qs(urlparse(back.headers["location"]).query)
     assert query["state"] == ["s1"]
@@ -197,15 +218,55 @@ def test_claude_ai_signs_in_with_an_mdc_token(library, live):
         "grant_type": "refresh_token", "refresh_token": tokens["refresh_token"],
         "client_id": client["client_id"], "client_secret": client["client_secret"]})
     assert again.status_code == 400
-    # Taking the person's mdc token away takes their OAuth access with it.
-    users = data / "users.toml"
-    kept = users.read_text()
-    users.write_text(f'[[tokens]]\nuser = "bob"\nsha256 = "{hashlib.sha256(b"bob").hexdigest()}"\n')
+    # Disabling the account takes its OAuth access with it.
+    from mdc import accounts
+    accounts.set_disabled("ann", True)
     try:
         assert httpx.post(f"{url}/mcp", json={}, headers={
             "Authorization": f"Bearer {refreshed['access_token']}", "Content-Type": "application/json"}).status_code == 401
     finally:
-        users.write_text(kept)
+        accounts.set_disabled("ann", False)
+
+
+def test_wrong_codes_end_the_sign_in(library, live):
+    data, url = live
+    client = _register(url).json()
+    _, challenge = _pkce()
+    request_id = _authorize(url, client, challenge)
+    httpx.post(f"{url}/oauth/login", data={"request": request_id, "email": "ann@example.com", "action": "send"})
+    code = SENT["ann@example.com"]
+    wrong = f"{(int(code) + 1) % 10**6:06d}"
+    for _ in range(4):
+        assert "not the code" in httpx.post(f"{url}/oauth/login", data={
+            "request": request_id, "code": wrong, "action": "verify"}).text
+    last = httpx.post(f"{url}/oauth/login", data={"request": request_id, "code": wrong, "action": "verify"})
+    assert last.status_code == 400 and "Too many" in last.text
+    # The right code no longer helps.
+    assert httpx.post(f"{url}/oauth/login", data={
+        "request": request_id, "code": code, "action": "verify"}).status_code == 400
+
+
+def test_a_new_address_makes_a_free_account(library, live):
+    from urllib.parse import parse_qs, urlparse
+    data, url = live
+    redirect = f"{url}/web/"
+    verifier, challenge = _pkce()
+    r = httpx.get(f"{url}/authorize", params={
+        "response_type": "code", "client_id": "mdc-web", "redirect_uri": redirect,
+        "code_challenge": challenge, "code_challenge_method": "S256", "state": "n1"})
+    request_id = r.headers["location"].split("request=")[1]
+    # "ann" is taken, by the operator's user: the new account is ann-2.
+    back = _sign_in(url, request_id, "ann+mdc@elsewhere.example")
+    code = parse_qs(urlparse(back.headers["location"]).query)["code"][0]
+    tokens = httpx.post(f"{url}/token", data={
+        "grant_type": "authorization_code", "code": code, "redirect_uri": redirect,
+        "client_id": "mdc-web", "code_verifier": verifier}).json()
+    bearer = {"Authorization": f"Bearer {tokens['access_token']}"}
+    me = httpx.get(f"{url}/me", headers=bearer).json()
+    assert me["user"] == "ann-2" and me["plan"] == "free" and me["email"] == "ann+mdc@elsewhere.example"
+    assert me["spent_usd"] == 0 and me["allowance_usd"] == 1.0
+    assert httpx.get(f"{url}/libraries", headers=bearer).json() == {"libraries": []}
+    assert httpx.get(f"{url}/libraries/ann/philosophy/files", headers=bearer).status_code == 403
 
 
 def test_deny_sends_access_denied(library, live):
@@ -228,8 +289,8 @@ def test_the_web_client_signs_in_and_reaches_the_api(library, live):
     assert r.status_code == 302, r.text
     request_id = r.headers["location"].split("request=")[1]
     page = httpx.get(f"{url}/oauth/login", params={"request": request_id})
-    assert "mdc on the web" in page.text
-    back = httpx.post(f"{url}/oauth/login", data={"request": request_id, "token": "ann", "action": "allow"})
+    assert "mdc on the web" in page.text and "run mdc's commands" in page.text
+    back = _sign_in(url, request_id)
     assert back.status_code == 302 and back.headers["location"].startswith(redirect)
     code = parse_qs(urlparse(back.headers["location"]).query)["code"][0]
     # A public client: no secret, the verifier alone.
@@ -259,7 +320,7 @@ def test_a_connectors_token_does_not_reach_the_api(library, live):
     client = _register(url).json()
     verifier, challenge = _pkce()
     request_id = _authorize(url, client, challenge)
-    back = httpx.post(f"{url}/oauth/login", data={"request": request_id, "token": "ann", "action": "allow"})
+    back = _sign_in(url, request_id)
     code = parse_qs(urlparse(back.headers["location"]).query)["code"][0]
     tokens = httpx.post(f"{url}/token", data={
         "grant_type": "authorization_code", "code": code, "redirect_uri": CALLBACK,

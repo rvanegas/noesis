@@ -598,6 +598,9 @@ The plan:
 
 ### 5b — mdc's own OAuth server, signed into with an mdc token (2026-10-27)
 
+**The pasted token is superseded by Phase 6's emailed code (2026-11-01);**
+the OAuth server around it stays as below.
+
 **Decided:** real authentication, per person, with a sign-in that need not be
 easy yet. mdc is its own OAuth authorization server for claude.ai's connector
 (`mdc/oauth.py`, the MCP SDK's provider interface; the SDK serves discovery,
@@ -715,6 +718,86 @@ sign out revoking.
 **Not done:** deploying, and the first sign-in on the box. `fix` writes a
 `<name>.md.bak` beside what it fixes, which in a library was a visible file
 nobody cleaned up (no longer written in a library, 2026-11-01); and run output names files by the server's absolute path.
+
+## Phase 6 — open sign-up, and what it may cost — built 2026-11-01, not yet landed
+
+On branch `identity`. **Decided 2026-11-01** (rvanegas-site, the session that
+weighed a unified identity for thefloor, Roxana and mdc): no shared identity
+across the projects. mdc is the identity for everyone who uses it, its OAuth
+server the one way in, and another app reaches a person's libraries only
+through a grant from it: claude.ai's connector and the web client now, The
+Floor and Roxana as OAuth clients later (TODO.md). Sign-up is open; what an
+open account could cost is capped instead.
+
+- **Sign-in** (`oauth.py`, `/oauth/login` in `server.py`): an email address,
+  then a six-digit code mailed to it, good for ten minutes and five tries,
+  bound to the pending OAuth request and kept as a hash. The first sign-in
+  makes the account (`accounts.py`), its user name the address's local part,
+  numbered when taken (by an account, a `users.toml` user or a libraries
+  directory). The page says what the client asks for: claude.ai's connector
+  to read, the web client to read, change and run. Pasting an mdc token is
+  gone; minted tokens remain bearer tokens for the CLI and the nightly
+  service, as before.
+- **OAuth grants follow the account**: disabling it ends them. Grants made by
+  a pasted token before this phase stop working; their holder signs in again.
+- **Accounts** in `$MDC_DATA_DIR/accounts.db` (SQLite, mode 600): user,
+  email, plan, disabled; this month's spend per user; the sign-in mail
+  counter. `scripts/accounts.py` lists them, links an address to an existing
+  user, changes a plan, disables. **A user with no account row is the
+  operator's** (a `users.toml` token) and unlimited; so is plan `unlimited`.
+- **The free allowance** is dollars per calendar month (UTC):
+  `MDC_FREE_ALLOWANCE_USD`, default $1.00; all free accounts together
+  `MDC_FREE_MONTHLY_CAP_USD`, default $25. A run on the server names the
+  library's owner in `MDC_ACCOUNT`; `AnthropicChatClient` checks before each
+  model call and charges each message's tokens at list price (an unknown
+  model at the dearest rate), and `dianoia_client` charges each POST a flat
+  `MDC_DIANOIA_CALL_USD` (default $0.05). A call under way finishes, so a run
+  can pass the allowance by one message. The nightly index spends from each
+  library's owner, and is refused (402) for one whose allowance is spent. Setting the
+  allowance to 0 turns free model use off.
+- **Refusals:** a free account's run or import gets 402 once its allowance or
+  the cap is spent, and 503 while two free runs are already going.
+  Storage: up to `MDC_FREE_LIBRARIES` (3) libraries, `MDC_FREE_STORAGE_MB` (50)
+  in all, `MDC_FREE_FILE_MB` (10) a file, only the types mdc reads (Markdown,
+  text, RTF, PDF, images; zip and JSON through import), each refused with 413
+  (403 for a fourth library).
+- **Sign-in mail** (`mail.py`): SES's SMTP interface as IAM `mdc-ses`, on the
+  `rvanegas.co` identity, configuration set `mdc` (`MDC_SMTP_HOST`,
+  `MDC_SMTP_PORT`, `MDC_SMTP_USER`, `MDC_SMTP_PASSWORD`, `MDC_MAIL_FROM`,
+  `MDC_SES_CONFIGURATION_SET`). At most five codes an hour to an address, ten
+  from a client address (Caddy's `X-Forwarded-For`), 300 a day in all,
+  since SES suspends a whole AWS account and thefloor's mail with it.
+- **Cloudflare Turnstile** on the address step when `MDC_TURNSTILE_SITE_KEY`
+  and `MDC_TURNSTILE_SECRET` are set; without them, no challenge.
+- **`GET /me`**: the caller's plan, month's spend and allowance, storage; the
+  web client shows it to a free account and refreshes it after each run.
+- **The container** gets `mem_limit: 1g`, so mdc's runs cannot starve the
+  rest of `commons`.
+
+**Not done, each its own go-ahead:**
+
+1. AWS: IAM user `mdc-ses` (`ses:SendRawEmail` on the `rvanegas.co` identity,
+   policy `iam/mdc-ses.json` in rvanegas-site), its SMTP password, and SES
+   configuration set `mdc` with bounces and complaints to SNS `ses-alerts`.
+2. A Turnstile site for `mdc.rvanegas.co` in a Cloudflare account; its two
+   keys.
+3. The box's `~/mdc/.env`: the SMTP and Turnstile keys above.
+4. Linking Rodrigo's address before the first sign-in, or signing in makes a
+   new, free `rodvandur-2`:
+   `docker compose run --rm mdc python scripts/accounts.py link <address> rodvandur`.
+5. An Anthropic workspace for mdc's key with a monthly spend limit, the cap
+   behind the cap.
+6. Landing and deploying; then the manual check: sign up from a new address
+   in the web client, run `index` until the allowance refuses, and add the
+   connector in claude.ai from that account.
+
+**Verified** with tests (`tests/test_accounts.py`, `tests/test_mcp.py`): the
+code sign-in end to end for claude.ai and the web client, a wrong code, five
+ending the sign-in, a new address making a numbered free account that sees
+no one else's library, a disabled account's grants refused, the mail limits,
+the meter through `AnthropicChatClient` with a stubbed stream, the allowance
+and the cap, 402 on a spent account's run and import, the storage limits,
+and the accounts script. The page itself has not been driven in a browser.
 
 ## Files touched
 

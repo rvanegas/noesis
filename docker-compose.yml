@@ -15,6 +15,9 @@ services:
     user: "1000:1000"
     volumes:
       - /srv/mdc:/data
+    # commons is a 2 GB box shared with dianoia, imitation and the site: open
+    # sign-up must not let mdc's runs starve them (SERVER.md, Phase 6).
+    mem_limit: 1g
     # Loopback only: Caddy on the box is the one public front door
     # (rvanegas-site's Caddyfile).
     ports:

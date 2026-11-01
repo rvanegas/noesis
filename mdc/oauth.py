@@ -1,11 +1,14 @@
-"""mdc's own OAuth authorization server, for claude.ai's connector (SERVER.md, Phase 5b).
+"""mdc's own OAuth authorization server (SERVER.md, Phases 5b and 6).
 
-Real authentication with a plain sign-in, until a real identity plan exists:
-claude.ai registers itself (dynamic client registration), sends the person to
-mdc's /oauth/login, where they paste their mdc token (minted for them by
-scripts/add_token.py), and gets OAuth tokens for that person: an access
-token for an hour, a refresh token for 90 days, rotated on every use. The mdc
-token is typed into mdc's page once and never held by claude.ai.
+mdc is the identity for everyone who uses it, and every other app reaches a
+person's libraries through a grant from here, never a shared identity
+(rvanegas-site's PROJECTS.md, Shared rules): claude.ai's connector, mdc's web
+client, and in time The Floor and Roxana. claude.ai registers itself (dynamic
+client registration) and sends the person to mdc's /oauth/login, where they
+give their email address and then the code mailed to it; the first sign-in
+makes their account (accounts.py: sign-up is open, spending is capped). The
+client gets OAuth tokens for that person: an access token for an hour, a
+refresh token for 90 days, rotated on every use.
 
 The MCP SDK serves the protocol (metadata, /register, /authorize, /token,
 /revoke, PKCE); this is its provider: storage and the sign-in.
@@ -13,8 +16,11 @@ The MCP SDK serves the protocol (metadata, /register, /authorize, /token,
 - **Redirects are limited** to claude.ai's and claude.com's callbacks and to
   localhost (Claude Code): registration is open to anyone, and the sign-in
   must not send a code where its asker says.
-- **OAuth tokens follow the mdc token that signed in:** each records that
-  token's hash, and stops working once it leaves users.toml.
+- **A code** is six digits, kept as a hash with the pending sign-in it was
+  sent for, good for ten minutes and five tries; a new one costs a mail, which
+  accounts.allow_send limits.
+- **OAuth tokens follow the account:** each records it, and stops working once
+  the account is disabled (scripts/accounts.py).
 - **Stored** in $MDC_DATA_DIR/oauth.json (mode 600), hashes only, so a deploy
   does not sign anybody out; codes and pending sign-ins live minutes, in memory.
 
@@ -56,6 +62,7 @@ REFRESH_TTL = 90 * 24 * 60 * 60
 CODE_TTL = 5 * 60
 SIGN_IN_TTL = 10 * 60
 SIGN_IN_ATTEMPTS = 5
+CODE_DIGITS = 6
 
 ALLOWED_CALLBACKS = {
     ("https", "claude.ai", "/api/mcp/auth_callback"),
@@ -100,13 +107,14 @@ class SignIn:
     params: AuthorizationParams
     expires_at: float
     attempts: int = 0
+    email: str = ""
+    code_sha: str = ""
 
 
 class MdcOAuthProvider:
     def __init__(self) -> None:
         self.sign_ins: dict[str, SignIn] = {}
         self.codes: dict[str, AuthorizationCode] = {}
-        self.code_via: dict[str, str] = {}
 
     # --- storage -----------------------------------------------------------
 
@@ -162,27 +170,55 @@ class MdcOAuthProvider:
             return None
         return sign_in
 
-    def complete(self, request_id: str, mdc_token: str) -> str | None:
-        """The redirect back to the client with a code, if the mdc token is someone's."""
+    def send_code(self, request_id: str, email: str, ip: str) -> str | None:
+        """Mails a code for this sign-in; why not, if it was not sent."""
+        from mdc import accounts, mail
         sign_in = self.pending(request_id)
         if sign_in is None:
+            return "This sign-in has expired; start again from the app."
+        address = accounts.normalize_email(email)
+        if address is None:
+            return "That is not an email address."
+        if not accounts.allow_send(address, ip):
+            return "Too many codes were asked for; try again in an hour."
+        code = f"{secrets.randbelow(10 ** CODE_DIGITS):0{CODE_DIGITS}d}"
+        try:
+            mail.send_code(address, code, sign_in.client.client_name or "An application")
+        except mail.MailUnavailable:
+            return "The code could not be sent; try again later."
+        sign_in.email, sign_in.code_sha, sign_in.attempts = address, _sha(code), 0
+        sign_in.expires_at = time.time() + SIGN_IN_TTL
+        return None
+
+    def verify_code(self, request_id: str, code: str) -> str | None:
+        """The redirect back to the client with an OAuth code, if the code is the one sent."""
+        from mdc import accounts
+        sign_in = self.pending(request_id)
+        if sign_in is None or not sign_in.code_sha:
             return None
         sign_in.attempts += 1
-        user = service.user_for_token(mdc_token)
-        if user is None or user == "*":
+        if not secrets.compare_digest(_sha(code.strip()), sign_in.code_sha):
+            return None
+        found = accounts.account_for_email(sign_in.email) or accounts.create_account(sign_in.email)
+        if found.disabled:
             return None
         del self.sign_ins[request_id]
-        code = secrets.token_urlsafe(32)
+        oauth_code = secrets.token_urlsafe(32)
         params = sign_in.params
-        self.codes[code] = AuthorizationCode(
-            code=code, scopes=params.scopes or [], expires_at=time.time() + CODE_TTL,
+        self.codes[oauth_code] = AuthorizationCode(
+            code=oauth_code, scopes=params.scopes or [], expires_at=time.time() + CODE_TTL,
             client_id=sign_in.client.client_id, code_challenge=params.code_challenge,
             redirect_uri=params.redirect_uri,
             redirect_uri_provided_explicitly=params.redirect_uri_provided_explicitly,
-            resource=params.resource, subject=user,
+            resource=params.resource, subject=found.user,
         )
-        self.code_via[code] = _sha(mdc_token)
-        return construct_redirect_uri(str(params.redirect_uri), code=code, state=params.state)
+        return construct_redirect_uri(str(params.redirect_uri), code=oauth_code, state=params.state)
+
+    def restart(self, request_id: str) -> None:
+        """Back to asking for an address: the code sent is forgotten."""
+        sign_in = self.pending(request_id)
+        if sign_in is not None:
+            sign_in.email = sign_in.code_sha = ""
 
     def refuse(self, request_id: str) -> str | None:
         """The redirect back with access_denied, when the person declines."""
@@ -201,10 +237,10 @@ class MdcOAuthProvider:
         return code
 
     def _issue(self, data: dict, client_id: str, user: str, scopes: list[str],
-               resource: str | None, via: str) -> OAuthToken:
+               resource: str | None) -> OAuthToken:
         now = int(time.time())
         access, refresh = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
-        common = {"client_id": client_id, "user": user, "scopes": scopes, "resource": resource, "via": via}
+        common = {"client_id": client_id, "user": user, "scopes": scopes, "resource": resource}
         data["access"][_sha(access)] = {**common, "expires_at": now + ACCESS_TTL, "refresh": _sha(refresh)}
         data["refresh"][_sha(refresh)] = {**common, "expires_at": now + REFRESH_TTL}
         return OAuthToken(access_token=access, expires_in=ACCESS_TTL, refresh_token=refresh,
@@ -212,10 +248,9 @@ class MdcOAuthProvider:
 
     async def exchange_authorization_code(self, client, authorization_code: AuthorizationCode) -> OAuthToken:
         self.codes.pop(authorization_code.code, None)
-        via = self.code_via.pop(authorization_code.code, "")
         data = self._load()
         token = self._issue(data, client.client_id, authorization_code.subject or "",
-                            authorization_code.scopes, authorization_code.resource, via)
+                            authorization_code.scopes, authorization_code.resource)
         self._save(data)
         return token
 
@@ -232,7 +267,7 @@ class MdcOAuthProvider:
         entry = data["refresh"].pop(_sha(refresh_token.token))
         data["access"] = {k: v for k, v in data["access"].items() if v.get("refresh") != _sha(refresh_token.token)}
         token = self._issue(data, client.client_id, entry["user"], scopes or entry["scopes"],
-                            entry["resource"], entry["via"])
+                            entry["resource"])
         self._save(data)
         return token
 
@@ -262,7 +297,8 @@ class MdcOAuthProvider:
 
     @staticmethod
     def _still_signed_in(entry: dict) -> bool:
-        return service.user_for_token_hash(entry.get("via", "")) == entry["user"]
+        from mdc import accounts
+        return accounts.is_active(entry["user"])
 
 
 provider = MdcOAuthProvider()

@@ -9,6 +9,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from mdc import accounts
+
 _POLL_SECONDS = 2
 _EVALUATE_TIMEOUT_SECONDS = 300
 
@@ -32,9 +34,16 @@ def _request(base: str, token: str, method: str, path: str,
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
         method=method,
     )
+    # A POST asks dianoia for model work: on the server, a flat charge to the
+    # run's user (accounts.py). Polls are free.
+    if method == "POST":
+        accounts.check_spend()
     try:
         with urllib.request.urlopen(request) as response:
-            return json.loads(response.read().decode("utf-8"))
+            result = json.loads(response.read().decode("utf-8"))
+        if method == "POST":
+            accounts.charge_dianoia()
+        return result
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"dianoia {path} failed: HTTP {e.code} — {detail}") from e

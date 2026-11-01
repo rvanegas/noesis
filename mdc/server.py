@@ -15,6 +15,7 @@ run:
 - DELETE …/files/{rel_path}                  If-Match: "<sha>"
 - POST   …/run {argv, user_names}            server-sent events: output, then done
 - POST   …/import?filename=…[&only=…&replace=true]   the body is the file; as /run
+- GET    /me                                 the caller's account: plan, spend, storage
 
 /run runs `mdc --lib <library> <argv>` in a subprocess from the library root:
 file arguments are names, which mdc resolves across the library. Its output
@@ -29,6 +30,11 @@ the upload is kept outside the library, `mdc import` writes from it into the
 year directories, and it is deleted when the run ends.
 
 Dotfiles, and so the index state in .mdc/, are never listed, read or written.
+
+A free account (accounts.py) is held to its limits here: what it may store,
+how many libraries, and a run is refused once its allowance is spent (402)
+or while free runs fill their slots (503). Every run spends for the
+library's owner, named to mdc in MDC_ACCOUNT, whose model clients charge it.
 
 /web/ serves mdc's web client (mdc/web/): static files, which sign in through
 mdc's OAuth server and then call this API like any other client.
@@ -71,6 +77,9 @@ RUNNABLE = frozenset({
 _USER_NAME_RE = re.compile(r"^[^\s,](?:[^,\n\r]*[^\s,])?$")
 
 _runs: set[asyncio.Task] = set()
+# Runs for free accounts at once, server-wide: the box is shared (rvanegas-site).
+FREE_RUNS = 2
+_free_runs: set[asyncio.Task] = set()
 
 # The MCP server (SERVER.md, Phase 5) answers at /mcp, mounted below the
 # API's routes; its session manager lives as long as the app.
@@ -124,6 +133,24 @@ def library(user: str, library: str, who: str = Depends(caller)) -> Path:
 @app.get("/libraries")
 def libraries(who: str = Depends(caller)) -> dict:
     return {"libraries": library_ids(who)}
+
+
+@app.get("/me")
+def me(who: str = Depends(caller)) -> dict:
+    from mdc import accounts
+    found = accounts.account(who)
+    free = accounts.is_free(who)
+    limits = accounts.limits()
+    return {
+        "user": who,
+        "email": found.email if found else None,
+        "plan": accounts.plan_of(who),
+        "month": accounts.month(),
+        "spent_usd": round(accounts.spent(who), 4),
+        "allowance_usd": limits.allowance_usd if free else None,
+        "stored_bytes": accounts.stored_bytes(who) if free else None,
+        "storage_bytes": limits.storage_bytes if free else None,
+    }
 
 
 class NewLibrary(BaseModel):
@@ -182,6 +209,31 @@ def _unquote(tag: str) -> str:
     return tag.strip().removeprefix("W/").strip('"')
 
 
+def _owner(root: Path) -> str:
+    """The user whose library this is: libraries/<user>/<library>."""
+    return root.parent.name
+
+
+def _storable(root: Path, name: str, size: int, replacing: int = 0, types=None) -> None:
+    from mdc import accounts
+    why = accounts.storage_refusal(_owner(root), name, size, replacing,
+                                   types=types or accounts.FREE_TYPES)
+    if why:
+        raise HTTPException(413, why)
+
+
+def _may_run(root: Path) -> None:
+    """A free account's run needs allowance left and a free slot."""
+    from mdc import accounts
+    owner = _owner(root)
+    if not accounts.is_free(owner):
+        return
+    if why := accounts.refusal(owner):
+        raise HTTPException(402, why)
+    if len(_free_runs) >= FREE_RUNS:
+        raise HTTPException(503, "the server is busy with other free accounts' runs; try again in a minute")
+
+
 def _writable(root: Path) -> None:
     lock = service.locks.get(root)
     if lock is not None and lock.locked():
@@ -224,6 +276,7 @@ async def write_file(
     else:
         raise HTTPException(428, 'If-Match: "<sha256>" to replace, If-None-Match: * to create')
     data = await request.body()
+    _storable(root, path.name, len(data), path.stat().st_size if path.is_file() else 0)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.put")
     tmp.write_bytes(data)
@@ -274,6 +327,7 @@ async def run_command(run: Run, root: Path = Depends(library)) -> StreamingRespo
     lock = lock_for(root)
     if lock.locked():
         raise HTTPException(409, "a run is in progress in this library")
+    _may_run(root)
     await lock.acquire()
     return _stream(root, run.argv, run.user_names, lock)
 
@@ -289,12 +343,15 @@ async def import_file(
     """`mdc import` on an uploaded file, kept outside the library while it runs."""
     if "/" in filename or "\\" in filename or filename.startswith(".") or not filename.strip():
         raise HTTPException(400, f"a file name, not a path: {filename!r}")
+    from mdc import accounts
     lock = lock_for(root)
     if lock.locked():
         raise HTTPException(409, "a run is in progress in this library")
+    _may_run(root)
     await lock.acquire()
     try:
         data = await request.body()
+        _storable(root, filename, len(data), types=accounts.IMPORT_TYPES)
         staging = Path(tempfile.mkdtemp(prefix="mdc-import-"))
         upload = staging / filename
         upload.write_bytes(data)
@@ -316,6 +373,10 @@ def _stream(root: Path, argv: list[str], user_names: list[str], lock: asyncio.Lo
     task = asyncio.create_task(_execute(root, argv, user_names, events, lock, cleanup))
     _runs.add(task)
     task.add_done_callback(_runs.discard)
+    from mdc import accounts
+    if accounts.is_free(_owner(root)):
+        _free_runs.add(task)
+        task.add_done_callback(_free_runs.discard)
 
     async def stream():
         while (event := await events.get()) is not None:
@@ -332,7 +393,9 @@ async def _execute(root: Path, argv: list[str], user_names: list[str], events: a
         before = await asyncio.to_thread(tree_hashes, root)
         env = {k: v for k, v in os.environ.items() if k != "MDC_LIBRARY"}
         # MDC_RUN_LOCAL: this mdc is the server's, never a client of it.
-        env.update(MDC_USER_NAMES=",".join(user_names), PYTHONUNBUFFERED="1", MDC_RUN_LOCAL="1")
+        # MDC_ACCOUNT: whose allowance the run's model calls spend (accounts.py).
+        env.update(MDC_USER_NAMES=",".join(user_names), PYTHONUNBUFFERED="1", MDC_RUN_LOCAL="1",
+                   MDC_ACCOUNT=_owner(root))
         process = await asyncio.create_subprocess_exec(
             sys.executable, "-m", "mdc", "--lib", str(root), *argv,
             cwd=root, env=env,
@@ -369,59 +432,119 @@ def run_serve(host: str, port: int) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Sign-in for mdc's OAuth server (oauth.py): claude.ai sends the person here
+# Sign-in for mdc's OAuth server (oauth.py): an address, then the code mailed to it
 # ---------------------------------------------------------------------------
 
-def _login_page(request_id: str, client_name: str, redirect_host: str, error: str = "") -> HTMLResponse:
+TURNSTILE_VERIFY = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+
+
+def _client_ip(request: Request) -> str:
+    """The person's address: Caddy's X-Forwarded-For, since only Caddy reaches the port."""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    return forwarded.rsplit(",", 1)[-1].strip() or (request.client.host if request.client else "")
+
+
+def _human(form: dict, ip: str) -> bool:
+    """Cloudflare Turnstile's verdict on the page's challenge; no check without its keys."""
+    secret = os.environ.get("MDC_TURNSTILE_SECRET")
+    if not secret:
+        return True
+    from urllib.parse import urlencode
+    from urllib.request import urlopen
+    body = urlencode({"secret": secret, "response": form.get("cf-turnstile-response", ""),
+                      "remoteip": ip}).encode()
+    try:
+        with urlopen(TURNSTILE_VERIFY, data=body, timeout=10) as response:
+            return bool(json.loads(response.read()).get("success"))
+    except (OSError, ValueError):
+        return False
+
+
+def _login_page(request_id: str, sign_in, error: str = "") -> HTMLResponse:
     from html import escape
+    from urllib.parse import urlparse
+    from mdc.oauth import WEB_CLIENT_ID
+    client_name = escape(sign_in.client.client_name or "An application")
+    redirect_host = escape(urlparse(str(sign_in.params.redirect_uri)).hostname or "")
+    asks = ("to keep your libraries: to read and change them, and to run mdc's commands on them"
+            if sign_in.client.client_id == WEB_CLIENT_ID else "to read your mdc libraries")
     note = f'<p class="error">{escape(error)}</p>' if error else ""
+    site_key = os.environ.get("MDC_TURNSTILE_SITE_KEY", "")
+    request_field = f'<input type="hidden" name="request" value="{escape(request_id)}">'
+    deny = '<button name="action" value="deny" formnovalidate class="quiet">Deny</button>'
+    if sign_in.code_sha:
+        form = f"""<p>A code is on its way to <b>{escape(sign_in.email)}</b>. It works for ten minutes.</p>
+<form method="post" action="/oauth/login">{request_field}
+<label>Code<br><input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{{6}}" maxlength="6" required autofocus></label>
+<button name="action" value="verify">Sign in</button><button name="action" value="restart" formnovalidate class="quiet">Use another address</button>{deny}
+</form>"""
+        script = ""
+    else:
+        challenge = f'<div class="cf-turnstile" data-sitekey="{escape(site_key)}"></div>' if site_key else ""
+        form = f"""<form method="post" action="/oauth/login">{request_field}
+<label>Your email address<br><input name="email" type="email" autocomplete="email" required autofocus></label>
+{challenge}
+<button name="action" value="send">Send me a code</button>{deny}
+</form>
+<p class="hint">No account yet? Signing in makes one. A free account keeps up to a few libraries,
+with a small monthly allowance for mdc's model commands.</p>"""
+        script = ('<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>'
+                  if site_key else "")
+    # No form-action: the answer to a sign-in is a redirect to the client.
+    csp = ("default-src 'none'; style-src 'unsafe-inline'; script-src https://challenges.cloudflare.com; "
+           "frame-src https://challenges.cloudflare.com; connect-src https://challenges.cloudflare.com; "
+           "frame-ancestors 'none'; base-uri 'none'")
     return HTMLResponse(f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in to mdc</title>
+<title>Sign in to mdc</title>{script}
 <style>body{{font:16px/1.5 system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem}}
 input{{width:100%;font:inherit;padding:.4rem;box-sizing:border-box}}button{{font:inherit;margin:.8rem .6rem 0 0}}
-.error{{color:#b00}}</style></head><body>
+.error{{color:#b00}}.hint{{color:#555;font-size:.9rem}}.cf-turnstile{{margin-top:.8rem}}</style></head><body>
 <h1>Sign in to mdc</h1>
-<p><b>{escape(client_name)}</b> ({escape(redirect_host)}) asks to use your mdc libraries:
-to read them and to edit their documents.</p>
-{note}
-<form method="post" action="/oauth/login">
-<input type="hidden" name="request" value="{escape(request_id)}">
-<label>Your mdc token<br><input name="token" type="password" autocomplete="off" required autofocus></label>
-<button name="action" value="allow">Allow</button><button name="action" value="deny" formnovalidate>Deny</button>
-</form></body></html>""", headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY"})
+<p><b>{client_name}</b> ({redirect_host}) asks {asks}.</p>
+{note}{form}
+</body></html>""", headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY",
+                            "Referrer-Policy": "no-referrer", "Content-Security-Policy": csp})
 
 
 @app.get("/oauth/login")
 def oauth_login(request: str) -> Response:
-    from urllib.parse import urlparse
     from mdc.oauth import provider
     sign_in = provider.pending(request)
     if sign_in is None:
         return PlainTextResponse("This sign-in has expired; start again from the app.", status_code=400)
-    return _login_page(request, sign_in.client.client_name or "An application",
-                       urlparse(str(sign_in.params.redirect_uri)).hostname or "")
+    return _login_page(request, sign_in)
 
 
 @app.post("/oauth/login")
 async def oauth_login_submit(request: Request) -> Response:
-    from urllib.parse import parse_qs, urlparse
+    from urllib.parse import parse_qs
     from mdc.oauth import provider
     form = {k: v[0] for k, v in parse_qs((await request.body()).decode("utf-8", "replace")).items()}
-    request_id = form.get("request", "")
-    if form.get("action") == "deny":
+    request_id, action = form.get("request", ""), form.get("action")
+    if action == "deny":
         target = provider.refuse(request_id)
         return RedirectResponse(target, status_code=302) if target else PlainTextResponse("Expired.", status_code=400)
     sign_in = provider.pending(request_id)
     if sign_in is None:
         return PlainTextResponse("This sign-in has expired or had too many tries; start again.", status_code=400)
-    target = provider.complete(request_id, form.get("token", ""))
-    if target is None:
-        return _login_page(request_id, sign_in.client.client_name or "An application",
-                           urlparse(str(sign_in.params.redirect_uri)).hostname or "",
-                           error="That is not an mdc token.")
-    return RedirectResponse(target, status_code=302)
-
+    if action == "restart":
+        provider.restart(request_id)
+        return _login_page(request_id, sign_in)
+    if action == "send":
+        ip = _client_ip(request)
+        if not await asyncio.to_thread(_human, form, ip):
+            return _login_page(request_id, sign_in, error="The check that you are a person did not pass; try again.")
+        why = await asyncio.to_thread(provider.send_code, request_id, form.get("email", ""), ip)
+        return _login_page(request_id, sign_in, error=why or "")
+    if action == "verify":
+        target = provider.verify_code(request_id, form.get("code", ""))
+        if target is not None:
+            return RedirectResponse(target, status_code=302)
+        if provider.pending(request_id) is None:
+            return PlainTextResponse("Too many wrong codes; start again from the app.", status_code=400)
+        return _login_page(request_id, sign_in, error="That is not the code we sent.")
+    return PlainTextResponse("Unknown action.", status_code=400)
 
 # ---------------------------------------------------------------------------
 # The web client (mdc/web/): static, signed in through the OAuth server above

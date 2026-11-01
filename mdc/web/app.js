@@ -194,6 +194,20 @@ function closePanel(id) {
   if (id === "file") open = null;
 }
 
+// A free account's month so far: what its model commands have spent, and
+// what it keeps. The operator's own account has no limits to show.
+async function loadUsage() {
+  const response = await api("/me");
+  if (!response.ok) return;
+  const me = await response.json();
+  const usage = $("usage");
+  usage.hidden = me.plan !== "free";
+  if (usage.hidden) return;
+  const mb = (bytes) => (bytes / 1024 / 1024).toFixed(1);
+  usage.textContent = `${me.user}: $${me.spent_usd.toFixed(2)} of this month’s $${me.allowance_usd.toFixed(2)} ` +
+    `for model commands; ${mb(me.stored_bytes)} of ${mb(me.storage_bytes)} MB stored.`;
+}
+
 async function loadLibraries() {
   const response = await api("/libraries");
   const ids = (await response.json()).libraries;
@@ -475,6 +489,7 @@ async function stream(title, path, options) {
   } finally {
     running = false;
     await loadFiles().catch(() => {});
+    await loadUsage().catch(() => {});
     if (open && files[open.path] !== open.sha) {
       if (files[open.path] === undefined) closePanel("file");
       else await openFile(open.path);
@@ -577,6 +592,7 @@ async function start() {
     show(false);
     return;
   }
+  await loadUsage();
   if (await loadLibraries()) {
     show(true);
     await loadFiles();

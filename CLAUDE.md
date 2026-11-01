@@ -39,6 +39,7 @@ The tool has two main pipelines: **CLI → Transcript parsing → Format validat
 - **`assets.py`** — Collects local file references from markdown links (a bare name resolves anywhere in the run's library, beside the transcript first; nothing outside the library), builds API-specific inputs with caching directives
 - **`config.py`** — Loads `config.toml` from `MDC_CONFIG_DIR` (default `~/.config/mdc`); env fallbacks for keys and service URLs; resolves the run's library (`MDC_LIBRARY`) and user names (`MDC_USER_NAMES`); builds the system prompt from a base plus the library's `SYSTEM_PROMPT.md`
 - **`library.py`** — Library indexing: scans a directory of markdown documents, generates AI summaries and index terms, writes `MANIFEST.md` and `INDEX.md`, reads `KEYS.md` for term canonicalization
+- **`accounts.py`**, **`oauth.py`**, **`mail.py`** — the server's identity: open sign-up by emailed code, mdc as the OAuth authorization server for every client (claude.ai, the web client, later The Floor), and what a free account may spend and store; a run's model calls charge `MDC_ACCOUNT` (SERVER.md, Phase 6)
 - **`anthropic_client.py`** — the streaming model client; mdc uses Anthropic alone (OpenAI and Ollama retired 2026-10-26; `## GPT` headings are still read as LLM voice)
 
 ### Data flow for `mdc reply`

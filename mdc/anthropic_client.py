@@ -6,6 +6,7 @@ import os
 
 import anthropic
 
+from mdc import accounts
 from mdc.asset_cache import AssetCache
 from mdc.assets import LocalAssetReference
 
@@ -145,6 +146,8 @@ class AnthropicChatClient:
         for _ in range(10):
             chunks: list[str] = []
             final_message = None
+            # On the server, a run spends from its user's allowance (accounts.py).
+            accounts.check_spend()
             try:
                 with streamer.stream(**stream_kwargs) as stream:  # type: ignore[arg-type]
                     for text in stream.text_stream:
@@ -160,6 +163,7 @@ class AnthropicChatClient:
             all_text_chunks.extend(chunks)
 
             usage = final_message.usage if final_message is not None else None
+            accounts.charge_anthropic(self.model, usage)
             total_input += usage.input_tokens if usage else 0
             total_output += usage.output_tokens if usage else 0
             total_cache_create += getattr(usage, "cache_creation_input_tokens", 0) or 0 if usage else 0
