@@ -137,33 +137,52 @@ Exactly.
 """
 
 
-def test_the_floor_becomes_a_chat_by_its_speakers(library):
+@pytest.fixture
+def titles(monkeypatch):
+    """The index model, scripted: each call takes the next title, and keeps what it was sent."""
+    import mdc.cmd_import as imp
+    script: list[str] = []
+    sent: list[list[dict]] = []
+
+    def ask(messages):
+        sent.append([dict(m) for m in messages])
+        return script.pop(0)
+    monkeypatch.setattr(imp, "_title_asker", lambda: ask)
+    return script, sent
+
+
+def test_the_floor_becomes_a_chat_by_its_speakers(library, titles):
+    script, sent = titles
+    script.append("Bach Reads Kant")
     src = library.parent / "anything.txt"
     src.write_text(FLOOR)
     assert main(["import", str(src)]) == 0
-    chat = library / "2026" / "2026-10-30-reading-group.chat.md"
+    chat = library / "2026" / "2026-10-30-bach-reads-kant.chat.md"
     text = chat.read_text()
-    assert text.startswith("\n# Reading Group\n2026-10-30\n\n## Rodrigo (A)\n\nAfternoon.\nI was there.\n")
+    assert text.startswith("\n# Bach Reads Kant\n2026-10-30\n\n## Rodrigo (A)\n\nAfternoon.\nI was there.\n")
     assert "## Someone\n\nWho said that?" in text
     assert "## Golf\n\n> A paragraph of Bach.\n\n> And another." in text
     assert "## Claude\n\nBach reads Kant through computation." in text
     assert check_file(chat) == []
+    assert '"Reading Group"' in sent[0][0]["content"] and "Who said that?" in sent[0][0]["content"]
 
 
-def test_an_older_floor_text_is_named_by_its_download(library):
+def test_an_older_floor_text_is_dated_by_its_download(library, titles):
+    titles[0].append("Bach Reads Kant")
     src = library.parent / "The Floor — Reading Group — 2026-10-30 1609.txt"
     src.write_text(FLOOR.split("\n", 1)[1].replace("2026-10-30 ·", "Fri, Oct 30 ·"))
     assert main(["import", str(src)]) == 0
-    assert (library / "2026" / "2026-10-30-reading-group.chat.md").exists()
+    assert (library / "2026" / "2026-10-30-bach-reads-kant.chat.md").exists()
 
 
-def test_a_zip_imports_each_text_inside(library):
+def test_a_zip_imports_each_text_inside(library, titles):
+    titles[0].append("Bach Reads Kant")
     archive = library.parent / "transcript.zip"
     with zipfile.ZipFile(archive, "w") as z:
         z.writestr("transcript/segment.txt", FLOOR)
         z.writestr("__MACOSX/transcript/._segment.txt", "resource fork")
     assert main(["import", str(archive)]) == 0
-    assert [p.name for p in (library / "2026").iterdir()] == ["2026-10-30-reading-group.chat.md"]
+    assert [p.name for p in (library / "2026").iterdir()] == ["2026-10-30-bach-reads-kant.chat.md"]
 
 
 def test_a_finder_zip_name_is_read_as_utf8():
@@ -174,15 +193,59 @@ def test_a_finder_zip_name_is_read_as_utf8():
     assert _member_name(zipfile.ZipInfo("plain.txt")) == "plain.txt"
 
 
-def test_a_title_the_library_has_fails(library, capsys):
+def test_a_title_taken_is_asked_for_again(library, titles):
+    script, sent = titles
+    script += ["Bach Reads Kant", "# Bach Reads Kant", "“Kant After Bach.”"]
     src = library.parent / "anything.txt"
     src.write_text(FLOOR)
     assert main(["import", str(src)]) == 0
-    src.write_text(FLOOR.replace("2026-10-30 ·", "2026-10-31 ·"))
-    capsys.readouterr()
-    assert main(["import", str(src)]) == 1
-    assert "the title \"Reading Group\" is 2026-10-30-reading-group.chat.md's" in capsys.readouterr().out
-    assert not (library / "2026" / "2026-10-31-reading-group.chat.md").exists()
-    capsys.readouterr()
+    src.write_text(FLOOR.replace("2026-10-30 ·", "2026-10-31 ·").replace("Exactly.", "Not quite."))
+    assert main(["import", str(src)]) == 0
+    assert (library / "2026" / "2026-10-31-kant-after-bach.chat.md").exists()
+    followup = sent[-1]
+    assert [m["role"] for m in followup] == ["user", "assistant", "user"]
+    assert '"Bach Reads Kant" is already the title' in followup[-1]["content"]
+
+
+def test_a_conversation_imported_before_keeps_its_title(library, titles, capsys):
+    script, sent = titles
+    script.append("Bach Reads Kant")
+    src = library.parent / "anything.txt"
     src.write_text(FLOOR)
-    assert main(["import", str(src), "--replace"]) == 0                  # its own file, replaced
+    assert main(["import", str(src)]) == 0
+    capsys.readouterr()
+    assert main(["import", str(src)]) == 0
+    assert "skipped  2026-10-30-bach-reads-kant.chat.md" in capsys.readouterr().out
+    assert len(sent) == 1                                                 # not asked again
+    assert main(["import", str(src), "--replace"]) == 0
+    assert [p.name for p in (library / "2026").iterdir()] == ["2026-10-30-bach-reads-kant.chat.md"]
+
+
+def test_no_free_title_fails(library, titles, capsys):
+    script, _ = titles
+    (library / "2026").mkdir()
+    (library / "2026" / "2026-01-02-bach-reads-kant.document.md").write_text("\n# Bach Reads Kant\n2026-01-02\n\nProse.\n")
+    script += ["Bach Reads Kant"] * 3
+    src = library.parent / "anything.txt"
+    src.write_text(FLOOR)
+    assert main(["import", str(src)]) == 1
+    assert "in 3 tries" in capsys.readouterr().out
+    assert not list((library / "2026").glob("*.chat.md"))
+
+
+def test_a_title_the_library_has_fails(library, capsys):
+    (library / "2026").mkdir()
+    (library / "2026" / "2026-01-02-notes-on-quine.document.md").write_text("\n# Notes on Quine\n2026-01-02\n\nOne.\n")
+    src = library.parent / "notes-on-quine.md"
+    src.write_text("# Notes on Quine\n\nTwo dogmas, one paragraph.\n")
+    assert main(["import", str(src)]) == 1
+    assert "the title \"Notes on Quine\" is 2026-01-02-notes-on-quine.document.md's" in capsys.readouterr().out
+
+
+def test_without_a_key_a_floor_text_fails_alone(library, monkeypatch, capsys):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    (library.parent / "config.toml").write_text("")                      # no key, not even the example's
+    src = library.parent / "anything.txt"
+    src.write_text(FLOOR)
+    assert main(["import", str(src)]) == 1
+    assert "needs an Anthropic key" in capsys.readouterr().out

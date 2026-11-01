@@ -9,10 +9,13 @@
   `# you asked` / `# claude response` blocks): a `.chat.md`.
 - The Floor's shared text (a segment of a spoken conversation: `The Floor —
   <channel>`, a dated line of hours, then `<name> · <time>` blocks): a
-  `.chat.md`, a section per speaker as named, titled by the channel. A file
-  from before the text named them takes both from its download name, `The
-  Floor — <channel> — <yyyy-mm-dd hhmm>`. A paste stays its author's, quoted;
-  Claude's is Claude's turn.
+  `.chat.md`, a section per speaker as named. A channel's sittings share its
+  name, so the title is the index model's, from what was said, and asked
+  for again in the same exchange while the one it gives is taken; one
+  imported before is known by its turns, and keeps the title it was given.
+  A file from before the text named its channel and date takes both from
+  its download name, `The Floor — <channel> — <yyyy-mm-dd hhmm>`. A paste
+  stays its author's, quoted; Claude's is Claude's turn.
 - A zip that is not claude.ai's: each `.txt` and `.md` inside, as on its own.
 - Anything else, or an export that does not parse: a `.document.md`, its
   text as it is.
@@ -30,7 +33,7 @@ import json
 import re
 import tempfile
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace as with_fields
 from pathlib import Path, PurePath
 
 from mdc.config import ASSISTANT_NAME, PROMPT_HEADING, load_config
@@ -45,6 +48,7 @@ class Imported:
     date: str
     role: str  # "chat" or "document"
     body: str  # everything after the title and date
+    untitled: bool = False  # the title is a hint, and one is to be given
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +189,7 @@ def from_the_floor(text: str, name: PurePath, date: str) -> Imported | None:
             turns.append(("Someone" if who == "null" else who, rest))
     if not turns:
         return None
-    return Imported(channel, date, "chat", _turns_text(turns))
+    return Imported(channel, date, "chat", _turns_text(turns), untitled=True)
 
 
 def _quoted(text: str) -> str:
@@ -270,6 +274,82 @@ def _from_conversations(conversations: list[dict], only: str | None) -> list[Imp
 
 
 # ---------------------------------------------------------------------------
+# Titles
+# ---------------------------------------------------------------------------
+
+TITLE_TRIES = 3
+# About 35K tokens: the first hour and more of talk, enough to say what it is about.
+_TITLE_SAMPLE_CHARS = 120_000
+_TITLE_SYSTEM = "You title conversations for a personal library of writing and conversations."
+
+
+def _title_prompt(item: Imported) -> str:
+    return (
+        "Below is the transcript of a spoken conversation, made by speech recognition, so words "
+        f"may be misheard and names misspelled. It took place in a channel called \"{item.title}\", "
+        "which every conversation there shares.\n\n"
+        "Give it a title: a few words, at most eight, naming what it is actually about, specific "
+        "enough to tell it apart from the channel's other conversations. Title case; no quotation "
+        "marks, no date, and not the channel's name unless that is its subject. Reply with the "
+        "title alone.\n\n"
+        f"<transcript>\n{item.body[:_TITLE_SAMPLE_CHARS]}\n</transcript>"
+    )
+
+
+def _clean_title(reply: str) -> str:
+    line = next((ln.strip() for ln in reply.splitlines() if ln.strip()), "")
+    line = re.sub(r"^(?:#+\s*|title:\s*)", "", line, flags=re.IGNORECASE)
+    return line.strip("*_\"'“”‘’ ").rstrip(".").strip()
+
+
+def name_conversation(item: Imported, free, ask) -> str | None:
+    """A title for a conversation that came without one, or None.
+
+    `ask(messages)` is the model's reply; a title `free` refuses is answered,
+    in the same exchange, with the fact that it is taken, up to TITLE_TRIES.
+    """
+    messages: list[dict[str, object]] = [{"role": "user", "content": _title_prompt(item)}]
+    for _ in range(TITLE_TRIES):
+        reply = ask(messages)
+        title = _clean_title(reply)
+        if title and free(title):
+            return title
+        messages += [
+            {"role": "assistant", "content": reply.strip() or "(no title)"},
+            {"role": "user", "content": (
+                f"\"{title}\" is already the title of another conversation in the library. "
+                "Give a different one, telling this conversation apart from that."
+                if title else "Reply with the title alone.")},
+        ]
+    return None
+
+
+def _title_asker():
+    """The index model, asked for a title."""
+    from mdc.anthropic_client import AnthropicChatClient
+    config = load_config()
+    if not config.index_model.startswith("claude-"):
+        raise ValueError(f"index_model must be an Anthropic model (claude-*), not '{config.index_model}'")
+    if not config.anthropic_api_key:
+        raise ValueError("titling it needs an Anthropic key (ANTHROPIC_API_KEY, or anthropic_api_key in config.toml)")
+    client = AnthropicChatClient(model=config.index_model, api_key=config.anthropic_api_key)
+    return lambda messages: client.generate_reply(_TITLE_SYSTEM, messages).text
+
+
+def _imported_before(item: Imported, here: Path) -> Path | None:
+    """A file of its date with the same turns: this conversation, imported
+    before under the title it was given then."""
+    rest = render(item).split("\n", 3)[3:]
+    for path in sorted(here.glob(f"{item.date}-*.{item.role}.md")):
+        try:
+            if path.read_text(encoding="utf-8").split("\n", 3)[3:] == rest:
+                return path
+        except (OSError, UnicodeDecodeError):
+            continue
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Writing
 # ---------------------------------------------------------------------------
 
@@ -296,6 +376,12 @@ def run_import(paths: list[Path], only: str | None = None, replace: bool = False
     # By slug, as `## Related` resolves a title.
     titled = {slugify(title): rel for rel, title in library_titles(library).items()} if in_library else {}
 
+    ask = None
+
+    def free(date: str, title: str) -> bool:
+        slug = slugify(title)
+        return bool(slug) and slug not in titled and f"{date}-{slug}" not in taken
+
     written = skipped = failed = 0
     for source in paths:
         try:
@@ -305,8 +391,27 @@ def run_import(paths: list[Path], only: str | None = None, replace: bool = False
             failed += 1
             continue
         for item in items:
-            stem = f"{item.date}-{slugify(item.title)}"
             here = library / item.date[:4] if in_library else Path.cwd()
+            if item.untitled:
+                before = _imported_before(item, here)
+                if before is not None:
+                    item = with_fields(item, title=before.read_text(encoding="utf-8").split("\n")[1][2:].strip(),
+                                       untitled=False)
+                else:
+                    import anthropic
+                    try:
+                        ask = ask or _title_asker()
+                        title = name_conversation(item, lambda t, d=item.date: free(d, t), ask)
+                    except (anthropic.AnthropicError, ValueError) as exc:
+                        print(f"failed   {source.name}: no title: {exc}")
+                        failed += 1
+                        continue
+                    if title is None:
+                        print(f"failed   {source.name}: no title the library does not have, in {TITLE_TRIES} tries")
+                        failed += 1
+                        continue
+                    item = with_fields(item, title=title, untitled=False)
+            stem = f"{item.date}-{slugify(item.title)}"
             target = here / f"{stem}.{item.role}.md"
             if stem in taken and not (replace and target.exists()):
                 print(f"skipped  {target.name} (exists{'' if target.exists() else ' under another role'})")
