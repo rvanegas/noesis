@@ -390,8 +390,8 @@ def fix_section_spacing(text: str) -> tuple[str, list[str]]:
 
 # ── checker ───────────────────────────────────────────────────────────────────
 
-def check_global_issues(path: Path) -> list[str]:
-    """Check encoding and bare-label issues that apply to any document type."""
+def check_encoding(path: Path) -> list[str]:
+    """Check the encoding issues mdc fix repairs, in a file of any role."""
     errors: list[str] = []
 
     try:
@@ -402,22 +402,24 @@ def check_global_issues(path: Path) -> list[str]:
         path.write_text(raw, encoding="utf-8")
         print(f"Warning: {path.name} was not UTF-8; converted in place (backup: {path.name}.bak).", file=sys.stderr)
 
-    lines = raw.split("\n")
-
-    def err(lineno: int, msg: str) -> None:
-        errors.append(f"line {lineno}: {msg}")
-
-    for i, line in enumerate(lines):
+    for i, line in enumerate(raw.split("\n")):
         if "\ufffc" in line:
-            err(i + 1, "contains U+FFFC OBJECT REPLACEMENT CHARACTER — run 'mdc fix' to remove it")
-
-    for i, line in enumerate(lines):
+            errors.append(f"line {i + 1}: contains U+FFFC OBJECT REPLACEMENT CHARACTER — run 'mdc fix' to remove it")
         if _RTL_SPAN_RE.search(line):
-            err(i + 1, 'contains [char]{dir="rtl"} encoding — run \'mdc fix\' to replace with plain ASCII')
+            errors.append(f"line {i + 1}: contains [char]{{dir=\"rtl\"}} encoding — run 'mdc fix' to replace with plain ASCII")
+    return errors
 
-    for lineno, msg in _scan_bare_labels(lines):
-        err(lineno, msg)
 
+def has_bare_labels(text: str) -> bool:
+    """Whether text has chat speaker labels not yet made headings ('Prompt:')."""
+    return bool(_scan_bare_labels(text.split("\n")))
+
+
+def check_global_issues(path: Path) -> list[str]:
+    """Check encoding and bare-label issues that apply to any document type."""
+    errors = check_encoding(path)
+    lines = path.read_text(encoding="utf-8").split("\n")
+    errors += [f"line {lineno}: {msg}" for lineno, msg in _scan_bare_labels(lines)]
     return errors
 
 

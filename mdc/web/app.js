@@ -21,12 +21,13 @@ const DATED = /^(\d{4})-\d\d-\d\d-/;
 
 // What a library holds besides the user's own files. The settings are the
 // user's to edit; the rest mdc writes, and the page only shows them. These
-// names copy mdc/library.py's *_FILENAME constants and _UNSORTED_DIRS, and
-// SYSTEM_PROMPT.md in mdc/config.py: change one, change both.
+// names copy mdc/library.py's KEYS_FILENAME, GENERATED_FILENAMES and
+// RECORD_DIRS, and SYSTEM_PROMPT.md in mdc/config.py: change one, change both.
 const SETTINGS = new Set(["KEYS.md", "SYSTEM_PROMPT.md"]);
 const GENERATED = new Map([
   ["MANIFEST.md", "index"], ["INDEX.md", "index"], ["REFERENCES.md", "index"], ["RELATED.md", "index"],
   ["INTRODUCTION.md", "review"], ["AFTERWORD.md", "review"], ["FINAL_ASSESSMENT.md", "review"],
+  ["APPENDIX.md", "review"], ["COMPILED.md", "review"],
 ]);
 const RECORDS = /^(REVISIONS|ASSESSMENTS)\//;
 const WRITTEN = [[/\.analysis\.md$/, "analyze"], [/\.review\.md$/, "review"]];

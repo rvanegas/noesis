@@ -11,7 +11,7 @@ from pathlib import Path
 
 from mdc.config import load_config
 from mdc.remote import REMOTE_COMMANDS
-from mdc.form import check_file, check_global_issues, fix_exported_chat, fix_object_replacement, fix_rtl_spans, fix_section_spacing, fix_title_section, slugify
+from mdc.form import check_encoding, check_file, fix_exported_chat, fix_object_replacement, fix_rtl_spans, fix_section_spacing, fix_title_section, slugify
 from mdc.transcript import TranscriptError, parse_transcript
 from mdc.assets import collect_local_assets
 from mdc.edit_tools import create_document_file
@@ -245,7 +245,7 @@ def main(argv: list[str] | None = None) -> int:
                 if resolved is None:
                     return 1
                 paths.append(resolved)
-            return run_validate(paths, force_transcript=args.transcript)
+            return run_validate(paths)
         if args.command == "fix":
             paths = []
             for p in args.paths:
@@ -517,12 +517,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run mdc format rules on one or more files.",
     )
     validate_parser.add_argument("paths", nargs="+", metavar="file.md")
-    validate_parser.add_argument(
-        "-t", "--transcript",
-        action="store_true",
-        default=False,
-        help="Force transcript validation even for plain documents.",
-    )
 
     # fix
     fix_parser = subparsers.add_parser(
@@ -900,8 +894,41 @@ def _offer_move(path: Path, yes: bool = False) -> Path | None:
     return target
 
 
-def run_validate(paths: list[Path], force_transcript: bool = False) -> int:
-    from mdc.library import is_library_transcript, load_entries, resolve_title
+def _form_of(path: Path) -> str:
+    """Which rules a file answers to, by its name: its role (chat, document,
+    source, argument), "keys", "written" for what mdc writes, else "plain"."""
+    from mdc.library import GENERATED_FILENAMES, KEYS_FILENAME, RECORD_DIRS, role_of
+    if path.name == KEYS_FILENAME:
+        return "keys"
+    if path.name in GENERATED_FILENAMES or RECORD_DIRS.intersection(p.name for p in path.parents):
+        return "written"
+    role = role_of(path.name)
+    if role in ("analysis", "review"):
+        return "written"
+    return role or "plain"
+
+
+def _form_issues(path: Path, form: str) -> list[str]:
+    """What is wrong with a file by the rules of its form."""
+    from mdc.argue import check_argument
+    from mdc.form import has_bare_labels, is_exported_chat
+    from mdc.library import check_keys
+    if form == "chat":
+        return check_file(path)
+    errs = check_encoding(path)
+    text = _read_file(path)
+    if form == "document" and (has_bare_labels(text) or is_exported_chat(text)):
+        errs.append("reads like a chat (speaker labels such as 'Prompt:' or an exported chat's headings): "
+                    "if it is one, its role is .chat.md")
+    elif form == "argument":
+        errs += check_argument(text)
+    elif form == "keys":
+        errs += check_keys(text)
+    return errs
+
+
+def run_validate(paths: list[Path]) -> int:
+    from mdc.library import load_entries, resolve_title
 
     config = load_config()
     lib = config.library_path if config.library_path and config.library_path.is_dir() else None
@@ -913,34 +940,27 @@ def run_validate(paths: list[Path], force_transcript: bool = False) -> int:
         if _require_md(path):
             any_errors = True
             continue
-        content = _read_file(path)
-        is_transcript = is_library_transcript(content, config.user_names, config.llm_names)
-        doc_label = "transcript" if is_transcript else "plain document"
-
-        if is_transcript or force_transcript:
-            errs = check_file(path)
-            if lib and not errs:
-                try:
-                    transcript = parse_transcript(content)
-                    for entry in transcript.related:
-                        rel_path = resolve_title(lib, entry)
-                        if rel_path is None:
-                            errs.append(f"Related title not found in library: {entry!r}")
-                        elif doc_order.get(Path(rel_path).name, -1) >= doc_order.get(path.name, -1):
-                            errs.append(f"Related title does not precede this document: {entry!r}")
-                except TranscriptError:
-                    pass
-        else:
-            errs = check_global_issues(path)
+        form = _form_of(path)
+        errs = _form_issues(path, form)
+        if form == "chat" and lib and not errs:
+            try:
+                transcript = parse_transcript(_read_file(path))
+                for entry in transcript.related:
+                    rel_path = resolve_title(lib, entry)
+                    if rel_path is None:
+                        errs.append(f"Related title not found in library: {entry!r}")
+                    elif doc_order.get(Path(rel_path).name, -1) >= doc_order.get(path.name, -1):
+                        errs.append(f"Related title does not precede this document: {entry!r}")
+            except TranscriptError:
+                pass
 
         if errs:
-            label = doc_label if not force_transcript or is_transcript else f"{doc_label}, validated as transcript"
-            print(f"{path} [{label}]:")
+            print(f"{path} [{form}]:")
             for e in errs:
                 print(f"  error: {e}")
             any_errors = True
         else:
-            print(f"{path}: OK [{doc_label}]")
+            print(f"{path}: OK [{form}]")
     return 1 if any_errors else 0
 
 
@@ -950,13 +970,24 @@ def run_fix(paths: list[Path], yes: bool = False) -> int:
         if _require_md(path):
             any_errors = True
             continue
+        form = _form_of(path)
+        if form == "written":
+            print(f"{path}: written by mdc, never by hand; fix leaves it alone.")
+            any_errors = True
+            continue
         raw = _read_file(path)
-        exported_lines, exported_applied = fix_exported_chat(raw.split("\n"), path)
-        orc_lines, orc_applied = fix_object_replacement(exported_lines)
-        rtl_lines, rtl_applied = fix_rtl_spans(orc_lines)
-        new_lines, title_applied = fix_title_section(rtl_lines)
-        new_text, spacing_applied = fix_section_spacing("\n".join(new_lines))
-        applied = exported_applied + orc_applied + rtl_applied + title_applied + spacing_applied
+        # Only a chat takes a transcript's repairs; every file, the encoding's.
+        lines, applied = raw.split("\n"), []
+        if form == "chat":
+            lines, applied = fix_exported_chat(lines, path)
+        lines, orc_applied = fix_object_replacement(lines)
+        lines, rtl_applied = fix_rtl_spans(lines)
+        applied += orc_applied + rtl_applied
+        new_text = "\n".join(lines)
+        if form == "chat":
+            title_lines, title_applied = fix_title_section(lines)
+            new_text, spacing_applied = fix_section_spacing("\n".join(title_lines))
+            applied += title_applied + spacing_applied
 
         if applied:
             diff = list(difflib.unified_diff(
@@ -985,7 +1016,7 @@ def run_fix(paths: list[Path], yes: bool = False) -> int:
             applied.append("moved into its year directory")
             path = moved_to
 
-        errs = check_file(path)
+        errs = _form_issues(path, form)
 
         if not applied and not errs:
             print(f"{path}: OK")

@@ -147,17 +147,26 @@ In a library, names are unique, so a link names an asset bare (`[Parfit](2026-10
 Run all format rules on one or more files and report violations.
 
 ```bash
-mdc validate conversation.md
-mdc validate -t plain-document.md   # force transcript rules on a plain doc
+mdc validate conversation.chat.md
 mdc validate *.md
 ```
 
 | Flag | Description |
 |------|-------------|
 | `file.md ...` | One or more files to check. |
-| `-t`, `--transcript` | Force transcript validation even for files that look like plain documents. |
 
-If `library_path` is set, also checks that any `## Related` titles resolve to actual library files. Exits 0 only if all files pass.
+The rules are the file's role's, from its name:
+
+| File | Checked for |
+|------|-------------|
+| `.chat.md` | The transcript format (all twelve rules); in a library, `## Related` titles that resolve and precede it |
+| `.document.md` | Encoding (`U+FFFC`, `[char]{dir="rtl"}`); and whether it reads like a chat, which would make its role `.chat.md` |
+| `.source.md`, `SYSTEM_PROMPT.md`, other `.md` | Encoding |
+| `.argument.md` | Encoding; one `## Argument` section, propositions numbered 1..N in plain integers |
+| `KEYS.md` | Encoding; known sections (Plural, Alias, Exclude, Group), bullets only under a term in Alias and Group |
+| `.analysis.md`, `.review.md`, generated files, `REVISIONS/`, `ASSESSMENTS/` | Encoding |
+
+Exits 0 only if all files pass.
 
 ---
 
@@ -174,7 +183,7 @@ mdc fix *.md
 |----------|-------------|
 | `file.md ...` | One or more files to fix. |
 
-Fixable violations include: `U+FFFC` (object replacement character), `[char]{dir="rtl"}` pandoc RTL spans, missing blank lines around the title section, and `## ChatGPT` headers renamed to `## GPT`.
+Every file's encoding is repaired: `U+FFFC` (object replacement character) and `[char]{dir="rtl"}` pandoc RTL spans. Only a `.chat.md` takes a transcript's repairs: exported chats converted, missing blank lines around the title section and sections, `## ChatGPT` headers renamed to `## GPT`. A dated file elsewhere is moved into its year directory. What mdc writes (`.analysis.md`, `.review.md`, generated files, records) is left alone.
 
 ---
 

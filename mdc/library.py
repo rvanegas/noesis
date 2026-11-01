@@ -24,8 +24,9 @@ def _wrap_line(text: str, *, initial_indent: str, subsequent_indent: str) -> str
     )
 
 
-# The library's own files. mdc/web/app.js copies these names (SETTINGS,
-# GENERATED) to tell the user's files from mdc's: change one, change both.
+# The library's own files. mdc/web/app.js copies the settings and
+# GENERATED_FILENAMES to tell the user's files from mdc's: change one, change
+# both.
 MANIFEST_FILENAME = "MANIFEST.md"
 INDEX_FILENAME = "INDEX.md"
 KEYS_FILENAME = "KEYS.md"
@@ -38,6 +39,12 @@ INTRODUCTION_FILENAME = "INTRODUCTION.md"
 APPENDIX_FILENAME = "APPENDIX.md"
 COMPILED_FILENAME = "COMPILED.md"
 REVIEWS_FILENAME = "REVIEWS.md"
+# Written by index and review, never by hand.
+GENERATED_FILENAMES = frozenset({
+    MANIFEST_FILENAME, INDEX_FILENAME, REFERENCES_FILENAME, RELATED_FILENAME,
+    INTRODUCTION_FILENAME, AFTERWORD_FILENAME, FINAL_ASSESSMENT_FILENAME,
+    APPENDIX_FILENAME, COMPILED_FILENAME,
+})
 from mdc.config import library_state_dir
 
 
@@ -270,6 +277,37 @@ def parse_keys_md(library_path: Path) -> tuple[dict[str, str], set[str], set[str
         elif section == "exclude":
             exclusions.add(stripped)
     return alias_map, canonicals, exclusions
+
+
+_KEYS_SECTIONS = ("plural", "alias", "exclude", "group")
+
+
+def check_keys(text: str) -> list[str]:
+    """What in KEYS.md parse_keys_md and the Group reader would misread."""
+    errors: list[str] = []
+    section = None
+    parent = ""
+    for i, line in enumerate(text.splitlines(), 1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("# "):
+            continue
+        if stripped.startswith("## "):
+            section = stripped[3:].strip().lower()
+            parent = ""
+            if section not in _KEYS_SECTIONS:
+                errors.append(f"line {i}: unknown section {stripped!r} (expected Plural, Alias, Exclude or Group)")
+            continue
+        if section is None:
+            errors.append(f"line {i}: {stripped!r} is outside any section")
+        elif section in ("alias", "group"):
+            if stripped.startswith("- "):
+                if not parent:
+                    errors.append(f"line {i}: {stripped!r} has no term above it to belong to")
+            else:
+                parent = stripped
+        elif section in ("plural", "exclude") and stripped.startswith("- "):
+            errors.append(f"line {i}: {stripped!r}: {section.title()} takes bare terms, not bullets")
+    return errors
 
 
 def write_index(library_path: Path, entries: list[DocEntry]) -> list[str]:
@@ -931,9 +969,10 @@ LIBRARY_TOOLS = [
 # ---------------------------------------------------------------------------
 
 _YEAR_PREFIX_RE = re.compile(r"^(\d{4})-\d{2}-\d{2}-")
-# Kept apart by what they are, not by date: backups, assessments, state.
-# mdc/web/app.js copies the first two (RECORDS): change one, change both.
-_UNSORTED_DIRS = frozenset({"REVISIONS", "ASSESSMENTS", ".mdc"})
+# mdc's records, kept apart by what they are, not by date: backups and
+# assessments. mdc/web/app.js copies them (RECORDS): change one, change both.
+RECORD_DIRS = frozenset({"REVISIONS", "ASSESSMENTS"})
+_UNSORTED_DIRS = RECORD_DIRS | {".mdc"}
 
 
 def misplaced(library_path: Path, path: Path) -> Path | None:

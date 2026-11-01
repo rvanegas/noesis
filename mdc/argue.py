@@ -199,6 +199,21 @@ def _check_full_sequence(nums: set[int]) -> str | None:
     return None
 
 
+def check_argument(text: str) -> list[str]:
+    """What is wrong with an .argument.md: one ## Argument, numbered 1..N."""
+    sections = [line.strip() for line in text.splitlines() if line.strip().startswith("## ")]
+    if sections != ["## Argument"]:
+        return [f"expected exactly one section, '## Argument'; found {sections or 'none'}"]
+    numbers, decorated = _prop_numbers_in_sections(text)
+    errors = []
+    if decorated:
+        errors.append(f"invalid proposition symbol(s) {decorated}: use plain integers only")
+    gap = _check_full_sequence(numbers)
+    if gap:
+        errors.append(gap)
+    return errors
+
+
 def validate_proposition_numbering(old_text: str, new_text: str) -> str | None:
     """Return an error message if the edit violates proposition numbering rules, else None."""
     old_nums, _ = _prop_numbers_in_sections(old_text)
