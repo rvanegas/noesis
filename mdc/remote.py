@@ -17,6 +17,11 @@ The first sync, with no sync.json, takes the server's state as B, so the
 local library wins: it re-seeds the server's copy. An empty local library
 has nothing to seed with, and would only empty the server's: its first sync
 takes nothing as B, so the server's copy comes here.
+
+Deleting from the server is asked first: a file gone from here may be a
+slip, and the server's copy is the canonical one. Declined, or with nobody
+at a terminal to ask, the files stay on the server, and the next sync asks
+again.
 """
 
 from __future__ import annotations
@@ -166,7 +171,20 @@ def _save_state(root: Path, library_id: str, files: dict[str, str], conflicts: d
                                indent=2, sort_keys=True), encoding="utf-8")
 
 
-def sync(client: Client, root: Path, library_id: str, say=print) -> list[str]:
+def confirm_deletions(library_id: str, rels: list[str]) -> bool:
+    """Whether to delete these files, gone from here, from the server's copy."""
+    print(f"Gone from here, so to be deleted from {library_id} on the server:")
+    for rel in rels:
+        print(f"  {rel}")
+    if not sys.stdin.isatty():
+        return False
+    try:
+        return input(f"Delete {len(rels)} from the server? [y/N] ").strip().lower() in ("y", "yes")
+    except EOFError:
+        return False
+
+
+def sync(client: Client, root: Path, library_id: str, say=print, confirm=confirm_deletions) -> list[str]:
     """Bring the local library and the server's copy together; return conflicts."""
     local = local_hashes(root)
     remote = client.list_files()
@@ -183,6 +201,7 @@ def sync(client: Client, root: Path, library_id: str, say=print) -> list[str]:
     agreed: dict[str, str] = {}
     conflicts: dict[str, str | None] = {}
     pushed = pulled = 0
+    deletions: list[str] = []
     for rel in sorted(set(local) | set(remote) | set(base)):
         L, R, B = local.get(rel), remote.get(rel), base.get(rel)
         path = root / rel
@@ -195,10 +214,10 @@ def sync(client: Client, root: Path, library_id: str, say=print) -> list[str]:
             server_copy.unlink(missing_ok=True)
         elif R == B:
             if L is None:
-                client.delete(rel, R)
-            else:
-                client.put(rel, path.read_bytes(), R)
-                agreed[rel] = L
+                deletions.append(rel)
+                continue
+            client.put(rel, path.read_bytes(), R)
+            agreed[rel] = L
             pushed += 1
         elif L == B:
             if R is None:
@@ -215,6 +234,14 @@ def sync(client: Client, root: Path, library_id: str, say=print) -> list[str]:
             conflicts[rel] = R
             if B:
                 agreed[rel] = B
+    if deletions and confirm(library_id, deletions):
+        for rel in deletions:
+            client.delete(rel, remote[rel])
+        pushed += len(deletions)
+    elif deletions:
+        for rel in deletions:
+            agreed[rel] = remote[rel]
+        say(f"Kept {len(deletions)} on the server; the next sync asks again.")
     _save_state(root, library_id, agreed, conflicts)
     if pushed or pulled:
         say(f"Synced {library_id}: {pushed} sent, {pulled} received.")

@@ -72,7 +72,9 @@ def test_first_sync_makes_the_server_follow(setup):
     (remote / "c.md").write_text("server only")
     (local / ".mdc").mkdir()
     (local / ".mdc" / "manifest.json").write_text("{}")
-    assert _quiet(sync, client, local, LIB)[0] == []
+    asked = []
+    assert _quiet(sync, client, local, LIB, print, lambda library_id, rels: asked.append(rels) or True)[0] == []
+    assert asked == [["c.md"]]
     assert client.list_files() == {
         "2025/a.chat.md": hashlib.sha256(b"mine").hexdigest(),
         "b.md": hashlib.sha256(b"mine b").hexdigest(),
@@ -105,9 +107,42 @@ def test_push_and_pull_and_deletions_both_ways(setup):
     assert (remote / "z.md").read_text() == "new here"
     (local / "x.md").unlink()                   # deleted here
     (remote / "z.md").unlink()                  # deleted there
-    _quiet(sync, client, local, LIB)
+    _quiet(sync, client, local, LIB, print, lambda library_id, rels: True)
     assert not (remote / "x.md").exists()
     assert not (local / "z.md").exists()
+
+
+def test_deleting_from_the_server_is_asked_first(setup):
+    client, local, remote, _ = setup
+    (local / "x.md").write_text("one")
+    (local / "y.md").write_text("why")
+    _quiet(sync, client, local, LIB)
+    (local / "x.md").unlink()
+    (local / "y.md").unlink()
+    asked = []
+
+    def decline(library_id, rels):
+        asked.append(rels)
+        return False
+
+    _, out = _quiet(sync, client, local, LIB, print, decline)
+    assert asked == [["x.md", "y.md"]]
+    assert "Kept 2 on the server" in out
+    assert (remote / "x.md").exists() and (remote / "y.md").exists()
+    # Not taken for agreement: the next sync asks again, and a yes deletes.
+    _quiet(sync, client, local, LIB, print, lambda library_id, rels: asked.append(rels) or True)
+    assert asked[-1] == ["x.md", "y.md"]
+    assert not (remote / "x.md").exists() and not (remote / "y.md").exists()
+
+
+def test_with_nobody_to_ask_nothing_is_deleted_from_the_server(setup, monkeypatch):
+    client, local, remote, _ = setup
+    (local / "x.md").write_text("one")
+    _quiet(sync, client, local, LIB)
+    (local / "x.md").unlink()
+    monkeypatch.setattr("sys.stdin", io.StringIO("y\n"))
+    _, out = _quiet(sync, client, local, LIB)
+    assert "x.md" in out and (remote / "x.md").exists()
 
 
 def test_a_conflict_keeps_both_and_stops_runs(setup):
@@ -173,7 +208,7 @@ def test_editor_scratch_files_stay_local(setup):
     (local / "x.chat.md~").write_text("backup")
     (local / "#x.chat.md#").write_text("autosave")
     (remote / "y.chat.md~").write_text("a backup an older client sent")
-    _quiet(sync, client, local, LIB)
+    _quiet(sync, client, local, LIB, print, lambda library_id, rels: True)
     # Never sent; and one already on the server counts as deleted here.
     assert sorted(p.name for p in remote.iterdir()) == ["x.chat.md"]
     assert (local / "x.chat.md~").exists() and (local / "#x.chat.md#").exists()

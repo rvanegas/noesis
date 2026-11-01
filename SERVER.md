@@ -400,7 +400,9 @@ The plan as written before building:
   during the run) is left for the user. The first sync, with no sync.json,
   takes the server's state as B, so the Mac re-seeds the server; into an
   empty local copy it takes nothing as B, so the server's copy comes down
-  (a library begun on the web).
+  (a library begun on the web). Deleting from the server is asked first,
+  listing the files; declined, or with no terminal to ask, they stay there
+  and the next sync asks again.
 - **`reply --watch`** watches the local file and replies remotely.
 - **The editor plugins** make the buffer read-only while `reply` runs and
   writable again when it ends, reverting on success.
