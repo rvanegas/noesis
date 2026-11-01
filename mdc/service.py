@@ -60,6 +60,19 @@ def library_root(user: str, library: str, who: str) -> Path:
     return root
 
 
+def create_library(who: str, name: str) -> str:
+    """A new, empty library of the caller's own; its id."""
+    if who == "*":
+        raise LibraryError(400, "a service has no libraries of its own")
+    if not NAME_RE.match(name):
+        raise LibraryError(400, "a library's name is lowercase letters, digits, - and _")
+    root = data_dir() / "libraries" / who / name
+    if root.exists():
+        raise LibraryError(409, "that library already exists")
+    root.mkdir(parents=True)
+    return f"{who}/{name}"
+
+
 def library_ids(who: str) -> list[str]:
     """The ids of the libraries a caller reaches."""
     base = data_dir() / "libraries"

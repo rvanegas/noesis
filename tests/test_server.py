@@ -83,6 +83,24 @@ def test_each_user_sees_their_own_libraries(client):
     assert client.get(f"{BASE}/files", headers=service).status_code == 200
 
 
+def test_a_user_creates_a_library_of_their_own(client, data):
+    response = client.post("/libraries", headers=ANN, json={"name": "drafts"})
+    assert response.status_code == 201
+    assert response.json() == {"library": "ann/drafts"}
+    assert (data / "libraries/ann/drafts").is_dir()
+    assert client.get("/libraries", headers=ANN).json() == {"libraries": ["ann/drafts", "ann/philosophy"]}
+    assert client.get("/libraries/ann/drafts/files", headers=ANN).json() == {"files": {}}
+
+
+def test_a_new_library_needs_a_fresh_valid_name_and_a_user(client):
+    assert client.post("/libraries", headers=ANN, json={"name": "philosophy"}).status_code == 409
+    for name in ["", "Drafts", "../bob", ".mdc", "-x", "a/b"]:
+        assert client.post("/libraries", headers=ANN, json={"name": name}).status_code == 400
+    service = {"Authorization": "Bearer service-token"}
+    assert client.post("/libraries", headers=service, json={"name": "drafts"}).status_code == 400
+    assert client.post("/libraries", json={"name": "drafts"}).status_code == 401
+
+
 def test_listing_hides_dotfiles(client):
     files = client.get(f"{BASE}/files", headers=ANN).json()["files"]
     assert files == {"2025/2025-04-25-old-roman.chat.md": _sha(CHAT.encode())}

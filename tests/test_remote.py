@@ -80,6 +80,17 @@ def test_first_sync_makes_the_server_follow(setup):
     assert not (remote / ".mdc").exists()
 
 
+def test_first_sync_into_an_empty_copy_takes_the_server_s(setup):
+    client, local, remote, _ = setup
+    (remote / "2026").mkdir()
+    (remote / "2026" / "a.chat.md").write_text("from the web")
+    (local / ".mdc").mkdir()
+    (local / ".mdc" / "manifest.json").write_text("{}")
+    assert _quiet(sync, client, local, LIB)[0] == []
+    assert (local / "2026" / "a.chat.md").read_text() == "from the web"
+    assert client.list_files() == {"2026/a.chat.md": hashlib.sha256(b"from the web").hexdigest()}
+
+
 def test_push_and_pull_and_deletions_both_ways(setup):
     client, local, remote, _ = setup
     (local / "x.md").write_text("one")

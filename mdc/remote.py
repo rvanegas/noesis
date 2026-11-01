@@ -14,7 +14,9 @@ says the local version wins, and the next sync pushes it. A conflict before
 a run stops the run.
 
 The first sync, with no sync.json, takes the server's state as B, so the
-local library wins: it re-seeds the server's copy.
+local library wins: it re-seeds the server's copy. An empty local library
+has nothing to seed with, and would only empty the server's: its first sync
+takes nothing as B, so the server's copy comes here.
 """
 
 from __future__ import annotations
@@ -169,7 +171,10 @@ def sync(client: Client, root: Path, library_id: str, say=print) -> list[str]:
     local = local_hashes(root)
     remote = client.list_files()
     state = _load_state(root, library_id)
-    if state is None:
+    if state is None and not local:
+        say("First sync into an empty copy: the server's copy comes here.")
+        base, open_conflicts = {}, {}
+    elif state is None:
         say("First sync: this copy is canonical; the server's copy follows it.")
         base, open_conflicts = dict(remote), {}
     else:

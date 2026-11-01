@@ -11,6 +11,7 @@
 <header class="bar">
   <h1>mdc</h1>
   <select id="library" aria-label="Library" hidden></select>
+  <button id="new-library" class="quiet" hidden>New library</button>
   <button id="sign-out" class="quiet" hidden>Sign out</button>
 </header>
 
@@ -28,6 +29,12 @@
       <label class="button">Import<input id="import-pick" type="file" hidden></label>
       <button id="index">Index</button>
     </div>
+
+    <form id="create-library" class="panel" hidden>
+      <h2>New library</h2>
+      <label>Name (lowercase letters, digits, - and _)<input id="library-name" required pattern="[a-z0-9][a-z0-9_\-]*" spellcheck="false" autocapitalize="off" autocomplete="off"></label>
+      <div class="actions"><button>Create</button><button type="button" class="quiet" data-close>Cancel</button></div>
+    </form>
 
     <form id="upload" class="panel" hidden>
       <h2>Upload</h2>

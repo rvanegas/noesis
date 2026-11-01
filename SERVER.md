@@ -349,9 +349,9 @@ The plan as written before building:
   → user), required on every route except `/healthz`. A user reaches only
   `libraries/<user>/…`. Naive users could later sign in with Roxana's Cognito
   pool instead (SITE Phase 4 verifies those tokens for dianoia already).
-- **Libraries:** `GET /libraries` → the caller's library ids. Creating one
-  (`POST /libraries/{user}/{library}`) comes with the first client that needs
-  it.
+- **Libraries:** `GET /libraries` → the caller's library ids;
+  `POST /libraries {name}` creates an empty one of the caller's own (201,
+  `{library}`; 409 if it exists, 400 for a bad name or a service token).
 - **Files**, for every kind of client, under `/libraries/{user}/{library}`:
   - `GET …/files` → `{rel_path: sha256}`.
   - `GET …/files/{rel_path}` → content and hash.
@@ -398,7 +398,9 @@ The plan as written before building:
   nothing merged; deleting that copy keeps the local version, which the next
   sync pushes. A conflict before a run stops it; one after (an edit made
   during the run) is left for the user. The first sync, with no sync.json,
-  takes the server's state as B, so the Mac re-seeds the server.
+  takes the server's state as B, so the Mac re-seeds the server; into an
+  empty local copy it takes nothing as B, so the server's copy comes down
+  (a library begun on the web).
 - **`reply --watch`** watches the local file and replies remotely.
 - **The editor plugins** make the buffer read-only while `reply` runs and
   writable again when it ends, reverting on success.
@@ -688,6 +690,9 @@ page changes.
 - **`mdc fix --yes`:** fix asked twice on stdin, which a run on the server
   does not have, so through `/run` it never applied anything. The page's
   Fix previews, and *Apply these fixes* runs it again with `--yes`.
+- **New library**, beside the picker: `POST /libraries`, then the page
+  switches to it. A CLI mirror of it starts as an empty `local_root`, whose
+  first `mdc sync` pulls (Phase 3).
 
 **Verified** with tests (the sign-in end to end, a connector's token refused
 by the API, import, the page's headers, `fix --yes`) and by driving the page

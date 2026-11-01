@@ -8,6 +8,7 @@ own web client (oauth.API_CLIENTS). A user reaches only their own libraries,
 run:
 
 - GET    /libraries                          the caller's library ids
+- POST   /libraries {name}                   a new, empty library of the caller's
 - GET    /libraries/{user}/{library}/files   {rel_path: sha256}
 - GET    …/files/{rel_path}                  the bytes, ETag their sha256
 - PUT    …/files/{rel_path}                  If-None-Match: * creates; If-Match: "<sha>" replaces
@@ -52,7 +53,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse,
 from pydantic import BaseModel
 
 from mdc import service
-from mdc.service import LibraryError, library_ids, library_root, lock_for
+from mdc.service import LibraryError, create_library, library_ids, library_root, lock_for
 
 # Written by bin/deploy into the package before the image is built, so it is
 # baked in with the code it describes. Absent in a checkout, where the answer
@@ -122,6 +123,18 @@ def library(user: str, library: str, who: str = Depends(caller)) -> Path:
 @app.get("/libraries")
 def libraries(who: str = Depends(caller)) -> dict:
     return {"libraries": library_ids(who)}
+
+
+class NewLibrary(BaseModel):
+    name: str
+
+
+@app.post("/libraries", status_code=201)
+def new_library(body: NewLibrary, who: str = Depends(caller)) -> dict:
+    try:
+        return {"library": create_library(who, body.name)}
+    except LibraryError as exc:
+        raise HTTPException(exc.status, str(exc)) from None
 
 
 # ---------------------------------------------------------------------------

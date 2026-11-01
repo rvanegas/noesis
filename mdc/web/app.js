@@ -172,6 +172,7 @@ function show(signedIn) {
   $("signed-in").hidden = !signedIn;
   $("signed-out").hidden = signedIn;
   $("sign-out").hidden = !signedIn;
+  $("new-library").hidden = !signedIn;
   $("library").hidden = !signedIn || $("library").options.length < 2;
 }
 
@@ -186,13 +187,41 @@ async function loadLibraries() {
   const select = $("library");
   select.replaceChildren(...ids.map((id) => new Option(id, id)));
   if (!ids.length) {
-    say("No library on the server for this account yet.");
+    say("No library on the server for this account yet; make one with New library.");
     return false;
   }
   const remembered = recall(localStorage, LIBRARY_KEY);
   library = ids.includes(remembered) ? remembered : ids[0];
   select.value = library;
   return true;
+}
+
+function pickLibraryName() {
+  $("library-name").value = "";
+  $("create-library").hidden = false;
+  $("library-name").focus();
+}
+
+async function createLibrary(event) {
+  event.preventDefault();
+  const name = $("library-name").value.trim();
+  const response = await api("/libraries", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) {
+    say(`${name}: ${await detail(response)}`);
+    return;
+  }
+  const id = (await response.json()).library;
+  closePanel("create-library");
+  closePanel("file");
+  store(localStorage, LIBRARY_KEY, id);
+  await loadLibraries();
+  show(true);
+  await loadFiles();
+  say(`Created ${id}.`);
 }
 
 async function loadFiles() {
@@ -460,6 +489,8 @@ function wire() {
     closePanel("file");
     await loadFiles();
   }));
+  $("new-library").addEventListener("click", pickLibraryName);
+  $("create-library").addEventListener("submit", guard(createLibrary));
   $("filter").addEventListener("input", renderFiles);
   $("show-revisions").addEventListener("change", renderFiles);
   $("index").addEventListener("click", guard(() => run(["index"])));
