@@ -130,7 +130,7 @@ Every dated file names its role in a secondary suffix: `YYYY-MM-DD-slug.{role}.{
 
 Another format keeps its role: `mdc pdf` turns `x.chat.md` into `x.chat.pdf`. Undated files are the library's own: `KEYS.md`, `SYSTEM_PROMPT.md`, the generated `INDEX.md`/`MANIFEST.md`/…, `ASSESSMENTS/`, `REVISIONS/`.
 
-The library indexer indexes `.chat.md`, `.document.md` and `.source.md`, labelling voice by role: a document is the user's own writing, a source third-party, a chat section by section from its speaker headings.
+The library indexer indexes `.chat.md` and `.document.md` (`library.INDEXED_ROLES`), labelling voice by role: a document is the user's own writing, a chat section by section from its speaker headings. Sources are not indexed: the index is of the library author's thought, and a source is someone else's, there only for the documents that cite it (`read_file` reaches it by name).
 
 ### Argument files
 

@@ -195,7 +195,8 @@ def read_document(path: str, library: str | None = None) -> str:
 @_tool
 def read_file(name: str, library: str | None = None) -> str:
     """Read any text file of the library by its name. Files are named <date>-<slug>.<role>.<ext> (role: chat, document, source, argument, analysis or review; e.g. 2026-06-29-the-eleatic-critique.chat.md), kept in a folder per year, and a name is unique across the library. A source is
-    third-party material, not the user's writing; an analysis or review is
+    third-party material, not the user's writing, and is not indexed: it is
+    reached by name from the documents that cite it. An analysis or review is
     written by mdc."""
     path = _find(_root(library), name)
     try:

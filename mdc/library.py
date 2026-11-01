@@ -60,8 +60,10 @@ _STRUCTURAL_HEADINGS = frozenset({"References", "Notes", "Related"})
 # A dated file names its role: <date>-<slug>.<role>.<ext>. chat, document and
 # source are written or added by people (a transcript, their own prose,
 # third-party material); argument, analysis and review are written by mdc.
+# The index is of the library author's thought: chats and documents. A source
+# is someone else's, there only for the documents that cite it.
 ROLES = ("chat", "document", "source", "argument", "analysis", "review")
-INDEXED_ROLES = frozenset({"chat", "document", "source"})
+INDEXED_ROLES = frozenset({"chat", "document"})
 _DATED_NAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-")
 
 
@@ -624,7 +626,7 @@ def build_index(
         result = []
         for rel_path, existing in sorted(entries_by_path.items()):
             md_path = library_path / rel_path
-            if not md_path.exists():
+            if not md_path.exists() or role_of(md_path.name) not in INDEXED_ROLES:
                 continue
             refs: tuple[str, ...] = ()
             related: tuple[str, ...] = ()

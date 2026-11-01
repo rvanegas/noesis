@@ -121,7 +121,6 @@ def test_index_refuses_a_library_with_unnamed_roles(library, capsys):
 def test_voice_by_role():
     from mdc.cmd_index import _annotate_voice
     assert "user's own writing" in _annotate_voice("text", "document", ("Prompt",), ("Claude",))
-    assert "third-party" in _annotate_voice("text", "source", ("Prompt",), ("Claude",))
     chat = _annotate_voice("\n# T\n\n## Prompt\n\nQ\n\n## Claude\n\nA\n", "chat", ("Prompt",), ("Claude",))
     assert "[VOICE: user]" in chat and "[VOICE: llm" in chat
 
@@ -134,6 +133,36 @@ def test_index_takes_a_sessions_document_not_its_chat(tmp_path):
     (tmp_path / "2026" / "2026-07-01-y.chat.md").write_text(DOC)
     entries, _ = build_index(tmp_path, summarize=lambda content, wc, role: ("s", ["t"]))
     assert sorted(e.rel_path for e in entries) == ["2026/2026-06-30-x.document.md", "2026/2026-07-01-y.chat.md"]
+
+
+def test_index_leaves_sources_out(tmp_path):
+    from mdc.library import build_index
+    (tmp_path / "2026").mkdir()
+    (tmp_path / "2026" / "2026-06-30-x.document.md").write_text("\n# X\n2026-06-30\n\nProse.\n")
+    (tmp_path / "2026" / "2026-06-30-parfit2011.source.md").write_text("\n# Parfit\n2026-06-30\n\nTheirs.\n")
+    entries, _ = build_index(tmp_path, summarize=lambda content, wc, role: ("s", ["t"]))
+    assert [e.rel_path for e in entries] == ["2026/2026-06-30-x.document.md"]
+
+
+def test_a_source_indexed_before_drops_out(tmp_path):
+    from mdc.library import build_index, load_entries
+    (tmp_path / "2026").mkdir()
+    (tmp_path / "2026" / "2026-06-30-x.document.md").write_text("\n# X\n2026-06-30\n\nProse.\n")
+    source = tmp_path / "2026" / "2026-06-30-parfit2011.source.md"
+    source.write_text("\n# Parfit\n2026-06-30\n\nTheirs.\n")
+    import mdc.library as library
+    roles = library.INDEXED_ROLES
+    library.INDEXED_ROLES = roles | {"source"}  # as indexed before sources left the index
+    try:
+        build_index(tmp_path, summarize=lambda content, wc, role: ("s", ["t"]))
+    finally:
+        library.INDEXED_ROLES = roles
+    assert len(load_entries(tmp_path)) == 2
+    for refs_only in (True, False):
+        entries, _ = build_index(tmp_path, summarize=lambda content, wc, role: ("s", ["t"]), refs_only=refs_only)
+        assert [e.rel_path for e in entries] == ["2026/2026-06-30-x.document.md"]
+        assert [e.rel_path for e in load_entries(tmp_path)] == ["2026/2026-06-30-x.document.md"]
+        assert "Parfit" not in (tmp_path / "MANIFEST.md").read_text()
 
 
 def test_abbreviation_and_name_resolve_across_the_library(library, monkeypatch, capsys):

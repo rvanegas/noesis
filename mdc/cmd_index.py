@@ -21,16 +21,14 @@ def _annotate_voice(
 ) -> str:
     """Return content annotated with [VOICE: ...] labels, by its role.
 
-    A document is the user's own writing and a source someone else's, whole;
-    a chat is labelled section by section from its speaker headings.
+    A document is the user's own writing, whole; a chat is labelled section
+    by section from its speaker headings.
     """
     from mdc.library import _STRUCTURAL_HEADINGS
     from mdc.transcript import HEADING_RE
 
     if role == "document":
         return "[VOICE: this entire document is the user's own writing]\n\n" + content
-    if role == "source":
-        return "[VOICE: third-party — this entire document is source material, not the user's writing]\n\n" + content
 
     user_set = frozenset(user_names)
     llm_set = frozenset(llm_names)
