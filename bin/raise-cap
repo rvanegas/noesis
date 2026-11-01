@@ -1,0 +1,33 @@
+#!/bin/bash
+#
+# Raises one free account's monthly allowance on the commons box, from the Mac.
+#
+#   bin/raise-cap ann 5       adds $5 a month to ann's allowance
+#   bin/raise-cap ann -2      takes $2 back, never below the default
+#
+# It runs scripts/accounts.py raise in a one-off mdc container on the box
+# (SERVER.md, Phase 6), so the account must exist there, and the deployed
+# image must carry the script. The raise is kept every month until changed;
+# the all-free cap (MDC_FREE_MONTHLY_CAP_USD) still applies.
+#
+# The box is commons (~/src/rvanegas-site/PROJECTS.md); COMMONS_HOST overrides.
+set -euo pipefail
+
+HOST=${COMMONS_HOST:-ubuntu@32.190.173.222}
+KEY=${COMMONS_KEY:-~/.ssh/lightsail-ubuntu}
+SSH="ssh -i $KEY -o BatchMode=yes"
+
+case "${1:-}" in
+  -h|--help|"")
+    awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "$0"
+    [ -n "${1:-}" ] && exit 0 || exit 2
+    ;;
+esac
+[ $# -eq 2 ] || { echo "usage: bin/raise-cap <user> <usd>" >&2; exit 2; }
+user=$1 usd=$2
+
+# Checked here, since both go into a command line on the box.
+[[ $user =~ ^[a-z0-9][a-z0-9_-]*$ ]] || { echo "✗ not a user name: $user" >&2; exit 2; }
+[[ $usd =~ ^-?[0-9]+(\.[0-9]+)?$ ]] || { echo "✗ not an amount in dollars: $usd" >&2; exit 2; }
+
+$SSH "$HOST" "cd ~/mdc && docker compose run --rm -T mdc python scripts/accounts.py raise $user -- $usd"

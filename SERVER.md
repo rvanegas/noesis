@@ -756,8 +756,9 @@ open account could cost is capped instead.
   library's owner, and is refused (402) for one whose allowance is spent. Setting the
   allowance to 0 turns free model use off, except what raises add.
 - **Raising one account's allowance:** `scripts/accounts.py raise <user> 5`
-  adds $5 to that account's monthly allowance, kept every month (and as the
-  default moves) until changed; a negative amount takes back, never below the
+  adds $5 to that account's monthly allowance (from the Mac:
+  `bin/raise-cap <user> 5`), kept every month (and as the default moves)
+  until changed; a negative amount takes back, never below the
   default. The all-free cap still applies, so raising many accounts may call
   for raising `MDC_FREE_MONTHLY_CAP_USD` too.
 - **Refusals:** a free account's run of a command that can spend
