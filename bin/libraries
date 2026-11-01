@@ -1,0 +1,28 @@
+#!/bin/bash
+#
+# Every user's libraries on the commons box, with how many documents each
+# holds, from the Mac.
+#
+#   bin/libraries
+#
+# Runs scripts/libraries.py in a one-off mdc container on the box, so the
+# deployed image must carry the script. Indexed is what the index holds (and
+# so what lookups reach); files is everything kept.
+#
+# The box is commons (~/src/rvanegas-site/PROJECTS.md); COMMONS_HOST overrides.
+set -euo pipefail
+
+HOST=${COMMONS_HOST:-ubuntu@32.190.173.222}
+KEY=${COMMONS_KEY:-~/.ssh/lightsail-ubuntu}
+SSH="ssh -i $KEY -o BatchMode=yes"
+
+case "${1:-}" in
+  "") ;;
+  -h|--help)
+    awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "$0"
+    exit 0
+    ;;
+  *) echo "usage: bin/libraries" >&2; exit 2 ;;
+esac
+
+$SSH "$HOST" "cd ~/mdc && docker compose run --rm -T mdc python scripts/libraries.py"

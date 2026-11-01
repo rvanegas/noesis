@@ -289,3 +289,27 @@ async def _issue_for(client_id, user):
     token = provider._issue(data, client_id, user, [], None)
     provider._save(data)
     return token
+
+
+def test_the_libraries_report(data):
+    import json
+    spec = importlib.util.spec_from_file_location("libraries_script", REPO / "scripts" / "libraries.py")
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    notes = data / "libraries" / "ann" / "notes"
+    (notes / "2026").mkdir()
+    (notes / "2026" / "2026-10-30-a.document.md").write_text("\n# A\n2026-10-30\n\nText.\n")
+    (notes / "2026" / "2026-10-30-b.source.md").write_text("\n# B\n2026-10-30\n\nText.\n")
+    (notes / ".mdc").mkdir()
+    (notes / ".mdc" / "manifest.json").write_text(json.dumps({"entries": [
+        {"rel_path": "2026/2026-10-30-a.document.md", "title": "A", "word_count": 1,
+         "summary": "", "terms": [], "refs": [], "related": []}]}))
+    accounts.link("ann@example.com", "ann", accounts.FREE)
+    out = io.StringIO()
+    with redirect_stdout(out):
+        script.main([])
+    lines = out.getvalue().splitlines()
+    assert lines[0] == "ann  ann@example.com"
+    assert lines[1].split() == ["notes", "1", "indexed", "2", "files"]
+    assert lines[2] == "rod"
+    assert lines[3].split() == ["philosophy", "0", "indexed", "0", "files"]
