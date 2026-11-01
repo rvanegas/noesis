@@ -278,7 +278,8 @@ def test_me_answers_an_applications_token_and_the_api_does_not(data):
     issued = asyncio.run(_issue_for("thefloor", "ann"))
     client = TestClient(server.app)
     bearer = {"Authorization": f"Bearer {issued.access_token}"}
-    assert client.get("/me", headers=bearer).json()["user"] == "ann"
+    me = client.get("/me", headers=bearer).json()
+    assert me["user"] == "ann" and me["libraries"] == ["ann/notes"]
     assert client.get("/libraries", headers=bearer).status_code == 401
 
 

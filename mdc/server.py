@@ -169,6 +169,9 @@ def me(who: str = Depends(anyone)) -> dict:
         "spent_usd": round(accounts.spent(who), 4),
         "allowance_usd": accounts.allowance(who) if free else None,
         "stored_bytes": accounts.stored_bytes(who) if free else None,
+        # Which libraries are theirs, so an application can offer a choice of
+        # them (The Floor's per-channel toggles); ids as /libraries gives them.
+        "libraries": library_ids(who),
         "storage_bytes": limits.storage_bytes if free else None,
         "names": list(accounts.speaker_names(who)),
     }

@@ -795,6 +795,14 @@ open account could cost is capped instead.
   your mdc libraries”), and its tokens reach `/mcp` and `/me` — which any
   client's token may read, to say whose library it reached — and not the file
   and run API.
+- **Which libraries a request reads** (2026-11-01): a grant reaches all of a
+  person's, and `/me` lists them. The MCP address may narrow one request to
+  some — `/mcp?libraries=ann/philosophy,ann/notes` — which mdc enforces; a
+  search (`list_documents`, `lookup_term`) then spans every library open and
+  labels each result, and a read names its library. The Floor sends each
+  channel's selection so. A claude.ai connector sends none: a person with
+  several libraries names them in the conversation, `guide` lists them, and a
+  search without one asks Claude to ask which.
 - **The container** gets `mem_limit: 1g`, so mdc's runs cannot starve the
   rest of `commons`.
 

@@ -142,7 +142,59 @@ def test_nothing_writes(library):
 def test_another_users_library_is_out_of_reach(library):
     root, url = library
     result = call(url, "bob", "read_file", {"name": "2026-10-27-essay.document.md", "library": "ann/philosophy"})
-    assert result.is_error and "not your library" in text(result)
+    assert result.is_error and "not a library open to this conversation" in text(result)
+
+
+@pytest.fixture
+def two_libraries(library):
+    """ann keeps a second library, with an essay of its own."""
+    root, url = library
+    import shutil
+    notes = root.parent / "notes"
+    shutil.rmtree(notes, ignore_errors=True)
+    (notes / "2026").mkdir(parents=True)
+    (notes / "2026" / "2026-10-30-fragment.document.md").write_text("\n# Fragment\n2026-10-30\n\nOn prose, briefly.\n")
+    (notes / ".mdc").mkdir()
+    (notes / ".mdc" / "manifest.json").write_text(json.dumps({"entries": [
+        {"rel_path": "2026/2026-10-30-fragment.document.md", "title": "Fragment", "word_count": 3,
+         "summary": "Prose, briefly.", "terms": ["prose"], "refs": [], "related": []},
+    ]}))
+    (notes / ".mdc" / "index.json").write_text(json.dumps({"terms": {
+        "prose": [{"rel_path": "2026/2026-10-30-fragment.document.md", "title": "Fragment"}]}}))
+    yield root, url
+    shutil.rmtree(notes, ignore_errors=True)
+
+
+def test_a_connector_without_a_selection_asks_which_library(two_libraries):
+    root, url = two_libraries
+    guide = text(call(url, "ann", "guide", {}))
+    assert "several libraries: ann/notes, ann/philosophy" in guide and "ask which" in guide
+    searched = call(url, "ann", "lookup_term", {"term": "prose"})
+    assert searched.is_error and "ask them which" in text(searched)
+    named = text(call(url, "ann", "lookup_term", {"term": "prose", "library": "ann/notes"}))
+    assert "Fragment" in named and "Essay" not in named
+
+
+def test_an_address_naming_libraries_opens_those_and_searches_them_all(two_libraries):
+    root, url = two_libraries
+    both = "/mcp?libraries=ann/philosophy,ann/notes"
+    found = text(call(url, "ann", "lookup_term", {"term": "prose"}, path=both))
+    assert "# Library ann/notes" in found and "# Library ann/philosophy" in found
+    listed = text(call(url, "ann", "list_documents", {}, path=both))
+    assert "[ann/notes]" in listed and "[ann/philosophy]" in listed
+    assert "may read these libraries: ann/notes, ann/philosophy" in text(call(url, "ann", "guide", {}, path=both))
+    unnamed = call(url, "ann", "read_file", {"name": "2026-10-27-essay.document.md"}, path=both)
+    assert unnamed.is_error and "name the library" in text(unnamed)
+    assert "Prose here." in text(call(url, "ann", "read_file", {
+        "name": "2026-10-27-essay.document.md", "library": "ann/philosophy"}, path=both))
+
+    one = "/mcp?libraries=ann/notes"
+    assert "Fragment" in text(call(url, "ann", "lookup_term", {"term": "prose"}, path=one))
+    shut = call(url, "ann", "read_file", {"name": "2026-10-27-essay.document.md", "library": "ann/philosophy"}, path=one)
+    assert shut.is_error and "not a library open to this conversation" in text(shut)
+    # Somebody else's library named in the address opens nothing.
+    none = call(url, "bob", "lookup_term", {"term": "prose"}, path="/mcp?libraries=ann/philosophy")
+    assert none.is_error and "no library is open" in text(none)
 
 
 def _pkce():
