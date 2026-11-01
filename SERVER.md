@@ -754,7 +754,12 @@ open account could cost is capped instead.
   `MDC_DIANOIA_CALL_USD` (default $0.05). A call under way finishes, so a run
   can pass the allowance by one message. The nightly index spends from each
   library's owner, and is refused (402) for one whose allowance is spent. Setting the
-  allowance to 0 turns free model use off.
+  allowance to 0 turns free model use off, except what raises add.
+- **Raising one account's allowance:** `scripts/accounts.py raise <user> 5`
+  adds $5 to that account's monthly allowance, kept every month (and as the
+  default moves) until changed; a negative amount takes back, never below the
+  default. The all-free cap still applies, so raising many accounts may call
+  for raising `MDC_FREE_MONTHLY_CAP_USD` too.
 - **Refusals:** a free account's run of a command that can spend
   (`server.SPENDING`: `reply`, `index`, `argue`, `analyze`, `audit`,
   `review`, and import) gets 402 once its allowance or the cap is spent,

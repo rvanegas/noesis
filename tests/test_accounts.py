@@ -189,3 +189,40 @@ def test_the_model_client_charges_the_run_and_refuses_past_the_allowance(data, m
     with pytest.raises(accounts.AllowanceExhausted):
         client.generate_reply("system", [{"role": "user", "content": "Once more"}])
     assert len(calls) == 2
+
+
+def test_the_operator_raises_one_accounts_allowance(data, monkeypatch):
+    accounts.create_account("zed@example.com")
+    accounts.charge("zed", 1.20)
+    assert "($1.00) is used up" in accounts.refusal("zed")
+    assert accounts.raise_allowance("zed", 5) == pytest.approx(6.0)
+    assert accounts.refusal("zed") is None
+    # It is kept as the default moves, and stays when the default is 0.
+    monkeypatch.setenv("MDC_FREE_ALLOWANCE_USD", "0")
+    assert accounts.allowance("zed") == pytest.approx(5.0)
+    assert accounts.refusal("zed") is None
+    monkeypatch.delenv("MDC_FREE_ALLOWANCE_USD")
+    # Taking back stops at the default.
+    assert accounts.raise_allowance("zed", -2) == pytest.approx(4.0)
+    with pytest.raises(ValueError, match="only \\$3.00"):
+        accounts.raise_allowance("zed", -4)
+    with pytest.raises(ValueError, match="no account"):
+        accounts.raise_allowance("nobody", 1)
+    client = TestClient(server.app)
+    accounts.link("ann@example.com", "ann", accounts.FREE)
+    accounts.raise_allowance("ann", 2.5)
+    assert client.get("/me", headers=ANN).json()["allowance_usd"] == pytest.approx(3.5)
+
+
+def test_the_accounts_script_raises(data):
+    spec = importlib.util.spec_from_file_location("accounts_script", REPO / "scripts" / "accounts.py")
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    accounts.create_account("zed@example.com")
+    out = io.StringIO()
+    with redirect_stdout(out):
+        script.main(["raise", "zed", "5"])
+        script.main(["list"])
+    assert "zed: $6.00 a month" in out.getvalue() and "$0.00 of $6.00" in out.getvalue()
+    with pytest.raises(SystemExit):
+        script.main(["raise", "zed", "-10"])

@@ -153,7 +153,7 @@ def me(who: str = Depends(caller)) -> dict:
         "plan": accounts.plan_of(who),
         "month": accounts.month(),
         "spent_usd": round(accounts.spent(who), 4),
-        "allowance_usd": limits.allowance_usd if free else None,
+        "allowance_usd": accounts.allowance(who) if free else None,
         "stored_bytes": accounts.stored_bytes(who) if free else None,
         "storage_bytes": limits.storage_bytes if free else None,
     }

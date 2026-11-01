@@ -8,8 +8,10 @@ account could cost the operator is capped instead:
   every Anthropic call by its tokens at list price, every dianoia call at a
   flat rate. A free account has a small monthly allowance, and all free
   accounts together a monthly cap; once either is spent, model commands are
-  refused until the month turns. An allowance of 0 is the switch that stops
-  free model use altogether.
+  refused until the month turns. The operator can raise one account's
+  allowance by a set amount (scripts/accounts.py raise), which it keeps every
+  month. A default allowance of 0 stops free model use, except what such
+  raises add.
 - **Storage:** a free account keeps a few libraries, a bounded total, files
   of a bounded size and of the types mdc reads.
 - **Sign-in mail** is rate-limited per address, per client address and in all.
@@ -61,6 +63,7 @@ class Account:
     plan: str
     created_at: float
     disabled: bool
+    extra_usd: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -96,7 +99,8 @@ CREATE TABLE IF NOT EXISTS accounts (
     email TEXT NOT NULL UNIQUE,
     plan TEXT NOT NULL DEFAULT 'free',
     created_at REAL NOT NULL,
-    disabled INTEGER NOT NULL DEFAULT 0
+    disabled INTEGER NOT NULL DEFAULT 0,
+    extra_usd REAL NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS spend (
     user TEXT NOT NULL,
@@ -132,11 +136,11 @@ def connect():
 def _account(row) -> Account | None:
     if row is None:
         return None
-    user, email, plan, created_at, disabled = row
-    return Account(user, email, plan, created_at, bool(disabled))
+    user, email, plan, created_at, disabled, extra_usd = row
+    return Account(user, email, plan, created_at, bool(disabled), extra_usd)
 
 
-_COLUMNS = "user, email, plan, created_at, disabled"
+_COLUMNS = "user, email, plan, created_at, disabled, extra_usd"
 
 
 def normalize_email(value: str) -> str | None:
@@ -219,6 +223,31 @@ def set_plan(user: str, plan: str) -> None:
             raise ValueError(f"no account {user!r}")
 
 
+def raise_allowance(user: str, usd: float) -> float:
+    """Adds to an account's monthly allowance (negative takes back, to the default); the new allowance."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        try:
+            row = db.execute("SELECT extra_usd FROM accounts WHERE user = ?", (user,)).fetchone()
+            if row is None:
+                raise ValueError(f"no account {user!r}")
+            extra = round(row[0] + usd, 2)
+            if extra < 0:
+                raise ValueError(f"{user} has only ${row[0]:.2f} above the default allowance to take back")
+            db.execute("UPDATE accounts SET extra_usd = ? WHERE user = ?", (extra, user))
+            db.execute("COMMIT")
+        except BaseException:
+            db.execute("ROLLBACK")
+            raise
+    return allowance(user)
+
+
+def allowance(user: str) -> float:
+    """A free account's monthly allowance: the default and whatever the operator added."""
+    found = account(user)
+    return limits().allowance_usd + (found.extra_usd if found else 0.0)
+
+
 def set_disabled(user: str, disabled: bool) -> None:
     with connect() as db:
         if db.execute("UPDATE accounts SET disabled = ? WHERE user = ?", (int(disabled), user)).rowcount != 1:
@@ -294,8 +323,9 @@ def refusal(user: str) -> str | None:
     if not is_free(user):
         return None
     free = limits()
-    if spent(user) >= free.allowance_usd:
-        return (f"this month's free allowance (${free.allowance_usd:.2f}) is used up; "
+    mine = allowance(user)
+    if spent(user) >= mine:
+        return (f"this month's free allowance (${mine:.2f}) is used up; "
                 "model commands are available again next month")
     if free_spent() >= free.monthly_cap_usd:
         return "free model use is paused for the rest of this month"
