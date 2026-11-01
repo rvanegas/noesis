@@ -707,6 +707,12 @@ page changes.
   those and every `.analysis.md` and `.review.md`, opens view only: no
   Replace, Delete or runs. The page alone holds back; sync and runs write
   them as before.
+- **An account with no library** (every new sign-up, since Phase 6) sees only
+  *Your first library*: what a library is, and its name, `library`, ready to
+  create; no toolbar, command line or lists, which all act on a library
+  (2026-11-01). An empty library says how to start (Upload or Import, then
+  Index) in place of "0 files", and hides the filter. Checked headless in
+  Chrome at 375 points: sign up, first library, created, empty.
 
 **Verified** with tests (the sign-in end to end, a connector's token refused
 by the API, import, the page's headers, `fix --yes`) and by driving the page

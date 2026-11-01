@@ -181,12 +181,17 @@ function say(text) {
   $("message").hidden = !text;
 }
 
+// Signed in with no library yet, the page offers only to make one: every
+// other control acts on a library.
 function show(signedIn) {
-  $("signed-in").hidden = !signedIn;
+  const hasLibrary = $("library").options.length > 0;
+  $("signed-in").hidden = !signedIn || !hasLibrary;
+  $("first-library").hidden = !signedIn || hasLibrary;
   $("signed-out").hidden = signedIn;
   $("sign-out").hidden = !signedIn;
-  $("new-library").hidden = !signedIn;
+  $("new-library").hidden = !signedIn || !hasLibrary;
   $("library").hidden = !signedIn || $("library").options.length < 2;
+  if (!signedIn) $("usage").hidden = true;
 }
 
 function closePanel(id) {
@@ -214,7 +219,7 @@ async function loadLibraries() {
   const select = $("library");
   select.replaceChildren(...ids.map((id) => new Option(id, id)));
   if (!ids.length) {
-    say("No library on the server for this account yet; make one with New library.");
+    library = null;
     return false;
   }
   const remembered = recall(localStorage, LIBRARY_KEY);
@@ -229,9 +234,10 @@ function pickLibraryName() {
   $("library-name").focus();
 }
 
+// From either form: New library's, or the first library's.
 async function createLibrary(event) {
   event.preventDefault();
-  const name = $("library-name").value.trim();
+  const name = event.target.querySelector("input").value.trim();
   const response = await api("/libraries", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -270,7 +276,10 @@ function renderFiles() {
   group("records", paths.filter((p) => RECORDS.test(p)), false);
   fill("files", paths.filter((p) => !SETTINGS.has(p) && !GENERATED.has(p) && !RECORDS.test(p)));
   const total = Object.keys(files).length;
-  $("count").textContent = paths.length === total ? `${total} files` : `${paths.length} of ${total} files`;
+  $("filter").hidden = !total;
+  $("count").textContent = !total
+    ? "Nothing here yet. Upload a document, or Import a claude.ai export; then Index makes the library searchable."
+    : paths.length === total ? `${total} files` : `${paths.length} of ${total} files`;
 }
 
 // A folded group, hidden when empty; a filter opens the generated files,
@@ -550,6 +559,7 @@ function wire() {
   }));
   $("new-library").addEventListener("click", pickLibraryName);
   $("create-library").addEventListener("submit", guard(createLibrary));
+  $("first-library-form").addEventListener("submit", guard(createLibrary));
   $("filter").addEventListener("input", renderFiles);
   $("index").addEventListener("click", guard(() => run(["index"])));
   $("command").addEventListener("submit", guard(async (event) => {
@@ -593,12 +603,10 @@ async function start() {
     return;
   }
   await loadUsage();
-  if (await loadLibraries()) {
-    show(true);
-    await loadFiles();
-  } else {
-    show(true);
-  }
+  const hasLibrary = await loadLibraries();
+  show(true);
+  if (hasLibrary) await loadFiles();
+  else $("first-library-name").focus();
 }
 
 guard(start)();

@@ -23,8 +23,20 @@
     <button id="sign-in">Sign in</button>
   </section>
 
+  <p id="usage" class="hint" hidden></p>
+
+  <section id="first-library" hidden>
+    <h2>Your first library</h2>
+    <p>A library is where your writing lives on mdc: your chats and documents, and the sources they cite.
+      mdc checks and indexes it, and Claude reads it through mdc’s tools. Start with one; you can make
+      more later.</p>
+    <form id="first-library-form" class="panel">
+      <label>Name (lowercase letters, digits, - and _)<input id="first-library-name" value="library" required pattern="[a-z0-9][a-z0-9_\-]*" spellcheck="false" autocapitalize="off" autocomplete="off"></label>
+      <div class="actions"><button>Create library</button></div>
+    </form>
+  </section>
+
   <section id="signed-in" hidden>
-    <p id="usage" class="hint" hidden></p>
     <div class="toolbar">
       <label class="button">Upload<input id="upload-pick" type="file" hidden></label>
       <label class="button">Import<input id="import-pick" type="file" hidden></label>
