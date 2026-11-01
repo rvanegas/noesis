@@ -19,6 +19,17 @@ const SIGN_IN_KEY = "mdc.sign-in";
 const TEXT = /\.(md|txt|toml|json|csv|tex|bib)$/i;
 const DATED = /^(\d{4})-\d\d-\d\d-/;
 
+// What a library holds besides the user's own files. The settings are the
+// user's to edit; the rest mdc writes, and the page only shows them. The
+// generated names are library.py's and cmd_review.py's, which write them.
+const SETTINGS = new Set(["KEYS.md", "SYSTEM_PROMPT.md"]);
+const GENERATED = new Map([
+  ["MANIFEST.md", "index"], ["INDEX.md", "index"], ["REFERENCES.md", "index"], ["RELATED.md", "index"],
+  ["INTRODUCTION.md", "review"], ["AFTERWORD.md", "review"], ["FINAL_ASSESSMENT.md", "review"],
+]);
+const RECORDS = /^(REVISIONS|ASSESSMENTS)\//;
+const WRITTEN = [[/\.analysis\.md$/, "analyze"], [/\.review\.md$/, "review"]];
+
 const $ = (id) => document.getElementById(id);
 
 let access = null;           // {token, expires}
@@ -233,12 +244,26 @@ async function loadFiles() {
 
 function renderFiles() {
   const words = $("filter").value.toLowerCase().split(/\s+/).filter(Boolean);
-  const revisions = $("show-revisions").checked;
+  const records = $("show-records").checked;
   const paths = Object.keys(files)
-    .filter((p) => revisions || !p.startsWith("REVISIONS/"))
+    .filter((p) => records || !RECORDS.test(p))
     .filter((p) => words.every((w) => p.toLowerCase().includes(w)))
     .sort((a, b) => sortKey(b).localeCompare(sortKey(a)));
-  $("files").replaceChildren(...paths.map((p) => {
+  const settings = paths.filter((p) => SETTINGS.has(p)).sort();
+  const generated = paths.filter((p) => GENERATED.has(p)).sort();
+  const own = paths.filter((p) => !SETTINGS.has(p) && !GENERATED.has(p));
+  fill("settings-files", settings);
+  fill("files", own);
+  fill("generated-files", generated);
+  $("generated").hidden = !generated.length;
+  $("generated-count").textContent = `(${generated.length})`;
+  if (words.length && generated.length) $("generated").open = true;
+  const total = Object.keys(files).length;
+  $("count").textContent = paths.length === total ? `${total} files` : `${paths.length} of ${total} files`;
+}
+
+function fill(id, paths) {
+  $(id).replaceChildren(...paths.map((p) => {
     const item = document.createElement("li");
     const button = document.createElement("button");
     button.className = "file";
@@ -247,8 +272,16 @@ function renderFiles() {
     item.append(button);
     return item;
   }));
-  const total = Object.keys(files).length;
-  $("count").textContent = paths.length === total ? `${total} files` : `${paths.length} of ${total} files`;
+}
+
+// Why mdc keeps a file to itself, or null if it is the user's.
+function writtenBy(path) {
+  if (GENERATED.has(path)) return `Written by mdc ${GENERATED.get(path)}, which rewrites it; view only.`;
+  if (RECORDS.test(path)) return "mdc's own record; view only.";
+  for (const [pattern, command] of WRITTEN) {
+    if (pattern.test(path)) return `Written by mdc ${command}, never by hand; view only.`;
+  }
+  return null;
 }
 
 // Newest first: a dated file by its date, the library's own files after.
@@ -268,9 +301,14 @@ async function openFile(path) {
   $("file-name").textContent = path;
   $("file-text").textContent = TEXT.test(path) ? await blob.text() : `${blob.size.toLocaleString()} bytes`;
   const markdown = path.endsWith(".md");
+  const note = writtenBy(path);
   for (const button of $("file-actions").querySelectorAll("[data-run]")) {
-    button.hidden = !markdown || (button.dataset.run === "check" && !path.endsWith(".chat.md"));
+    button.hidden = !markdown || !!note || (button.dataset.run === "check" && !path.endsWith(".chat.md"));
   }
+  $("file-note").textContent = note || "";
+  $("file-note").hidden = !note;
+  $("file-replace").parentElement.hidden = !!note;
+  $("file-delete").hidden = !!note;
   $("file-delete").textContent = "Delete";
   $("file").hidden = false;
   $("file").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -492,7 +530,7 @@ function wire() {
   $("new-library").addEventListener("click", pickLibraryName);
   $("create-library").addEventListener("submit", guard(createLibrary));
   $("filter").addEventListener("input", renderFiles);
-  $("show-revisions").addEventListener("change", renderFiles);
+  $("show-records").addEventListener("change", renderFiles);
   $("index").addEventListener("click", guard(() => run(["index"])));
   $("command").addEventListener("submit", guard(async (event) => {
     event.preventDefault();

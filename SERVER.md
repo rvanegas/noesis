@@ -695,6 +695,14 @@ page changes.
 - **New library**, beside the picker: `POST /libraries`, then the page
   switches to it. A CLI mirror of it starts as an empty `local_root`, whose
   first `mdc sync` pulls (Phase 3).
+- **The list keeps the user's files apart from mdc's:** the settings
+  (`KEYS.md`, `SYSTEM_PROMPT.md`) at the top; the generated files
+  (`MANIFEST.md`, `INDEX.md`, `REFERENCES.md`, `RELATED.md`, and review's
+  `INTRODUCTION.md`, `AFTERWORD.md`, `FINAL_ASSESSMENT.md`) folded at the
+  bottom; `REVISIONS/` and `ASSESSMENTS/` behind *Records*. What mdc writes,
+  those and every `.analysis.md` and `.review.md`, opens view only: no
+  Replace, Delete or runs. The page alone holds back; sync and runs write
+  them as before.
 
 **Verified** with tests (the sign-in end to end, a connector's token refused
 by the API, import, the page's headers, `fix --yes`) and by driving the page

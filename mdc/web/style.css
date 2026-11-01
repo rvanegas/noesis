@@ -132,7 +132,7 @@ pre {
 
 #output-text:empty { display: none; }
 
-#output-changes, #files { list-style: none; margin: 0; padding: 0; }
+.files, #output-changes { list-style: none; margin: 0; padding: 0; }
 #output-changes { font: 13px/1.45 ui-monospace, monospace; color: var(--muted); }
 
 .list-head { display: flex; align-items: center; gap: .75rem; }
@@ -140,7 +140,10 @@ pre {
 
 .hint { color: var(--muted); font-size: .9rem; margin: .4rem 0; }
 
-#files li { border-bottom: 1px solid var(--line); }
+.files li { border-bottom: 1px solid var(--line); }
+#settings-files:not(:empty) { margin-bottom: .75rem; border-top: 1px solid var(--line); }
+#generated { margin-top: 1rem; }
+#generated summary { cursor: pointer; color: var(--muted); padding: .4rem 0; }
 
 button.file {
   display: block;
