@@ -7,13 +7,15 @@ An operator task (SERVER.md, Phase 6), run in the container:
     docker compose run --rm mdc python scripts/accounts.py link rodrigo@example.com rodvandur --plan unlimited
     docker compose run --rm mdc python scripts/accounts.py plan ann unlimited
     docker compose run --rm mdc python scripts/accounts.py raise ann 5
+    docker compose run --rm mdc python scripts/accounts.py raised
     docker compose run --rm mdc python scripts/accounts.py disable ann
 
 `link` gives an existing user (one users.toml names, whose libraries are
 already on the server) the address they sign in with, so signing in reaches
 those libraries rather than making a new account. `raise` adds dollars to a
 free account's monthly allowance, kept every month until changed; a negative
-amount takes back, never below the default. Disabling ends every OAuth
+amount takes back, never below the default; `raised` lists the accounts
+whose allowance is not the default (bin/cap, from the Mac). Disabling ends every OAuth
 grant the account has; its libraries stay.
 """
 
@@ -39,6 +41,7 @@ def main(argv: list[str] | None = None) -> int:
     more = sub.add_parser("raise", help="add dollars to an account's monthly allowance")
     more.add_argument("user")
     more.add_argument("usd", type=float, help="dollars a month; negative takes back")
+    sub.add_parser("raised", help="the accounts whose allowance is not the default")
     for name in ("disable", "enable"):
         sub.add_parser(name).add_argument("user")
     args = parser.parse_args(argv)
@@ -50,6 +53,18 @@ def main(argv: list[str] | None = None) -> int:
             budget = f" of ${accounts.allowance(found.user):.2f}" if found.plan == accounts.FREE else ""
             print(f"{found.user:<24} {found.email:<36} {found.plan:<9} {created}  "
                   f"${accounts.spent(found.user):.2f}{budget}{state}")
+        return 0
+    if args.command == "raised":
+        free = accounts.limits()
+        print(f"default ${free.allowance_usd:.2f} a month; free accounts together ${free.monthly_cap_usd:.2f}, "
+              f"${accounts.free_spent():.2f} spent in {accounts.month()}")
+        raised = [found for found in accounts.accounts() if found.extra_usd]
+        if not raised:
+            print("no account's allowance is raised")
+        for found in raised:
+            plan = "" if found.plan == accounts.FREE else f"  ({found.plan}: not limited)"
+            print(f"{found.user:<24} {found.email:<36} +${found.extra_usd:.2f} = "
+                  f"${accounts.allowance(found.user):.2f}, ${accounts.spent(found.user):.2f} spent{plan}")
         return 0
     try:
         if args.command == "link":

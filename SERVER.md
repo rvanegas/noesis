@@ -757,7 +757,7 @@ open account could cost is capped instead.
   allowance to 0 turns free model use off, except what raises add.
 - **Raising one account's allowance:** `scripts/accounts.py raise <user> 5`
   adds $5 to that account's monthly allowance (from the Mac:
-  `bin/raise-cap <user> 5`), kept every month (and as the default moves)
+  `bin/cap raise <user> 5`; `bin/cap status` lists every raised account), kept every month (and as the default moves)
   until changed; a negative amount takes back, never below the
   default. The all-free cap still applies, so raising many accounts may call
   for raising `MDC_FREE_MONTHLY_CAP_USD` too.

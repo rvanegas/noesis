@@ -226,3 +226,10 @@ def test_the_accounts_script_raises(data):
     assert "zed: $6.00 a month" in out.getvalue() and "$0.00 of $6.00" in out.getvalue()
     with pytest.raises(SystemExit):
         script.main(["raise", "zed", "-10"])
+    accounts.create_account("yan@example.com")
+    out = io.StringIO()
+    with redirect_stdout(out):
+        script.main(["raised"])
+    listed = out.getvalue()
+    assert listed.startswith("default $1.00 a month; free accounts together $25.00")
+    assert "zed" in listed and "+$5.00 = $6.00" in listed and "yan" not in listed
