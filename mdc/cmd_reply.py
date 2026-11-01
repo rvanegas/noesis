@@ -416,18 +416,10 @@ def run_reply(
     web: bool = False,
     edit: bool = False,
 ) -> int:
-    if path.suffix.lower() != ".md":
-        print(f"Error: '{path}' does not have a .md extension.")
+    from mdc.library import role_of
+    if role_of(path.name) != "chat":
+        print(f"Error: '{path.name}' is not a chat: reply answers a .chat.md.")
         return 1
-
-    # If a chat companion exists, reply there instead of the primary document.
-    chat = path.with_suffix(".chat.md")
-    if chat.exists():
-        path = chat
-    elif edit and len(path.suffixes) == 1:
-        # Edit mode operates on .chat.md files; promote the bare transcript.
-        print(f"Renaming '{path.name}' to '{chat.name}'.")
-        path = path.rename(chat)
 
     # A chat with a companion beside it works on it: -e only creates a missing
     # .document.md.
@@ -453,11 +445,6 @@ def run_reply(
         print(f"Error: mdc uses Anthropic models (claude-*), not '{effective_model}'.")
         return 1
     assistant_name = ASSISTANT_NAME
-
-    from mdc.library import is_library_transcript
-    if not is_library_transcript(text, config.user_names, config.llm_names):
-        print(f"Error: '{path}' is not a recognized transcript. Use 'mdc validate -t' to check transcript conditions.")
-        return 1
 
     status("Validating transcript...")
     transcript = parse_transcript(text, assistant_name=assistant_name)

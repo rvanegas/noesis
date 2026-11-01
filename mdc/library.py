@@ -136,27 +136,6 @@ def _extract_related(content: str) -> tuple[str, ...]:
     return _extract_section(content, _RELATED_SECTION_RE)
 
 
-def is_library_transcript(
-    content: str,
-    user_names: tuple[str, ...],
-    llm_names: tuple[str, ...],
-) -> bool:
-    """Return True if content looks like a library transcript.
-
-    Rules:
-      1. Every ## heading is a single word.
-      2. At least one heading (excluding structural ones) matches a known name.
-    """
-    from mdc.transcript import HEADING_RE
-    headings = [m.group(2).strip() for m in HEADING_RE.finditer(content)]
-    if not headings:
-        return False
-    if any(len(h.split()) != 1 for h in headings):
-        return False
-    known = frozenset(user_names) | frozenset(llm_names)
-    return any(h in known for h in headings if h not in _STRUCTURAL_HEADINGS)
-
-
 def extract_voice_sections(
     content: str,
     user_names: tuple[str, ...],

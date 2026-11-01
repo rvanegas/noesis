@@ -42,3 +42,19 @@ def test_dash_e_still_creates_the_document(session):
     tmp, chat = session
     assert _edit_flag(chat, edit=True) is True
     assert (tmp / "2026-10-27-essay.document.md").exists()
+
+
+def test_a_speaker_of_several_words_is_a_turn_like_any(session):
+    tmp, chat = session
+    chat.write_text("\n# Essay\n2026-10-27\n\n## Mary Ann\n\nWhat about Kant?\n")
+    assert _edit_flag(chat) is False
+
+
+def test_reply_answers_a_chat_alone(session, capsys):
+    tmp, chat = session
+    document = tmp / "2026-10-27-essay.document.md"
+    document.write_text(CHAT)
+    with patch("mdc.cmd_reply._reply_anthropic") as reply:
+        assert run_reply(document) == 1
+    reply.assert_not_called()
+    assert "not a chat" in capsys.readouterr().out

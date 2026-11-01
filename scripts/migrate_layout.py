@@ -15,7 +15,7 @@ dated like documents. Decided 2026-10-26 for rodvandur/philosophy. This:
    member so that all of them precede it, whose Related lists the group (the
    folder kept the relation; the hub keeps it now);
 5. names the role of every bare dated file: a markdown file is a chat or a
-   document by mdc's old guess from its headings (`is_library_transcript`,
+   document by mdc's old guess from its headings (`_is_library_transcript`,
    made once here), any other format takes the role of its stem's document;
 6. rewrites, in place, every reference to a moved or renamed file in the
    library's markdown (documents, reviews, the generated INDEX/MANIFEST/
@@ -45,7 +45,7 @@ from pathlib import Path
 
 from mdc.config import load_config
 from mdc.form import slugify
-from mdc.library import _extract_related, is_library_transcript, lacks_role, move_documents, role_of
+from mdc.library import _STRUCTURAL_HEADINGS, _extract_related, lacks_role, move_documents, role_of
 from mdc.transcript import update_related_section
 
 TOPICS = [
@@ -71,6 +71,28 @@ _DATED_RE = re.compile(r"^(\d{4})-\d{2}-\d{2}-")
 _LINK_RE = re.compile(r"\]\(([^)\s/]+)\)")
 _SKIP_DIRS = {"REVISIONS", ".mdc"}
 _UNSORTED_DIRS = {"REVISIONS", "ASSESSMENTS", ".mdc"}
+
+
+
+def _is_library_transcript(
+    content: str,
+    user_names: tuple[str, ...],
+    llm_names: tuple[str, ...],
+) -> bool:
+    """mdc's old guess that content is a transcript, from its headings.
+
+    Rules:
+      1. Every ## heading is a single word.
+      2. At least one heading (excluding structural ones) matches a known name.
+    """
+    from mdc.transcript import HEADING_RE
+    headings = [m.group(2).strip() for m in HEADING_RE.finditer(content)]
+    if not headings:
+        return False
+    if any(len(h.split()) != 1 for h in headings):
+        return False
+    known = frozenset(user_names) | frozenset(llm_names)
+    return any(h in known for h in headings if h not in _STRUCTURAL_HEADINGS)
 
 
 def _files(library: Path):
@@ -152,7 +174,7 @@ def plan_roles(library: Path) -> dict[Path, str]:
     for path in unnamed:
         if path.suffix == ".md":
             text = path.read_text(encoding="utf-8", errors="replace")
-            role = "chat" if is_library_transcript(text, config.user_names, config.llm_names) else "document"
+            role = "chat" if _is_library_transcript(text, config.user_names, config.llm_names) else "document"
             md_roles[(path.parent, path.name.split(".")[0])] = role
             names[path] = f"{path.stem}.{role}.md"
     for path in unnamed:

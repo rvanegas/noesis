@@ -67,7 +67,8 @@ RUNNABLE = frozenset({
     "check", "validate", "fix", "new", "reply", "index",
     "argue", "analyze", "audit", "export", "pdf", "diff", "review", "files",
 })
-_USER_NAME_RE = re.compile(r"^[^\s,]+$")
+# A name is a speaker heading, so any words; MDC_USER_NAMES is comma-separated.
+_USER_NAME_RE = re.compile(r"^[^\s,](?:[^,\n\r]*[^\s,])?$")
 
 _runs: set[asyncio.Task] = set()
 
@@ -264,7 +265,7 @@ def _check_run(run: Run) -> None:
         raise HTTPException(400, "reply --watch belongs to the client")
     bad = [n for n in run.user_names if not _USER_NAME_RE.match(n)]
     if bad:
-        raise HTTPException(400, f"a user name is one word: {bad}")
+        raise HTTPException(400, f"a user name has no comma, line break, or space at either end: {bad}")
 
 
 @app.post("/libraries/{user}/{library}/run")

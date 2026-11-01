@@ -66,7 +66,7 @@ Files must satisfy 12 rules enforced by `form.py`:
 3. `yyyy-mm-dd` date line immediately after title
 4. Filename derived from slugified title + date
 5. Blank line after the date
-6–9. `##` section headers, one word each (speaker names or `Claude`/`GPT`)
+6–9. `##` section headers naming the speaker (`Claude`/`GPT`, or any name, spaces allowed: a file's role, not its headings, says it is a chat)
 10. References section (if present) must be the final section
 11–12. Reference lines formatted as `| Author (year) *Italicized Title*`
 

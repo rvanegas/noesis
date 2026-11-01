@@ -157,6 +157,12 @@ def test_run_refuses(client, argv):
     assert client.post(f"{BASE}/run", headers=ANN, json={"argv": argv}).status_code in (400, 422)
 
 
+@pytest.mark.parametrize("names, status", [(["Mary Ann"], 200), (["Ann,Bo"], 400), ([" Ann"], 400)])
+def test_a_user_name_may_have_spaces_not_commas(client, names, status):
+    response = client.post(f"{BASE}/run", headers=ANN, json={"argv": ["check", "old-roman"], "user_names": names})
+    assert response.status_code == status
+
+
 def test_one_run_at_a_time_and_no_writes_meanwhile(client, data):
     import asyncio
     from mdc import service
