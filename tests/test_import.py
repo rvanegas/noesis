@@ -112,3 +112,77 @@ def test_a_file_that_fails_its_check_is_not_written(library, monkeypatch, capsys
     main(["import", str(FIXTURES / "claude_export.json"), "--only", "c-1", "--replace"])
     assert existing.read_text() == "keep me"
     assert "failed" in capsys.readouterr().out
+
+
+FLOOR = """The Floor — Reading Group
+2026-10-30 · 2:21 PM–4:09 PM
+
+Rodrigo (A) · 2:22 PM
+Afternoon.
+I was there.
+
+null · 2:23 PM
+Who said that?
+
+Pasted by Golf · 2:24 PM
+A paragraph of Bach.
+
+And another.
+
+Pasted by Claude · 2:25 PM
+Bach reads Kant through computation.
+
+Rodrigo (A) · 2:26 PM
+Exactly.
+"""
+
+
+def test_the_floor_becomes_a_chat_by_its_speakers(library):
+    src = library.parent / "anything.txt"
+    src.write_text(FLOOR)
+    assert main(["import", str(src)]) == 0
+    chat = library / "2026" / "2026-10-30-reading-group.chat.md"
+    text = chat.read_text()
+    assert text.startswith("\n# Reading Group\n2026-10-30\n\n## Rodrigo (A)\n\nAfternoon.\nI was there.\n")
+    assert "## Someone\n\nWho said that?" in text
+    assert "## Golf\n\n> A paragraph of Bach.\n\n> And another." in text
+    assert "## Claude\n\nBach reads Kant through computation." in text
+    assert check_file(chat) == []
+
+
+def test_an_older_floor_text_is_named_by_its_download(library):
+    src = library.parent / "The Floor — Reading Group — 2026-10-30 1609.txt"
+    src.write_text(FLOOR.split("\n", 1)[1].replace("2026-10-30 ·", "Fri, Oct 30 ·"))
+    assert main(["import", str(src)]) == 0
+    assert (library / "2026" / "2026-10-30-reading-group.chat.md").exists()
+
+
+def test_a_zip_imports_each_text_inside(library):
+    archive = library.parent / "transcript.zip"
+    with zipfile.ZipFile(archive, "w") as z:
+        z.writestr("transcript/segment.txt", FLOOR)
+        z.writestr("__MACOSX/transcript/._segment.txt", "resource fork")
+    assert main(["import", str(archive)]) == 0
+    assert [p.name for p in (library / "2026").iterdir()] == ["2026-10-30-reading-group.chat.md"]
+
+
+def test_a_finder_zip_name_is_read_as_utf8():
+    from mdc.cmd_import import _member_name
+    name = "The Floor — Reading Group — 2026-10-30 1609.txt"
+    # Finder writes UTF-8 without the flag that says so; zipfile reads cp437.
+    assert _member_name(zipfile.ZipInfo(name.encode("utf-8").decode("cp437"))) == name
+    assert _member_name(zipfile.ZipInfo("plain.txt")) == "plain.txt"
+
+
+def test_a_title_the_library_has_fails(library, capsys):
+    src = library.parent / "anything.txt"
+    src.write_text(FLOOR)
+    assert main(["import", str(src)]) == 0
+    src.write_text(FLOOR.replace("2026-10-30 ·", "2026-10-31 ·"))
+    capsys.readouterr()
+    assert main(["import", str(src)]) == 1
+    assert "the title \"Reading Group\" is 2026-10-30-reading-group.chat.md's" in capsys.readouterr().out
+    assert not (library / "2026" / "2026-10-31-reading-group.chat.md").exists()
+    capsys.readouterr()
+    src.write_text(FLOOR)
+    assert main(["import", str(src), "--replace"]) == 0                  # its own file, replaced

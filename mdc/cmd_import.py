@@ -7,22 +7,31 @@
   the end, as `reply` keeps them.
 - saveai.net exports (the "AI Chat Exporter" Markdown `mdc fix` converts:
   `# you asked` / `# claude response` blocks): a `.chat.md`.
+- The Floor's shared text (a segment of a spoken conversation: `The Floor —
+  <channel>`, a dated line of hours, then `<name> · <time>` blocks): a
+  `.chat.md`, a section per speaker as named, titled by the channel. A file
+  from before the text named them takes both from its download name, `The
+  Floor — <channel> — <yyyy-mm-dd hhmm>`. A paste stays its author's, quoted;
+  Claude's is Claude's turn.
+- A zip that is not claude.ai's: each `.txt` and `.md` inside, as on its own.
 - Anything else, or an export that does not parse: a `.document.md`, its
   text as it is.
 
 Files go where their names put them, this year's directory of the library
 (or the current directory outside one). Each is checked before it takes its
-name; an existing one is skipped unless --replace.
+name; an existing one is skipped unless --replace. A title another file of
+the library already has fails: `## Related` names a file by its title.
 """
 
 from __future__ import annotations
 
 import datetime
 import json
+import re
 import tempfile
 import zipfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePath
 
 from mdc.config import ASSISTANT_NAME, PROMPT_HEADING, load_config
 from mdc.form import _parse_exported_chat, check_file, is_exported_chat, slugify
@@ -119,27 +128,78 @@ def from_claude_conversation(conversation: dict) -> Imported | None:
     return Imported(title, date, "chat", _turns_text(turns))
 
 
-def from_saveai(text: str, path: Path) -> Imported | None:
+def from_saveai(text: str, name: PurePath, date: str) -> Imported | None:
     messages = _parse_exported_chat(text)
     if not messages:
         return None
-    stem = path.stem
+    stem = name.stem
     dated = stem[:10] if len(stem) > 11 and stem[4] == "-" and stem[7] == "-" and stem[10] == "-" else None
     title_stem = stem[11:] if dated else stem
-    date = dated or next((ts for _, ts, _ in messages if ts), None) or _file_date(path)
+    date = dated or next((ts for _, ts, _ in messages if ts), None) or date
     title = title_stem.replace("-", " ").replace("_", " ").strip().title() or "Untitled"
     turns = [(header.removeprefix("## "), content) for header, _, content in messages]
     return Imported(title, date, "chat", _turns_text(turns))
 
 
-def as_document(text: str, path: Path) -> Imported:
+_FLOOR_NAME_RE = re.compile(r"^The Floor — (?P<channel>.+) — (?P<date>\d{4}-\d{2}-\d{2}) \d{4}$")
+_FLOOR_HEAD_RE = re.compile(r"^The Floor — (?P<channel>.+)$")
+_FLOOR_HOURS_RE = re.compile(r"^(?:(?P<date>\d{4}-\d{2}-\d{2})|[^·]+) · \S.*[–-].+$")
+_FLOOR_ENTRY_RE = re.compile(
+    r"^(?P<who>.+) · \d{1,2}[:.]\d{2}(?:[\s\u202f]*[ap]\.?[\s\u202f]?m\.?)?$", re.IGNORECASE)
+_FLOOR_PASTED = ("Pasted by ", "Pegado por ")
+
+
+def from_the_floor(text: str, name: PurePath, date: str) -> Imported | None:
+    """The Floor's shared text of one segment, or None if this is not one."""
+    blocks = [b for b in re.split(r"\n[ \t]*\n", text.replace("\r\n", "\n").strip()) if b.strip()]
+    if len(blocks) < 2:
+        return None
+    head = blocks[0].splitlines()
+    named = _FLOOR_NAME_RE.match(name.stem)
+    channel = named["channel"] if named else None
+    if len(head) == 2 and (m := _FLOOR_HEAD_RE.match(head[0])):
+        channel = m["channel"].strip()
+        head = head[1:]
+    hours = _FLOOR_HOURS_RE.match(head[0]) if len(head) == 1 else None
+    if not hours or not channel:
+        return None
+    date = hours["date"] or (named["date"] if named else date)
+    turns: list[tuple[str, str]] = []
+    for block in blocks[1:]:
+        first, _, rest = block.partition("\n")
+        entry = _FLOOR_ENTRY_RE.match(first.strip())
+        if entry is None:
+            if not turns:
+                return None
+            # A paste's own blank lines.
+            speaker, said = turns[-1]
+            turns[-1] = (speaker, f"{said}\n\n{_quoted(block) if said.startswith('>') else block}")
+            continue
+        who = entry["who"].strip()
+        pasted = next((who[len(p):].strip() for p in _FLOOR_PASTED if who.startswith(p)), None)
+        if pasted == ASSISTANT_NAME:
+            turns.append((ASSISTANT_NAME, rest))
+        elif pasted is not None:
+            turns.append((pasted or "Someone", _quoted(rest)))
+        else:
+            turns.append(("Someone" if who == "null" else who, rest))
+    if not turns:
+        return None
+    return Imported(channel, date, "chat", _turns_text(turns))
+
+
+def _quoted(text: str) -> str:
+    return "\n".join(f"> {line}" if line.strip() else ">" for line in text.splitlines())
+
+
+def as_document(text: str, name: PurePath, date: str) -> Imported:
     lines = text.strip("\n").splitlines()
     title = None
     if lines and lines[0].startswith("# "):
         title = lines[0][2:].strip()
         lines = lines[1:]
-    title = title or path.stem.replace("-", " ").replace("_", " ").strip().title() or "Untitled"
-    return Imported(title, _file_date(path), "document", "\n".join(lines).strip("\n"))
+    title = title or name.stem.replace("-", " ").replace("_", " ").strip().title() or "Untitled"
+    return Imported(title, date, "document", "\n".join(lines).strip("\n"))
 
 
 def _file_date(path: Path) -> str:
@@ -155,7 +215,7 @@ def read_sources(path: Path, only: str | None) -> list[Imported]:
         with zipfile.ZipFile(path) as archive:
             name = next((n for n in archive.namelist() if n.endswith("conversations.json")), None)
             if name is None:
-                raise ValueError(f"{path.name}: no conversations.json inside")
+                return _from_archive(archive, path)
             data = json.loads(archive.read(name))
         conversations = _claude_conversations(data)
         if conversations is None:
@@ -169,11 +229,36 @@ def read_sources(path: Path, only: str | None) -> list[Imported]:
             conversations = None
         if conversations is not None:
             return _from_conversations(conversations, only)
-    if is_exported_chat(text):
-        chat = from_saveai(text, path)
-        if chat:
-            return [chat]
-    return [as_document(text, path)]
+    return [_from_text(text, path, _file_date(path))]
+
+
+def _from_text(text: str, name: PurePath, date: str) -> Imported:
+    if is_exported_chat(text) and (chat := from_saveai(text, name, date)):
+        return chat
+    return from_the_floor(text, name, date) or as_document(text, name, date)
+
+
+def _from_archive(archive: zipfile.ZipFile, path: Path) -> list[Imported]:
+    """Each text inside, as on its own; a zip's furniture (__MACOSX, dotfiles) left out."""
+    members = [m for m in archive.infolist()
+               if not m.is_dir() and PurePath(m.filename).suffix.lower() in (".txt", ".md")
+               and not any(part.startswith((".", "__MACOSX")) for part in PurePath(m.filename).parts)]
+    if not members:
+        raise ValueError(f"{path.name}: no conversations.json, .txt or .md inside")
+    return [_from_text(archive.read(m).decode("utf-8", errors="replace"), PurePath(_member_name(m)),
+                       datetime.date(*m.date_time[:3]).isoformat())
+            for m in members]
+
+
+def _member_name(member: zipfile.ZipInfo) -> str:
+    """Its name as written: Finder writes UTF-8 without the flag that says so,
+    which zipfile then reads as cp437."""
+    if member.flag_bits & 0x800:
+        return member.filename
+    try:
+        return member.filename.encode("cp437").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return member.filename
 
 
 def _from_conversations(conversations: list[dict], only: str | None) -> list[Imported]:
@@ -204,9 +289,12 @@ def _problems(path: Path, role: str) -> list[str]:
 
 def run_import(paths: list[Path], only: str | None = None, replace: bool = False) -> int:
     from mdc.cli import _collect_existing_slugs, _is_within
+    from mdc.library import library_titles
     library = load_config().library_path
     in_library = library is not None and _is_within(Path.cwd().resolve(), library.resolve())
     taken = _collect_existing_slugs(library if in_library else None)
+    # By slug, as `## Related` resolves a title.
+    titled = {slugify(title): rel for rel, title in library_titles(library).items()} if in_library else {}
 
     written = skipped = failed = 0
     for source in paths:
@@ -224,6 +312,11 @@ def run_import(paths: list[Path], only: str | None = None, replace: bool = False
                 print(f"skipped  {target.name} (exists{'' if target.exists() else ' under another role'})")
                 skipped += 1
                 continue
+            holder = titled.get(slugify(item.title))
+            if holder and not (in_library and holder == target.relative_to(library).as_posix()):
+                print(f"failed   {target.name}: the title \"{item.title}\" is {Path(holder).name}'s")
+                failed += 1
+                continue
             text = render(item)
             # Checked under its own name (the format rules derive it from the
             # title) before anything in the library is touched.
@@ -240,6 +333,8 @@ def run_import(paths: list[Path], only: str | None = None, replace: bool = False
             tmp.write_text(text, encoding="utf-8")
             tmp.replace(target)
             taken.add(stem)
+            if in_library:
+                titled[slugify(item.title)] = target.relative_to(library).as_posix()
             print(f"imported {target.relative_to(library) if in_library else target.name}")
             written += 1
     print(f"{written} imported, {skipped} skipped, {failed} failed.")
