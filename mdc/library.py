@@ -24,6 +24,8 @@ def _wrap_line(text: str, *, initial_indent: str, subsequent_indent: str) -> str
     )
 
 
+# The library's own files. mdc/web/app.js copies these names (SETTINGS,
+# GENERATED) to tell the user's files from mdc's: change one, change both.
 MANIFEST_FILENAME = "MANIFEST.md"
 INDEX_FILENAME = "INDEX.md"
 KEYS_FILENAME = "KEYS.md"
@@ -928,6 +930,7 @@ LIBRARY_TOOLS = [
 
 _YEAR_PREFIX_RE = re.compile(r"^(\d{4})-\d{2}-\d{2}-")
 # Kept apart by what they are, not by date: backups, assessments, state.
+# mdc/web/app.js copies the first two (RECORDS): change one, change both.
 _UNSORTED_DIRS = frozenset({"REVISIONS", "ASSESSMENTS", ".mdc"})
 
 

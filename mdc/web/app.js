@@ -20,8 +20,9 @@ const TEXT = /\.(md|txt|toml|json|csv|tex|bib)$/i;
 const DATED = /^(\d{4})-\d\d-\d\d-/;
 
 // What a library holds besides the user's own files. The settings are the
-// user's to edit; the rest mdc writes, and the page only shows them. The
-// generated names are library.py's and cmd_review.py's, which write them.
+// user's to edit; the rest mdc writes, and the page only shows them. These
+// names copy mdc/library.py's *_FILENAME constants and _UNSORTED_DIRS, and
+// SYSTEM_PROMPT.md in mdc/config.py: change one, change both.
 const SETTINGS = new Set(["KEYS.md", "SYSTEM_PROMPT.md"]);
 const GENERATED = new Map([
   ["MANIFEST.md", "index"], ["INDEX.md", "index"], ["REFERENCES.md", "index"], ["RELATED.md", "index"],
