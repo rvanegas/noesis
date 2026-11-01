@@ -394,7 +394,8 @@ The plan as written before building:
 - **Sync** is three-way per file: here (L), on the server (R), and as both
   last agreed (B, in the local library's `.mdc/sync.json`). Only L changed:
   push (`PUT`/`DELETE` with `If-Match`). Only R changed: pull. Both: a
-  conflict, the server's version saved as `<name>.server` (never synced),
+  conflict, the server's version saved as `<name>.server` (never synced, nor
+  are editor scratch files or `.bak` backups, on either side),
   nothing merged; deleting that copy keeps the local version, which the next
   sync pushes. A conflict before a run stops it; one after (an edit made
   during the run) is left for the user. The first sync, with no sync.json,
@@ -713,7 +714,7 @@ sign out revoking.
 
 **Not done:** deploying, and the first sign-in on the box. `fix` writes a
 `<name>.md.bak` beside what it fixes, which in a library is a visible file
-nobody cleans up; and run output names files by the server's absolute path.
+nobody cleans up (sync leaves it where it is, 2026-11-01); and run output names files by the server's absolute path.
 
 ## Files touched
 

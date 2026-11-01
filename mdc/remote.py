@@ -135,21 +135,22 @@ def _sha256(data: bytes) -> str:
 
 def local_hashes(root: Path) -> dict[str, str]:
     """{rel_path: sha256} of what syncs: as the server lists it, less conflict
-    copies and editor scratch files."""
+    copies, editor scratch files and backups."""
     hashes = {}
     for path in sorted(root.rglob("*")):
         rel = path.relative_to(root)
         if (any(part.startswith(".") for part in rel.parts) or path.is_symlink()
                 or not path.is_file() or path.name.endswith(CONFLICT_SUFFIX)
-                or _editor_scratch(path.name)):
+                or _local_only(path.name)):
             continue
         hashes[rel.as_posix()] = _sha256(path.read_bytes())
     return hashes
 
 
-def _editor_scratch(name: str) -> bool:
-    """An editor's backup (`x.md~`) or autosave (`#x.md#`): not the library's."""
-    return name.endswith("~") or (name.startswith("#") and name.endswith("#"))
+def _local_only(name: str) -> bool:
+    """Never synced, either way: an editor's backup (`x.md~`) or autosave
+    (`#x.md#`), or a `.bak` (mdc fix's, for one)."""
+    return name.endswith(("~", ".bak")) or (name.startswith("#") and name.endswith("#"))
 
 
 def _state_path(root: Path) -> Path:
@@ -187,7 +188,7 @@ def confirm_deletions(library_id: str, rels: list[str]) -> bool:
 def sync(client: Client, root: Path, library_id: str, say=print, confirm=confirm_deletions) -> list[str]:
     """Bring the local library and the server's copy together; return conflicts."""
     local = local_hashes(root)
-    remote = client.list_files()
+    remote = {rel: sha for rel, sha in client.list_files().items() if not _local_only(rel.rsplit("/", 1)[-1])}
     state = _load_state(root, library_id)
     if state is None and not local:
         say("First sync into an empty copy: the server's copy comes here.")

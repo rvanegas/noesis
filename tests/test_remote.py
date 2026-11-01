@@ -202,15 +202,22 @@ def test_remote_argv_names_files_and_drops_lib(tmp_path):
     assert remote_argv(["reply", "eleatic", "--lib=/l"], tmp_path) == ["reply", "eleatic"]
 
 
-def test_editor_scratch_files_stay_local(setup):
+def test_scratch_and_backups_stay_where_they_are(setup):
     client, local, remote, _ = setup
     (local / "x.chat.md").write_text("text")
     (local / "x.chat.md~").write_text("backup")
     (local / "#x.chat.md#").write_text("autosave")
+    (local / "x.chat.md.bak").write_text("fix's backup")
     (remote / "y.chat.md~").write_text("a backup an older client sent")
-    _quiet(sync, client, local, LIB, print, lambda library_id, rels: True)
-    # Never sent; and one already on the server counts as deleted here.
-    assert sorted(p.name for p in remote.iterdir()) == ["x.chat.md"]
-    assert (local / "x.chat.md~").exists() and (local / "#x.chat.md#").exists()
+    (remote / "z.chat.md.bak").write_text("a server run's fix backup")
+    asked = []
+    _quiet(sync, client, local, LIB, print, lambda library_id, rels: asked.append(rels) or True)
+    # Never sent, never fetched, never deleted on either side.
+    assert asked == []
+    assert sorted(p.name for p in remote.iterdir()) == ["x.chat.md", "y.chat.md~", "z.chat.md.bak"]
+    assert sorted(p.name for p in local.iterdir() if p.name != ".mdc") == [
+        "#x.chat.md#", "x.chat.md", "x.chat.md.bak", "x.chat.md~",
+    ]
     (local / "x.chat.md~").write_text("a newer backup")
+    (local / "x.chat.md.bak").write_text("a newer fix backup")
     assert _quiet(sync, client, local, LIB)[1] == ""
