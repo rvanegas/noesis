@@ -928,12 +928,14 @@ def _form_issues(path: Path, form: str) -> list[str]:
 
 
 def run_validate(paths: list[Path]) -> int:
-    from mdc.library import load_entries, resolve_title
+    from mdc.library import library_titles, resolve_title_among
 
     config = load_config()
     lib = config.library_path if config.library_path and config.library_path.is_dir() else None
-    # Indexed documents in chronological order: their names begin with their date.
-    doc_order = {name: i for i, name in enumerate(sorted(Path(e.rel_path).name for e in load_entries(lib)))} if lib else {}
+    # From the files, not index state: a mirror's copy of that is never updated.
+    titles = library_titles(lib) if lib else {}
+    # In chronological order: their names begin with their date.
+    doc_order = {name: i for i, name in enumerate(sorted(Path(rel).name for rel in titles))}
 
     any_errors = False
     for path in paths:
@@ -946,7 +948,7 @@ def run_validate(paths: list[Path]) -> int:
             try:
                 transcript = parse_transcript(_read_file(path))
                 for entry in transcript.related:
-                    rel_path = resolve_title(lib, entry)
+                    rel_path = resolve_title_among(titles, entry)
                     if rel_path is None:
                         errs.append(f"Related title not found in library: {entry!r}")
                     elif doc_order.get(Path(rel_path).name, -1) >= doc_order.get(path.name, -1):

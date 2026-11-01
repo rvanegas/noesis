@@ -113,3 +113,19 @@ def test_fix_keeps_no_backup_in_a_library(library, tmp_path, monkeypatch):
     monkeypatch.chdir(outside)
     main(["fix", "--yes", "notes.md"])
     assert (outside / "notes.md.bak").read_text() == PROSE
+
+
+def test_related_titles_resolve_from_the_files_not_index_state(library, capsys):
+    _put(library, "2025-04-20-earlier.document.md", "\n# Earlier Thoughts\n2025-04-20\n\nProse.\n")
+    _put(library, "2025-04-30-later.chat.md", "\n# Later Talk\n2025-04-30\n\n## Prompt\n\nHi.\n")
+    related = "\n## Related\n\n| *{}*\n"
+    path = _put(library, "2025-04-25-old-roman.chat.md", CHAT + related.format("Earlier Thoughts"))
+    assert not (library / ".mdc").exists()
+    assert main(["validate", path.name]) == 0
+    capsys.readouterr()
+    path.write_text(CHAT + related.format("Later Talk"))
+    assert main(["validate", path.name]) == 1
+    assert "does not precede this document" in capsys.readouterr().out
+    path.write_text(CHAT + related.format("Nowhere"))
+    assert main(["validate", path.name]) == 1
+    assert "not found in library" in capsys.readouterr().out

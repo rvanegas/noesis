@@ -796,14 +796,30 @@ def _normalize_to_slug(s: str) -> str:
 
 def resolve_title(library_path: Path, title: str) -> str | None:
     """Resolve a title, slug (with or without date/extension), or raw Related line to its rel_path."""
+    return resolve_title_among({e.rel_path: e.title for e in load_entries(library_path)}, title)
+
+
+def resolve_title_among(titles: dict[str, str], title: str) -> str | None:
+    """As resolve_title, among {rel_path: title}."""
     from mdc.form import slugify
     query = _normalize_to_slug(title)
-    for e in load_entries(library_path):
-        if slugify(e.title) == query:
-            return e.rel_path
-        if _normalize_to_slug(e.rel_path) == query:
-            return e.rel_path
+    for rel_path, doc_title in titles.items():
+        if slugify(doc_title) == query or _normalize_to_slug(rel_path) == query:
+            return rel_path
     return None
+
+
+def library_titles(library_path: Path) -> dict[str, str]:
+    """{rel_path: title} of the library's chats and documents, read from the
+    files themselves rather than index state, which a mirror's copy lacks."""
+    titles = {}
+    for path in sorted(library_path.rglob("*.md")):
+        rel = path.relative_to(library_path)
+        if (role_of(path.name) not in INDEXED_ROLES or any(p.startswith(".") for p in rel.parts)
+                or _UNSORTED_DIRS.intersection(rel.parts[:-1])):
+            continue
+        titles[rel.as_posix()] = _extract_title(path.read_text(encoding="utf-8", errors="replace"), path.stem)
+    return titles
 
 
 def lookup_term(library_path: Path, term: str, exclude: str | None = None) -> str:
