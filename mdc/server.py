@@ -32,8 +32,8 @@ year directories, and it is deleted when the run ends.
 Dotfiles, and so the index state in .mdc/, are never listed, read or written.
 
 A free account (accounts.py) is held to its limits here: what it may store,
-how many libraries, and a run is refused once its allowance is spent (402)
-or while free runs fill their slots (503). Every run spends for the
+how many libraries, and a run that can spend (SPENDING) is refused once
+its allowance is spent (402); any run while free runs fill their slots (503). Every run spends for the
 library's owner, named to mdc in MDC_ACCOUNT, whose model clients charge it.
 
 /web/ serves mdc's web client (mdc/web/): static files, which sign in through
@@ -73,6 +73,12 @@ RUNNABLE = frozenset({
     "check", "validate", "fix", "new", "reply", "index",
     "argue", "analyze", "audit", "export", "pdf", "diff", "review", "files",
 })
+# Those that call a model (Anthropic or dianoia), and so are refused up front
+# once a free account's allowance is spent; import too, which titles The
+# Floor's transcripts with the index model. The rest cost nothing and always
+# run. A command missing here is still stopped at its first model call, by
+# the meter in the run itself (accounts.py), only less plainly.
+SPENDING = frozenset({"reply", "index", "argue", "analyze", "audit", "review", "import"})
 # A name is a speaker heading, so any words; MDC_USER_NAMES is comma-separated.
 _USER_NAME_RE = re.compile(r"^[^\s,](?:[^,\n\r]*[^\s,])?$")
 
@@ -222,13 +228,13 @@ def _storable(root: Path, name: str, size: int, replacing: int = 0, types=None) 
         raise HTTPException(413, why)
 
 
-def _may_run(root: Path) -> None:
-    """A free account's run needs allowance left and a free slot."""
+def _may_run(root: Path, command: str) -> None:
+    """A free account's run needs a free slot, and allowance left if it can spend."""
     from mdc import accounts
     owner = _owner(root)
     if not accounts.is_free(owner):
         return
-    if why := accounts.refusal(owner):
+    if command in SPENDING and (why := accounts.refusal(owner)):
         raise HTTPException(402, why)
     if len(_free_runs) >= FREE_RUNS:
         raise HTTPException(503, "the server is busy with other free accounts' runs; try again in a minute")
@@ -327,7 +333,7 @@ async def run_command(run: Run, root: Path = Depends(library)) -> StreamingRespo
     lock = lock_for(root)
     if lock.locked():
         raise HTTPException(409, "a run is in progress in this library")
-    _may_run(root)
+    _may_run(root, run.argv[0])
     await lock.acquire()
     return _stream(root, run.argv, run.user_names, lock)
 
@@ -347,7 +353,7 @@ async def import_file(
     lock = lock_for(root)
     if lock.locked():
         raise HTTPException(409, "a run is in progress in this library")
-    _may_run(root)
+    _may_run(root, "import")
     await lock.acquire()
     try:
         data = await request.body()

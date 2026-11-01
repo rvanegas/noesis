@@ -755,8 +755,12 @@ open account could cost is capped instead.
   can pass the allowance by one message. The nightly index spends from each
   library's owner, and is refused (402) for one whose allowance is spent. Setting the
   allowance to 0 turns free model use off.
-- **Refusals:** a free account's run or import gets 402 once its allowance or
-  the cap is spent, and 503 while two free runs are already going.
+- **Refusals:** a free account's run of a command that can spend
+  (`server.SPENDING`: `reply`, `index`, `argue`, `analyze`, `audit`,
+  `review`, and import) gets 402 once its allowance or the cap is spent,
+  with the reason, which the web client shows; `check`, `validate`, `fix`,
+  `diff`, `new`, `export` and the rest still run. Any free run gets 503
+  while two are already going.
   Storage: up to `MDC_FREE_LIBRARIES` (3) libraries, `MDC_FREE_STORAGE_MB` (50)
   in all, `MDC_FREE_FILE_MB` (10) a file, only the types mdc reads (Markdown,
   text, RTF, PDF, images; zip and JSON through import), each refused with 413

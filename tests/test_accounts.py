@@ -134,12 +134,17 @@ def test_a_free_account_stores_within_its_limits(data, monkeypatch):
                       content=b"x" * 20000).status_code == 200
 
 
-def test_a_free_accounts_run_needs_allowance(data):
+def test_a_free_accounts_spending_run_needs_allowance(data, monkeypatch):
+    # The run's subprocess imports this checkout's mdc.
+    monkeypatch.setenv("PYTHONPATH", str(REPO))
     accounts.link("ann@example.com", "ann", accounts.FREE)
     accounts.charge("ann", 5)
     client = TestClient(server.app)
-    refused = client.post("/libraries/ann/notes/run", headers=ANN, json={"argv": ["check"]})
+    refused = client.post("/libraries/ann/notes/run", headers=ANN, json={"argv": ["index"]})
     assert refused.status_code == 402 and "allowance" in refused.json()["detail"]
+    # What costs nothing still runs.
+    checked = client.post("/libraries/ann/notes/run", headers=ANN, json={"argv": ["check"]})
+    assert checked.status_code == 200 and '"exit_code"' in checked.text
     imported = client.post("/libraries/ann/notes/import?filename=a.md", headers=ANN, content=b"hi")
     assert imported.status_code == 402
     me = client.get("/me", headers=ANN).json()
