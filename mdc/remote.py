@@ -35,7 +35,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from mdc.config import LIBRARY_STATE_DIRNAME, PROMPT_HEADING, AppConfig
+from mdc.config import LIBRARY_STATE_DIRNAME, AppConfig
 
 # Model-backed commands, which need the server's keys and its index.
 REMOTE_COMMANDS = frozenset({"reply", "index", "argue", "analyze", "audit", "export", "pdf", "review", "files"})
@@ -103,8 +103,8 @@ class Client:
     def delete(self, rel: str, base_sha: str) -> None:
         self._request("DELETE", self._file_path(rel), headers={"If-Match": f'"{base_sha}"'})
 
-    def run(self, argv: list[str], user_names: list[str], on_text) -> dict:
-        body = json.dumps({"argv": argv, "user_names": user_names}).encode()
+    def run(self, argv: list[str], on_text) -> dict:
+        body = json.dumps({"argv": argv}).encode()
         response = self._request("POST", "/run", body, {"Content-Type": "application/json"}, stream=True)
         event, done = None, None
         with response:
@@ -265,13 +265,12 @@ def run_remote(config: AppConfig, library_id: str, root: Path, argv: list[str]) 
             return 1
         if not argv:
             return 0
-        names = [n for n in config.user_names if n != PROMPT_HEADING]
 
         def write(text: str) -> None:
             sys.stdout.write(text)
             sys.stdout.flush()
 
-        done = client.run(argv, names, write)
+        done = client.run(argv, write)
         sync(client, root, library_id)
         return int(done["exit_code"])
     except RemoteError as exc:

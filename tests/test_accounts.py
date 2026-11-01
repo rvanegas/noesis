@@ -233,3 +233,18 @@ def test_the_accounts_script_raises(data):
     listed = out.getvalue()
     assert listed.startswith("default $1.00 a month; free accounts together $25.00")
     assert "zed" in listed and "+$5.00 = $6.00" in listed and "yan" not in listed
+
+
+def test_speaker_names_are_any_users_and_replaced_whole(data):
+    assert accounts.speaker_names("rod") == ()
+    assert accounts.set_speaker_names("rod", ["Rodrigo", "Prompt", " Rodrigo ", "Rodrigo Vanegas"]) == (
+        "Rodrigo", "Rodrigo Vanegas")
+    assert accounts.speaker_names("rod") == ("Rodrigo", "Rodrigo Vanegas")
+    assert accounts.speaker_names("ann") == ()
+    accounts.set_speaker_names("rod", ["Rod"])
+    assert accounts.speaker_names("rod") == ("Rod",)
+    accounts.set_speaker_names("rod", [])
+    assert accounts.speaker_names("rod") == ()
+    for bad in (["a,b"], ["x" * 81], [f"n{i}" for i in range(accounts.MOST_SPEAKER_NAMES + 1)]):
+        with pytest.raises(ValueError):
+            accounts.set_speaker_names("rod", bad)

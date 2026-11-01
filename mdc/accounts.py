@@ -16,6 +16,11 @@ account could cost the operator is capped instead:
   of a bounded size and of the types mdc reads.
 - **Sign-in mail** is rate-limited per address, per client address and in all.
 
+Each user also keeps the names they go by in chats (speaker_names): the
+headings, besides "Prompt", that are their own voice. Every run in their
+libraries and every MCP read of them labels voices by these; any user has
+them, an operator's as much as an account's.
+
 A user with no account here was made by the operator (a users.toml token:
 the Mac's CLI, the nightly service) and is unlimited; so is an account whose
 plan is "unlimited" (scripts/accounts.py). The meter runs for everyone.
@@ -27,6 +32,7 @@ and the model clients charge that user.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sqlite3
@@ -50,6 +56,9 @@ FREE_TYPES = frozenset({".md", ".markdown", ".txt", ".rtf", ".pdf", ".jpg", ".jp
 IMPORT_TYPES = FREE_TYPES | {".zip", ".json"}
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# A name is a speaker heading, so any words; MDC_USER_NAMES is comma-separated.
+SPEAKER_NAME_RE = re.compile(r"^[^\s,](?:[^,\n\r]*[^\s,])?$")
+MOST_SPEAKER_NAMES = 20
 
 
 class AllowanceExhausted(RuntimeError):
@@ -108,6 +117,7 @@ CREATE TABLE IF NOT EXISTS spend (
     usd REAL NOT NULL DEFAULT 0,
     PRIMARY KEY (user, month)
 );
+CREATE TABLE IF NOT EXISTS names (user TEXT PRIMARY KEY, names TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sends (key TEXT NOT NULL, at REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS sends_key_at ON sends (key, at);
 """
@@ -267,6 +277,35 @@ def plan_of(user: str) -> str:
 
 def is_free(user: str) -> bool:
     return plan_of(user) == FREE
+
+
+# ---------------------------------------------------------------------------
+# Speaker names
+# ---------------------------------------------------------------------------
+
+def speaker_names(user: str) -> tuple[str, ...]:
+    """The chat headings that are this user's own voice, besides "Prompt"."""
+    with connect() as db:
+        row = db.execute("SELECT names FROM names WHERE user = ?", (user,)).fetchone()
+    return tuple(json.loads(row[0])) if row else ()
+
+
+def set_speaker_names(user: str, names: list[str]) -> tuple[str, ...]:
+    """Replaces a user's speaker names (none clears them); the names kept."""
+    from mdc.config import PROMPT_HEADING
+    kept = tuple(dict.fromkeys(n.strip() for n in names if n.strip() and n.strip() != PROMPT_HEADING))
+    bad = [n for n in kept if len(n) > 80 or not SPEAKER_NAME_RE.match(n)]
+    if bad:
+        raise ValueError(f"a name is at most 80 characters, with no comma or line break: {bad}")
+    if len(kept) > MOST_SPEAKER_NAMES:
+        raise ValueError(f"at most {MOST_SPEAKER_NAMES} names")
+    with connect() as db:
+        if kept:
+            db.execute("INSERT INTO names (user, names) VALUES (?, ?) "
+                       "ON CONFLICT (user) DO UPDATE SET names = excluded.names", (user, json.dumps(kept)))
+        else:
+            db.execute("DELETE FROM names WHERE user = ?", (user,))
+    return kept
 
 
 # ---------------------------------------------------------------------------

@@ -106,6 +106,7 @@ def test_tools_and_auth(library):
     assert "<date>-<slug>.<role>.<ext>" in text(call(url, "ann", "guide", {}))
     assert "<date>-<slug>.<role>.<ext>" in tools["list_documents"]
     assert "| *Exact Title*" in tools["read_document"]
+    assert "[VOICE: user]" in tools["read_document"] and "[VOICE: user]" in tools["read_file"]
     assert httpx.post(f"{url}/mcp", json={}).status_code == 401
     assert httpx.post(f"{url}/mcp", json={}, headers={"Authorization": "Bearer nope"}).status_code == 401
     meta = httpx.get(f"{url}/.well-known/oauth-protected-resource/mcp").json()
@@ -332,3 +333,28 @@ def test_a_connectors_token_does_not_reach_the_api(library, live):
     assert httpx.get(f"{url}/libraries", headers=bearer).status_code == 401
     assert httpx.delete(f"{url}/libraries/ann/philosophy/files/2026/2026-10-27-essay.document.md",
                         headers={**bearer, "If-Match": "*"}).status_code == 401
+
+
+FLOOR = ("\n# Lunch\n2026-10-30\n\n## Ann\n\nMine.\n\n## Bea\n\nHers.\n\n"
+         "## Claude\n\nThe model's.\n\n## Related\n\n| *Essay*\n")
+
+
+def test_a_chat_comes_back_labelled_by_the_owners_names(library):
+    from mdc import accounts
+    root, url = library
+    (root / "2026" / "2026-10-30-lunch.chat.md").write_text(FLOOR)
+    accounts.set_speaker_names("ann", ["Ann"])
+    try:
+        for got in (text(call(url, "ann", "read_file", {"name": "2026-10-30-lunch.chat.md"})),
+                    text(call(url, "ann", "read_document", {"path": "2026/2026-10-30-lunch.chat.md"}))):
+            assert "## Ann\n\n[VOICE: user]\nMine." in got
+            assert "## Bea\n\n[VOICE: third-party]\nHers." in got
+            assert "## Claude\n\n[VOICE: llm" in got
+            assert "## Related\n\n" in got
+        assert "the sections headed ## Prompt, ## Ann are the user's own words" in text(call(url, "ann", "guide", {}))
+        assert "[VOICE: this entire document is the user's own writing]" in text(
+            call(url, "ann", "read_file", {"name": "2026-10-27-essay.document.md"}))
+        assert "[VOICE" not in text(call(url, "ann", "read_file", {"name": "2026-10-19-parfit2011.source.md"}))
+        assert "Error" in text(call(url, "ann", "read_document", {"path": "../../bob/x.chat.md"}))
+    finally:
+        accounts.set_speaker_names("ann", [])

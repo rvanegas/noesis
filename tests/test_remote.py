@@ -52,7 +52,7 @@ def setup(live, tmp_path):
     remote_root.mkdir(parents=True)
     local = tmp_path / "Chats"
     local.mkdir()
-    config = AppConfig(server_url=url, server_token="t", user_names=("Prompt", "Ann"), mirrors=((LIB, local),))
+    config = AppConfig(server_url=url, server_token="t", mirrors=((LIB, local),))
     return Client(url, "t", LIB), local, remote_root, config
 
 
@@ -184,8 +184,8 @@ def test_a_local_edit_during_a_run_is_a_conflict_not_lost(setup, monkeypatch):
     _quiet(sync, client, local, LIB)
     original = Client.run
 
-    def run_while_editing(self, argv, names, on_text):
-        done = original(self, argv, names, on_text)
+    def run_while_editing(self, argv, on_text):
+        done = original(self, argv, on_text)
         (local / "REFERENCES.md").write_text("edited during the run")
         return done
 

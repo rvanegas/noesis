@@ -39,6 +39,7 @@ let library = null;          // "<user>/<library>"
 let files = {};              // {rel_path: sha256}
 let open = null;             // {path, sha, blob}
 let running = false;
+let names = [];              // the chat headings, besides Prompt, that are the user
 
 // ---------------------------------------------------------------------------
 // Storage that may be refused (a private window): the page works without it,
@@ -190,6 +191,7 @@ function show(signedIn) {
   $("signed-out").hidden = signedIn;
   $("sign-out").hidden = !signedIn;
   $("new-library").hidden = !signedIn || !hasLibrary;
+  $("your-names").hidden = !signedIn || !hasLibrary;
   $("library").hidden = !signedIn || $("library").options.length < 2;
   if (!signedIn) $("usage").hidden = true;
 }
@@ -205,6 +207,7 @@ async function loadUsage() {
   const response = await api("/me");
   if (!response.ok) return;
   const me = await response.json();
+  names = me.names;
   const usage = $("usage");
   usage.hidden = me.plan !== "free";
   if (usage.hidden) return;
@@ -226,6 +229,29 @@ async function loadLibraries() {
   library = ids.includes(remembered) ? remembered : ids[0];
   select.value = library;
   return true;
+}
+
+// The chat headings that are the user's own voice, kept with their account.
+function pickNames() {
+  $("names-list").value = names.join("\n");
+  $("names").hidden = false;
+  $("names-list").focus();
+}
+
+async function saveNames(event) {
+  event.preventDefault();
+  const response = await api("/me/names", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ names: $("names-list").value.split("\n").map((n) => n.trim()).filter(Boolean) }),
+  });
+  if (!response.ok) {
+    say(`Your names: ${await detail(response)}`);
+    return;
+  }
+  names = (await response.json()).names;
+  closePanel("names");
+  say(names.length ? `You are Prompt and ${names.join(", ")} in your chats.` : "You are Prompt in your chats.");
 }
 
 function pickLibraryName() {
@@ -559,6 +585,8 @@ function wire() {
   }));
   $("new-library").addEventListener("click", pickLibraryName);
   $("create-library").addEventListener("submit", guard(createLibrary));
+  $("your-names").addEventListener("click", pickNames);
+  $("names").addEventListener("submit", guard(saveNames));
   $("first-library-form").addEventListener("submit", guard(createLibrary));
   $("filter").addEventListener("input", renderFiles);
   $("index").addEventListener("click", guard(() => run(["index"])));

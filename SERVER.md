@@ -111,7 +111,7 @@ say.
 | System | model, `index_model`, `llm_names`, `wrap_width`, service URLs, base system prompt, review prompts | `etc/config.toml`, baked into the image at `/etc/mdc` (`MDC_CONFIG_DIR`); code defaults |
 | System | asset cache (remote file IDs belong to the API key) | `/data/cache` (`MDC_CACHE_DIR`) |
 | User | bearer token | `/data/users.toml` (Phase 2) |
-| Run | the user's names as transcript headings, beside `Prompt`, which is everyone's | sent by the client: the CLI from its `user_names`, The Floor from the user's display name; `MDC_USER_NAMES` |
+| User | the user's names as transcript headings, beside `Prompt`, which is everyone's | kept with the user in `accounts.db` (`accounts.speaker_names`), set by `PUT /me/names` (the web client's *Your names*) or `scripts/accounts.py names`; every run in the user's libraries gets them as `MDC_USER_NAMES`, whoever starts it, and the MCP tools label a chat's voices by them |
 | Run | which library | `--lib` (sets `MDC_LIBRARY`) |
 | Library | `SYSTEM_PROMPT.md` (absorbs the old per-user `system.md`), `KEYS.md`, the documents | its tree, edited and synced |
 | Library | index state: `manifest.json`, `index.json`, `relations.json` | its `.mdc/`, server-owned, never synced |
@@ -361,11 +361,11 @@ The plan as written before building:
   - Paths are confined to the library, reusing the containment check in
     `assets.py`. Symlinks are refused. `.mdc/` is neither listed nor
     writable.
-- **Commands:** `POST /libraries/{user}/{library}/run` `{argv, user_names}` →
+- **Commands:** `POST /libraries/{user}/{library}/run` `{argv}` →
   a server-sent-event stream of output lines, ending with `{exit_code,
   changed: {rel_path: sha256}, deleted: […]}`.
   - The first version runs `mdc --lib <library> <argv>` as a subprocess with
-    `cwd` in the library and `MDC_USER_NAMES` from the request. This is
+    `cwd` in the library and `MDC_USER_NAMES` from the owner's stored names. This is
     internal to the service, not a second entry point. It avoids reworking the
     ~215 `print` calls in `cmd_*` before the API is useful.
   - Changed and deleted files come from hashing the library (without `.mdc/`)

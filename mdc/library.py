@@ -136,6 +136,47 @@ def _extract_related(content: str) -> tuple[str, ...]:
     return _extract_section(content, _RELATED_SECTION_RE)
 
 
+def annotate_voice(
+    content: str,
+    role: str,
+    user_names: tuple[str, ...],
+    llm_names: tuple[str, ...],
+) -> str:
+    """Return content annotated with [VOICE: ...] labels, by its role.
+
+    A document is the user's own writing, whole; a chat is labelled section
+    by section from its speaker headings.
+    """
+    from mdc.transcript import HEADING_RE
+
+    if role == "document":
+        return "[VOICE: this entire document is the user's own writing]\n\n" + content
+
+    user_set = frozenset(user_names)
+    llm_set = frozenset(llm_names)
+
+    def _label(speaker: str) -> str:
+        if speaker in user_set:
+            return "[VOICE: user]"
+        if speaker in llm_set:
+            return "[VOICE: llm — collaborative elaboration, implicitly endorsed unless contradicted]"
+        if speaker in _STRUCTURAL_HEADINGS:
+            return ""
+        return "[VOICE: third-party]"
+
+    parts: list[str] = []
+    matches = list(HEADING_RE.finditer(content))
+    prev_end = 0
+    for m in matches:
+        parts.append(content[prev_end:m.end()])
+        label = _label(m.group(2).strip())
+        if label:
+            parts.append(f"\n{label}")
+        prev_end = m.end()
+    parts.append(content[prev_end:])
+    return "".join(parts)
+
+
 def extract_voice_sections(
     content: str,
     user_names: tuple[str, ...],

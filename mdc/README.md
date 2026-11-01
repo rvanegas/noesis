@@ -59,6 +59,8 @@ wrap_width = 100
 
 # Your name as a section heading, treated as your own voice beside "Prompt",
 # which always is. MDC_USER_NAMES (comma-separated) overrides it for one run.
+# On the server your names are kept with you instead (Your names, in the web
+# client), and this is not sent.
 user_names = ["YourName"]
 
 # Section headings treated as LLM voice.
@@ -403,7 +405,7 @@ mdc serve --host 0.0.0.0 --port 8001
 curl -H "Authorization: Bearer $T" https://mdc.rvanegas.co/libraries
 curl -H "Authorization: Bearer $T" https://mdc.rvanegas.co/libraries/rodvandur/philosophy/files
 curl -N -H "Authorization: Bearer $T" -H "Content-Type: application/json" \
-  -d '{"argv": ["reply", "eleatic"], "user_names": ["Rodrigo"]}' \
+  -d '{"argv": ["reply", "eleatic"]}' \
   https://mdc.rvanegas.co/libraries/rodvandur/philosophy/run
 ```
 
@@ -438,7 +440,6 @@ With mdc's server configured, the model-backed commands (`reply`, `index`, `argu
 # ~/.config/mdc/config.toml
 server_url = "https://mdc.rvanegas.co"
 server_token = "..."          # minted on the server by scripts/add_token.py
-user_names = ["Rodrigo"]      # sent with every run
 
 [libraries."rodvandur/philosophy"]
 local_root = "~/Documents/Writing/Chats"

@@ -13,6 +13,11 @@ Nothing here writes. edit_file is `mdc reply`'s alone, and append_turn is
 gone: claude.ai edits with its own documents, and a conversation reaches the
 library by its export and `mdc import`, which is whole where a turn-by-turn
 write depended on Claude remembering to make it.
+
+A chat or document comes back with its voices labelled ([VOICE: …], as the
+indexer labels them): the library owner's by the names they keep
+(accounts.speaker_names), the model's, anyone else's. Without labels a chat
+of several people says nothing of which of them is the user.
 """
 
 from __future__ import annotations
@@ -39,6 +44,10 @@ INSTRUCTIONS = "\n\n".join([
     "analysis, review; a name is unique across the library. Use list_documents to find "
     "names and read_file to read one. Nothing in the library is written from here.",
     lib.LIBRARY_TOOLS_PROMPT,
+    "A chat or document is read with its voices labelled: [VOICE: user] marks the "
+    "user's own words, [VOICE: llm …] a model's replies, [VOICE: third-party] anyone "
+    "else's; a document is the user's own writing throughout. guide names the "
+    "headings that are the user's.",
 ])
 
 
@@ -137,6 +146,17 @@ def _root(library: str | None) -> Path:
         raise ToolError(str(exc)) from None
 
 
+def _voiced(root: Path, name: str, text: str) -> str:
+    """A chat or document labelled by voice, the library owner's by their names."""
+    from mdc import accounts
+    from mdc.config import PROMPT_HEADING, load_config
+    role = lib.role_of(name)
+    if role not in ("chat", "document"):
+        return text
+    names = (PROMPT_HEADING, *accounts.speaker_names(root.parent.name))
+    return lib.annotate_voice(text, role, names, load_config().llm_names)
+
+
 def _find(root: Path, name: str) -> Path:
     from mdc.cli import _library_files
     if "/" in name or name.startswith("."):
@@ -154,9 +174,17 @@ def _find(root: Path, name: str) -> Path:
 @_tool
 def guide() -> str:
     """The user's mdc library: read this once per conversation, before the other
-    mdc tools. How the library is organized, and how to find and cite its
-    documents."""
-    return INSTRUCTIONS
+    mdc tools. How the library is organized, how to find and cite its
+    documents, and which voices in a chat are the user's."""
+    from mdc import accounts
+    from mdc.config import PROMPT_HEADING
+    who = _caller()
+    if who == "*":
+        return INSTRUCTIONS
+    names = ", ".join(f"## {n}" for n in (PROMPT_HEADING, *accounts.speaker_names(who)))
+    return (f"{INSTRUCTIONS}\n\nIn this user's chats, the sections headed {names} are the "
+            "user's own words. A section under any other name is someone else's, the "
+            "model's or another person's, even where it sounds like the user.")
 
 
 @_tool
@@ -187,9 +215,18 @@ def lookup_term(term: str, library: str | None = None) -> str:
 @_tool
 def read_document(path: str, library: str | None = None) -> str:
     """Read an indexed document in full, by the path lookup_term gives (e.g.
-    2026/<name>). Cite a library document only after reading it, under a
-    '## Related' section, one per line as '| *Exact Title*'."""
-    return lib.read_document(_root(library), path)
+    2026/<name>). A chat comes back with each section labelled by voice:
+    [VOICE: user] is the user's own words. Cite a library document only after
+    reading it, under a '## Related' section, one per line as '| *Exact Title*'."""
+    root = _root(library)
+    text = lib.read_document(root, path)
+    target = (root / path).resolve()
+    if not (target.is_relative_to(root.resolve()) and target.is_file()):
+        found = lib.resolve_title(root, path)
+        if found is None:
+            return text
+        target = root / found
+    return _voiced(root, target.name, text)
 
 
 @_tool
@@ -197,9 +234,11 @@ def read_file(name: str, library: str | None = None) -> str:
     """Read any text file of the library by its name. Files are named <date>-<slug>.<role>.<ext> (role: chat, document, source, argument, analysis or review; e.g. 2026-06-29-the-eleatic-critique.chat.md), kept in a folder per year, and a name is unique across the library. A source is
     third-party material, not the user's writing, and is not indexed: it is
     reached by name from the documents that cite it. An analysis or review is
-    written by mdc."""
-    path = _find(_root(library), name)
+    written by mdc. A chat comes back with each section labelled by voice:
+    [VOICE: user] is the user's own words."""
+    root = _root(library)
+    path = _find(root, name)
     try:
-        return path.read_text(encoding="utf-8")
+        return _voiced(root, name, path.read_text(encoding="utf-8"))
     except UnicodeDecodeError:
         return f"{name} is not text (a {path.suffix} file); it can be linked from a chat, not read here."

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The accounts people sign up for by email: list them, link, change a plan or allowance, disable.
+"""The accounts people sign up for by email: list them, link, change a plan, allowance or names, disable.
 
 An operator task (SERVER.md, Phase 6), run in the container:
 
@@ -8,6 +8,7 @@ An operator task (SERVER.md, Phase 6), run in the container:
     docker compose run --rm mdc python scripts/accounts.py plan ann unlimited
     docker compose run --rm mdc python scripts/accounts.py raise ann 5
     docker compose run --rm mdc python scripts/accounts.py raised
+    docker compose run --rm mdc python scripts/accounts.py names rodvandur Rodrigo "Rodrigo Vanegas"
     docker compose run --rm mdc python scripts/accounts.py disable ann
 
 `link` gives an existing user (one users.toml names, whose libraries are
@@ -15,8 +16,10 @@ already on the server) the address they sign in with, so signing in reaches
 those libraries rather than making a new account. `raise` adds dollars to a
 free account's monthly allowance, kept every month until changed; a negative
 amount takes back, never below the default; `raised` lists the accounts
-whose allowance is not the default (bin/cap, from the Mac). Disabling ends every OAuth
-grant the account has; its libraries stay.
+whose allowance is not the default (bin/cap, from the Mac). `names` sets
+the chat headings, besides Prompt, that are a user's own voice, for any
+user, with an account or not (the user alone prints them; --clear clears
+them). Disabling ends every OAuth grant the account has; its libraries stay.
 """
 
 from __future__ import annotations
@@ -42,6 +45,10 @@ def main(argv: list[str] | None = None) -> int:
     more.add_argument("user")
     more.add_argument("usd", type=float, help="dollars a month; negative takes back")
     sub.add_parser("raised", help="the accounts whose allowance is not the default")
+    names = sub.add_parser("names", help="the chat headings that are a user's own voice")
+    names.add_argument("user")
+    names.add_argument("names", nargs="*", help="none prints them; --clear clears them")
+    names.add_argument("--clear", action="store_true")
     for name in ("disable", "enable"):
         sub.add_parser(name).add_argument("user")
     args = parser.parse_args(argv)
@@ -65,6 +72,14 @@ def main(argv: list[str] | None = None) -> int:
             plan = "" if found.plan == accounts.FREE else f"  ({found.plan}: not limited)"
             print(f"{found.user:<24} {found.email:<36} +${found.extra_usd:.2f} = "
                   f"${accounts.allowance(found.user):.2f}, ${accounts.spent(found.user):.2f} spent{plan}")
+        return 0
+    if args.command == "names":
+        try:
+            if args.names or args.clear:
+                accounts.set_speaker_names(args.user, args.names)
+        except ValueError as exc:
+            raise SystemExit(f"✗ {exc}") from None
+        print(f"{args.user}: " + ", ".join(["Prompt", *accounts.speaker_names(args.user)]))
         return 0
     try:
         if args.command == "link":

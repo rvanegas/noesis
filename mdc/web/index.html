@@ -12,6 +12,7 @@
   <h1>mdc</h1>
   <select id="library" aria-label="Library" hidden></select>
   <button id="new-library" class="quiet" hidden>New library</button>
+  <button id="your-names" class="quiet" hidden>Your names</button>
   <button id="sign-out" class="quiet" hidden>Sign out</button>
 </header>
 
@@ -47,6 +48,15 @@
       <h2>New library</h2>
       <label>Name (lowercase letters, digits, - and _)<input id="library-name" required pattern="[a-z0-9][a-z0-9_\-]*" spellcheck="false" autocapitalize="off" autocomplete="off"></label>
       <div class="actions"><button>Create</button><button type="button" class="quiet" data-close>Cancel</button></div>
+    </form>
+
+    <form id="names" class="panel" hidden>
+      <h2>Your names</h2>
+      <p class="hint">The headings in your chats that are you, besides <code>Prompt</code>: in a chat from
+        The Floor, the name you spoke under. Everywhere else in a chat is someone else, Claude or another person.
+        Indexing and Claude’s reading of your library go by these.</p>
+      <label>One per line<textarea id="names-list" rows="3" spellcheck="false" autocapitalize="off"></textarea></label>
+      <div class="actions"><button>Save</button><button type="button" class="quiet" data-close>Cancel</button></div>
     </form>
 
     <form id="upload" class="panel" hidden>

@@ -134,7 +134,7 @@ def test_read_write_delete_with_preconditions(client):
 
 
 def test_run_streams_and_reports_changes(client, data):
-    response = client.post(f"{BASE}/run", headers=ANN, json={"argv": ["new", "Fresh", "Start"], "user_names": ["Ann"]})
+    response = client.post(f"{BASE}/run", headers=ANN, json={"argv": ["new", "Fresh", "Start"]})
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
     events = _events(response.text)
@@ -157,10 +157,35 @@ def test_run_refuses(client, argv):
     assert client.post(f"{BASE}/run", headers=ANN, json={"argv": argv}).status_code in (400, 422)
 
 
-@pytest.mark.parametrize("names, status", [(["Mary Ann"], 200), (["Ann,Bo"], 400), ([" Ann"], 400)])
+@pytest.mark.parametrize("names, status", [(["Mary Ann"], 200), (["Ann,Bo"], 400), (["Ann\nBo"], 400)])
 def test_a_user_name_may_have_spaces_not_commas(client, names, status):
-    response = client.post(f"{BASE}/run", headers=ANN, json={"argv": ["check", "old-roman"], "user_names": names})
-    assert response.status_code == status
+    assert client.put("/me/names", headers=ANN, json={"names": names}).status_code == status
+
+
+def test_names_are_kept_with_the_user(client):
+    assert client.get("/me", headers=ANN).json()["names"] == []
+    saved = client.put("/me/names", headers=ANN, json={"names": [" Ann ", "Prompt", "Ann", "Mary Ann"]})
+    assert saved.json() == {"names": ["Ann", "Mary Ann"]}
+    assert client.get("/me", headers=ANN).json()["names"] == ["Ann", "Mary Ann"]
+    assert client.get("/me", headers={"Authorization": "Bearer bob-token"}).json()["names"] == []
+    service = {"Authorization": "Bearer service-token"}
+    assert client.put("/me/names", headers=service, json={"names": ["X"]}).status_code == 400
+
+
+def test_a_run_knows_the_owners_names_whoever_starts_it(client, monkeypatch):
+    import asyncio
+    envs = []
+    spawn = asyncio.create_subprocess_exec
+
+    async def spy(*args, env, **kwargs):
+        envs.append(env)
+        return await spawn(*args, env=env, **kwargs)
+
+    monkeypatch.setattr(server.asyncio, "create_subprocess_exec", spy)
+    client.put("/me/names", headers=ANN, json={"names": ["Ann", "Mary Ann"]})
+    for who in (ANN, {"Authorization": "Bearer service-token"}):
+        client.post(f"{BASE}/run", headers=who, json={"argv": ["check", "old-roman"]})
+    assert [e["MDC_USER_NAMES"] for e in envs] == ["Ann,Mary Ann", "Ann,Mary Ann"]
 
 
 def test_one_run_at_a_time_and_no_writes_meanwhile(client, data):

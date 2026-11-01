@@ -13,14 +13,17 @@ run:
 - GET    …/files/{rel_path}                  the bytes, ETag their sha256
 - PUT    …/files/{rel_path}                  If-None-Match: * creates; If-Match: "<sha>" replaces
 - DELETE …/files/{rel_path}                  If-Match: "<sha>"
-- POST   …/run {argv, user_names}            server-sent events: output, then done
+- POST   …/run {argv}                        server-sent events: output, then done
 - POST   …/import?filename=…[&only=…&replace=true]   the body is the file; as /run
-- GET    /me                                 the caller's account: plan, spend, storage
+- GET    /me                                 the caller's account: plan, spend, storage, names
+- PUT    /me/names {names}                   the headings that are the caller's voice in chats
 
 /run runs `mdc --lib <library> <argv>` in a subprocess from the library root:
 file arguments are names, which mdc resolves across the library. Its output
 streams as it is written (reply prints tokens without newlines), and the
-last event says which files the run changed or deleted. One run at a time
+last event says which files the run changed or deleted. A run knows the
+library owner's voice by the names they keep here (accounts.speaker_names),
+in MDC_USER_NAMES, whoever starts it: the owner, or the nightly index. One run at a time
 per library; while it runs, writes to the library get 409. The run belongs
 to the server, not the request: a client that goes away does not cut it short.
 
@@ -47,7 +50,6 @@ import codecs
 import hashlib
 import json
 import os
-import re
 import shutil
 import sys
 import tempfile
@@ -79,8 +81,6 @@ RUNNABLE = frozenset({
 # run. A command missing here is still stopped at its first model call, by
 # the meter in the run itself (accounts.py), only less plainly.
 SPENDING = frozenset({"reply", "index", "argue", "analyze", "audit", "review", "import"})
-# A name is a speaker heading, so any words; MDC_USER_NAMES is comma-separated.
-_USER_NAME_RE = re.compile(r"^[^\s,](?:[^,\n\r]*[^\s,])?$")
 
 _runs: set[asyncio.Task] = set()
 # Runs for free accounts at once, server-wide: the box is shared (rvanegas-site).
@@ -156,7 +156,24 @@ def me(who: str = Depends(caller)) -> dict:
         "allowance_usd": accounts.allowance(who) if free else None,
         "stored_bytes": accounts.stored_bytes(who) if free else None,
         "storage_bytes": limits.storage_bytes if free else None,
+        "names": list(accounts.speaker_names(who)),
     }
+
+
+class SpeakerNames(BaseModel):
+    names: list[str]
+
+
+@app.put("/me/names")
+def put_names(body: SpeakerNames, who: str = Depends(caller)) -> dict:
+    """The chat headings, besides "Prompt", that are the caller's own voice."""
+    from mdc import accounts
+    if who == "*":
+        raise HTTPException(400, "a service speaks in no chats")
+    try:
+        return {"names": list(accounts.set_speaker_names(who, body.names))}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from None
 
 
 class NewLibrary(BaseModel):
@@ -312,7 +329,6 @@ def delete_file(
 
 class Run(BaseModel):
     argv: list[str]
-    user_names: list[str] = []
 
 
 def _check_run(run: Run) -> None:
@@ -322,9 +338,6 @@ def _check_run(run: Run) -> None:
         raise HTTPException(400, "the library is the route's, not an argument")
     if run.argv[0] == "reply" and any(a in ("-W", "--watch") for a in run.argv):
         raise HTTPException(400, "reply --watch belongs to the client")
-    bad = [n for n in run.user_names if not _USER_NAME_RE.match(n)]
-    if bad:
-        raise HTTPException(400, f"a user name has no comma, line break, or space at either end: {bad}")
 
 
 @app.post("/libraries/{user}/{library}/run")
@@ -335,7 +348,7 @@ async def run_command(run: Run, root: Path = Depends(library)) -> StreamingRespo
         raise HTTPException(409, "a run is in progress in this library")
     _may_run(root, run.argv[0])
     await lock.acquire()
-    return _stream(root, run.argv, run.user_names, lock)
+    return _stream(root, run.argv, lock)
 
 
 @app.post("/libraries/{user}/{library}/import")
@@ -369,14 +382,13 @@ async def import_file(
         argv += ["--only", only]
     if replace:
         argv.append("--replace")
-    return _stream(root, argv, [], lock, cleanup=lambda: shutil.rmtree(staging, ignore_errors=True))
+    return _stream(root, argv, lock, cleanup=lambda: shutil.rmtree(staging, ignore_errors=True))
 
 
-def _stream(root: Path, argv: list[str], user_names: list[str], lock: asyncio.Lock,
-            cleanup=None) -> StreamingResponse:
+def _stream(root: Path, argv: list[str], lock: asyncio.Lock, cleanup=None) -> StreamingResponse:
     """Runs mdc in the library, whose lock the caller holds, as server-sent events."""
     events: asyncio.Queue = asyncio.Queue()
-    task = asyncio.create_task(_execute(root, argv, user_names, events, lock, cleanup))
+    task = asyncio.create_task(_execute(root, argv, events, lock, cleanup))
     _runs.add(task)
     task.add_done_callback(_runs.discard)
     from mdc import accounts
@@ -393,15 +405,18 @@ def _stream(root: Path, argv: list[str], user_names: list[str], lock: asyncio.Lo
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-async def _execute(root: Path, argv: list[str], user_names: list[str], events: asyncio.Queue,
+async def _execute(root: Path, argv: list[str], events: asyncio.Queue,
                    lock: asyncio.Lock, cleanup=None) -> None:
+    from mdc import accounts
     try:
         before = await asyncio.to_thread(tree_hashes, root)
         env = {k: v for k, v in os.environ.items() if k != "MDC_LIBRARY"}
         # MDC_RUN_LOCAL: this mdc is the server's, never a client of it.
         # MDC_ACCOUNT: whose allowance the run's model calls spend (accounts.py).
-        env.update(MDC_USER_NAMES=",".join(user_names), PYTHONUNBUFFERED="1", MDC_RUN_LOCAL="1",
-                   MDC_ACCOUNT=_owner(root))
+        # MDC_USER_NAMES: whose voice is whose in the owner's chats.
+        owner = _owner(root)
+        env.update(MDC_USER_NAMES=",".join(accounts.speaker_names(owner)), PYTHONUNBUFFERED="1", MDC_RUN_LOCAL="1",
+                   MDC_ACCOUNT=owner)
         process = await asyncio.create_subprocess_exec(
             sys.executable, "-m", "mdc", "--lib", str(root), *argv,
             cwd=root, env=env,
