@@ -146,7 +146,7 @@ pre {
 .group summary { cursor: pointer; color: var(--muted); padding: .4rem 0; }
 .group .files { margin-left: 1rem; }
 .group .files li:last-child { border-bottom: 0; }
-#files { margin-top: .75rem; border-top: 1px solid var(--line); }
+#files:not(:empty) { margin-top: .75rem; border-top: 1px solid var(--line); }
 
 button.file {
   display: block;
