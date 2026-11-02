@@ -260,6 +260,16 @@ def test_import_is_a_run(client, data):
     assert client.post("/libraries/ann/philosophy/import", params={"filename": "x.md"}, content=b"x").status_code == 401
 
 
+def test_the_bare_name_leads_to_the_web_client(data):
+    # With the app's lifespan, so the MCP and OAuth app mounted at the root is
+    # up, and still answers its own paths beside the redirect.
+    with TestClient(server.app) as client:
+        response = client.get("/", follow_redirects=False)
+        assert response.status_code == 302 and response.headers["location"] == "/web/"
+        assert client.get("/.well-known/oauth-authorization-server").status_code == 200
+        assert client.get("/mcp").status_code == 401
+
+
 def test_the_web_client_is_served_with_its_policy(client):
     assert client.get("/web", follow_redirects=False).headers["location"] == "/web/"
     page = client.get("/web/")

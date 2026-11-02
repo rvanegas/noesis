@@ -614,6 +614,14 @@ _WEB_HEADERS = {
 }
 
 
+# The bare name is where people arrive (rvanegas.co links here); the client
+# itself stays at /web/, its OAuth redirect, clear of the MCP and OAuth paths
+# mounted at the root. Temporary, so / stays free for something else.
+@app.get("/", include_in_schema=False)
+def root() -> Response:
+    return RedirectResponse("/web/", status_code=302)
+
+
 @app.get("/web")
 def web_root() -> Response:
     return RedirectResponse("/web/", status_code=308)
