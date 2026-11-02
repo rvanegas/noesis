@@ -367,6 +367,48 @@ def test_the_web_client_signs_in_and_reaches_the_api(library, live):
     assert elsewhere.status_code == 400
 
 
+def test_roxana_signs_people_in_and_learns_only_who_they_are(library, live):
+    """An identity-only public client, as Roxana's browser runs it: PKCE, /me
+    from its own origin, refresh, revoke; never /mcp or the API."""
+    import importlib.util
+    import io
+    from contextlib import redirect_stdout
+    from urllib.parse import parse_qs, urlparse
+    data, url = live
+    spec = importlib.util.spec_from_file_location("add_client", Path(__file__).parent.parent / "scripts" / "add_client.py")
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    redirect, origin = "https://roxana.example/signin", "https://roxana.example"
+    with redirect_stdout(io.StringIO()):
+        script.main(["roxana", "--public", "--name", "Roxana", "--redirect", redirect])
+    verifier, challenge = _pkce()
+    r = httpx.get(f"{url}/authorize", params={
+        "response_type": "code", "client_id": "roxana", "redirect_uri": redirect,
+        "code_challenge": challenge, "code_challenge_method": "S256", "state": "r1"})
+    request_id = r.headers["location"].split("request=")[1]
+    page = httpx.get(f"{url}/oauth/login", params={"request": request_id}).text
+    assert "Roxana" in page and "not your libraries" in page
+    back = _sign_in(url, request_id)
+    code = parse_qs(urlparse(back.headers["location"]).query)["code"][0]
+    exchanged = httpx.post(f"{url}/token", headers={"Origin": origin}, data={
+        "grant_type": "authorization_code", "code": code, "redirect_uri": redirect,
+        "client_id": "roxana", "code_verifier": verifier})
+    assert exchanged.headers["access-control-allow-origin"] in ("*", origin)
+    tokens = exchanged.json()
+    bearer = {"Authorization": f"Bearer {tokens['access_token']}"}
+    me = httpx.get(f"{url}/me", headers={**bearer, "Origin": origin})
+    assert me.json()["user"] == "ann" and me.json()["client"] == "roxana"
+    assert me.headers["access-control-allow-origin"] == origin
+    assert httpx.get(f"{url}/libraries", headers=bearer).status_code == 401
+    assert httpx.post(f"{url}/mcp", json={}, headers=bearer).status_code == 401
+    refreshed = httpx.post(f"{url}/token", data={
+        "grant_type": "refresh_token", "refresh_token": tokens["refresh_token"], "client_id": "roxana"}).json()
+    assert httpx.get(f"{url}/me", headers={"Authorization": f"Bearer {refreshed['access_token']}"}).status_code == 200
+    assert httpx.post(f"{url}/revoke", data={
+        "client_id": "roxana", "client_secret": "", "token": refreshed["refresh_token"]}).status_code == 200
+    assert httpx.get(f"{url}/me", headers={"Authorization": f"Bearer {refreshed['access_token']}"}).status_code == 401
+
+
 def test_a_connectors_token_does_not_reach_the_api(library, live):
     from urllib.parse import parse_qs, urlparse
     data, url = live

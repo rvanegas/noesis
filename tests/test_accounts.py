@@ -313,3 +313,95 @@ def test_the_libraries_report(data):
     assert lines[1].split() == ["notes", "1", "indexed", "2", "files"]
     assert lines[2] == "rod"
     assert lines[3].split() == ["philosophy", "0", "indexed", "0", "files"]
+
+
+def _script(name):
+    spec = importlib.util.spec_from_file_location(name, REPO / "scripts" / f"{name}.py")
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    return script
+
+
+def test_the_operator_registers_an_application_that_only_signs_in(data):
+    import asyncio
+    from noesis.oauth import provider
+    out = io.StringIO()
+    with redirect_stdout(out):
+        _script("add_client").main(["roxana", "--public", "--name", "Roxana", "--prefix", "NOESIS",
+                                    "--redirect", "https://roxana.example/signin",
+                                    "--redirect", "http://localhost:3000/signin"])
+    assert out.getvalue().split() == ["NOESIS_CLIENT_ID=roxana"]
+    client = asyncio.run(provider.get_client("roxana"))
+    assert client.token_endpoint_auth_method == "none" and client.client_secret is None
+    assert provider.identity_only("roxana") and not provider.identity_only("thefloor")
+    assert provider.browser_origins() == {"https://roxana.example", "http://localhost:3000"}
+    for bad in (["floor", "--name", "x", "--redirect", "https://a.example/cb", "--redirect", "https://b.example/cb"],
+                ["floor", "--name", "x", "--redirect", "http://localhost:3000/cb"]):
+        with pytest.raises(SystemExit):
+            _script("add_client").main(bad)
+
+
+def test_an_identity_only_token_answers_me_alone(data):
+    import asyncio
+    from noesis.oauth import provider
+    with redirect_stdout(io.StringIO()):
+        _script("add_client").main(["roxana", "--public", "--name", "Roxana",
+                                    "--redirect", "https://roxana.example/signin"])
+    accounts.link("ann@example.com", "ann", accounts.FREE)
+    issued = asyncio.run(_issue_for("roxana", "ann"))
+    client = TestClient(server.app)
+    bearer = {"Authorization": f"Bearer {issued.access_token}"}
+    me = client.get("/me", headers=bearer).json()
+    assert me["user"] == "ann" and me["client"] == "roxana"
+    assert client.get("/libraries", headers=bearer).status_code == 401
+    assert asyncio.run(provider.load_access_token(issued.access_token)) is None  # nor /mcp
+
+
+def test_me_answers_the_browser_apps_origins_alone(data):
+    with redirect_stdout(io.StringIO()):
+        _script("add_client").main(["roxana", "--public", "--name", "Roxana",
+                                    "--redirect", "https://roxana.example/signin"])
+    client = TestClient(server.app)
+    preflight = {"Access-Control-Request-Method": "GET", "Access-Control-Request-Headers": "authorization"}
+    ok = client.options("/me", headers={"Origin": "https://roxana.example", **preflight})
+    assert ok.status_code == 204 and ok.headers["access-control-allow-origin"] == "https://roxana.example"
+    assert "access-control-allow-origin" not in client.options(
+        "/me", headers={"Origin": "https://evil.example", **preflight}).headers
+    got = client.get("/me", headers={"Origin": "https://roxana.example", **ANN})
+    assert got.status_code == 200 and got.headers["access-control-allow-origin"] == "https://roxana.example"
+    assert "access-control-allow-origin" not in client.get(
+        "/me", headers={"Origin": "https://evil.example", **ANN}).headers
+
+
+def test_roxanas_people_are_linked_by_their_usernames(data):
+    script = _script("link_accounts")
+    accounts.link("bob@example.com", "bob", accounts.FREE)
+    accounts.link("carol@example.com", "carol", accounts.FREE)
+    mapping = "\n".join([
+        "# Roxana's Cognito users",
+        "Ann@Example.com\tann",       # an operator user (users.toml), no account yet
+        "dee@example.com\tdee\t# a note",
+        "bob@example.com\tbob",       # done already
+        "bob2@example.com\tcarol",    # carol is another address's
+        "carol@example.com\tcarla",   # the address is carol's
+        "eve@example.com\tEve@x",     # not a name
+        "dee@example.com\tdee2",      # address twice
+        "",
+    ])
+    out = io.StringIO()
+    with redirect_stdout(out):
+        script.main([str(_write(data / "map.tsv", mapping))])
+    assert accounts.account("dee") is None  # a plan changes nothing
+    verdicts = [(line.split()[0], line.split()[-1]) for line in out.getvalue().splitlines()[:7]]
+    assert verdicts[:3] == [("link", "ann@example.com"), ("link", "dee@example.com"), ("done", "bob@example.com")]
+    assert [v for v, _ in verdicts[3:]] == ["carol", "the", "not", "address"]
+    with redirect_stdout(io.StringIO()):
+        script.main([str(data / "map.tsv"), "--apply"])
+    assert accounts.account("dee").plan == accounts.FREE
+    assert accounts.account("ann").plan == accounts.UNLIMITED and accounts.account("ann").email == "ann@example.com"
+    assert accounts.account_for_email("bob2@example.com") is None
+
+
+def _write(path, text):
+    path.write_text(text, encoding="utf-8")
+    return path

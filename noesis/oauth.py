@@ -33,6 +33,13 @@ the CLI), through `load_access_token`.
   redirect, since `allowed_redirect` does not name this host. Its tokens are
   the only OAuth tokens the file and run API takes (`API_CLIENTS`); claude.ai's
   reach /mcp alone.
+- **An application that only signs people in** (Roxana: a browser app with
+  no server of its own) is a public client registered by the operator
+  (`scripts/add_client.py --public`), marked identity-only in oauth.json. Its
+  tokens answer /me, so it learns who signed in, and nothing else: not /mcp,
+  not the file and run API. dianoia accepts them from Roxana's callers by
+  asking /me, which names the client a token was issued to. Its redirects'
+  origins are the browser origins /me answers (`browser_origins`).
 """
 
 from __future__ import annotations
@@ -90,6 +97,11 @@ def web_client() -> OAuthClientInformationFull:
     )
 
 
+def _origin(uri: str) -> str:
+    u = urlparse(uri)
+    return f"{u.scheme}://{u.netloc}"
+
+
 def allowed_redirect(uri: str) -> bool:
     u = urlparse(uri)
     if (u.scheme, u.hostname, u.path) in ALLOWED_CALLBACKS:
@@ -144,6 +156,16 @@ class NoesisOAuthProvider:
             return web_client()
         raw = self._load()["clients"].get(client_id)
         return OAuthClientInformationFull.model_validate(raw) if raw else None
+
+    def identity_only(self, client_id: str) -> bool:
+        """A client whose tokens say who signed in, and reach nothing else."""
+        raw = self._load()["clients"].get(client_id)
+        return bool(raw and raw.get("identity_only"))
+
+    def browser_origins(self) -> set[str]:
+        """The origins of identity-only clients' redirects: the browser apps that read /me."""
+        return {_origin(uri) for raw in self._load()["clients"].values() if raw.get("identity_only")
+                for uri in raw.get("redirect_uris") or []}
 
     async def register_client(self, client_info: OAuthClientInformationFull) -> None:
         bad = [str(u) for u in (client_info.redirect_uris or []) if not allowed_redirect(str(u))]
@@ -272,6 +294,14 @@ class NoesisOAuthProvider:
         return token
 
     async def load_access_token(self, token: str) -> AccessToken | None:
+        """A token for /mcp and the API: an identity-only client's reaches neither."""
+        found = await self.load_any_access_token(token)
+        if found is not None and self.identity_only(found.client_id):
+            return None
+        return found
+
+    async def load_any_access_token(self, token: str) -> AccessToken | None:
+        """Any client's token, for what says only who signed in (/me)."""
         entry = self._load()["access"].get(_sha(token))
         if entry is not None:
             if entry["expires_at"] < time.time() or not self._still_signed_in(entry):

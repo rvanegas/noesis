@@ -15,8 +15,10 @@ run:
 - DELETE …/files/{rel_path}                  If-Match: "<sha>"
 - POST   …/run {argv}                        server-sent events: output, then done
 - POST   …/import?filename=…[&only=…&replace=true&document_of=…]   the body is the file; as /run
-- GET    /me                                 the caller's account: plan, spend, storage, names
-                                             (any client's token, not only the API's)
+- GET    /me                                 the caller's account: plan, spend, storage, names,
+                                             and the client the token was issued to (any
+                                             client's token, not only the API's; CORS for
+                                             the browser apps that sign in here, Roxana)
 - PUT    /me/names {names}                   the headings that are the caller's voice in chats
 
 /run runs `noesis --lib <library> <argv>` in a subprocess from the library root:
@@ -60,6 +62,7 @@ from pathlib import Path, PurePosixPath
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, StreamingResponse
+from mcp.server.auth.provider import AccessToken
 from pydantic import BaseModel
 
 from noesis import service
@@ -131,15 +134,15 @@ async def caller(authorization: str | None = Header(default=None)) -> str:
     return token.subject
 
 
-async def anyone(authorization: str | None = Header(default=None)) -> str:
-    """As caller, but any client's token: for what a person may read about themselves."""
+async def anyone(authorization: str | None = Header(default=None)) -> AccessToken:
+    """As caller, but any client's token, identity-only ones too: for what a person may read about themselves."""
     from noesis.oauth import provider
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "a bearer token is required")
-    token = await provider.load_access_token(authorization.removeprefix("Bearer "))
+    token = await provider.load_any_access_token(authorization.removeprefix("Bearer "))
     if token is None or not token.subject:
         raise HTTPException(401, "unknown token")
-    return token.subject
+    return token
 
 
 def library(user: str, library: str, who: str = Depends(caller)) -> Path:
@@ -155,10 +158,13 @@ def libraries(who: str = Depends(caller)) -> dict:
 
 
 # Any client's token: an application a person connected (The Floor, a
-# connector) may say whose library it reaches, which writes nothing.
+# connector) may say whose library it reaches, which writes nothing; an
+# application that signs people in here (Roxana) learns who they are, and
+# dianoia, handed that token, which client holds it.
 @app.get("/me")
-def me(who: str = Depends(anyone)) -> dict:
+def me(token: AccessToken = Depends(anyone)) -> dict:
     from noesis import accounts
+    who = token.subject
     found = accounts.account(who)
     free = accounts.is_free(who)
     limits = accounts.limits()
@@ -175,7 +181,31 @@ def me(who: str = Depends(anyone)) -> dict:
         "libraries": library_ids(who),
         "storage_bytes": limits.storage_bytes if free else None,
         "names": list(accounts.speaker_names(who)),
+        "client": token.client_id,
     }
+
+
+# /me from the browser: only the origins of the apps that sign in here
+# (oauth.browser_origins), which the operator registers. The SDK's OAuth
+# routes (/token, /revoke) answer any origin themselves.
+_ME_CORS = {"Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "authorization", "Access-Control-Max-Age": "600", "Vary": "Origin"}
+
+
+@app.middleware("http")
+async def me_cors(request: Request, call_next) -> Response:
+    origin = request.headers.get("origin")
+    if request.url.path != "/me" or not origin:
+        return await call_next(request)
+    from noesis.oauth import provider
+    allowed = origin in provider.browser_origins()
+    if request.method == "OPTIONS":
+        return Response(status_code=204, headers={**_ME_CORS, "Access-Control-Allow-Origin": origin} if allowed else {})
+    response = await call_next(request)
+    if allowed:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+    return response
 
 
 class SpeakerNames(BaseModel):
@@ -516,11 +546,15 @@ def _human(form: dict, ip: str) -> bool:
 def _login_page(request_id: str, sign_in, error: str = "") -> HTMLResponse:
     from html import escape
     from urllib.parse import urlparse
-    from noesis.oauth import WEB_CLIENT_ID
+    from noesis.oauth import WEB_CLIENT_ID, provider
     client_name = escape(sign_in.client.client_name or "An application")
     redirect_host = escape(urlparse(str(sign_in.params.redirect_uri)).hostname or "")
-    asks = ("to keep your libraries: to read and change them, and to run noesis's commands on them"
-            if sign_in.client.client_id == WEB_CLIENT_ID else "to read your noesis libraries")
+    if sign_in.client.client_id == WEB_CLIENT_ID:
+        asks = "to keep your libraries: to read and change them, and to run noesis's commands on them"
+    elif provider.identity_only(sign_in.client.client_id):
+        asks = "to know who you are: your noesis user name and email address, not your libraries"
+    else:
+        asks = "to read your noesis libraries"
     note = f'<p class="error">{escape(error)}</p>' if error else ""
     site_key = os.environ.get("NOESIS_TURNSTILE_SITE_KEY", "")
     request_field = f'<input type="hidden" name="request" value="{escape(request_id)}">'
