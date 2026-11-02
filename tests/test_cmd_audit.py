@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from mdc.cmd_audit import run_audit
+from noesis.cmd_audit import run_audit
 
 
 ARGUMENT_TEXT = """
@@ -25,7 +25,7 @@ def argument_file(tmp_path: Path) -> Path:
 
 
 def test_audit_satisfied(argument_file, capsys):
-    with patch("mdc.dianoia_client.audit",
+    with patch("noesis.dianoia_client.audit",
                return_value={"satisfied": True, "findings": []}) as mock_audit:
         rc = run_audit(argument_file)
     assert rc == 0
@@ -44,7 +44,7 @@ def test_audit_findings_reported(argument_file, capsys):
             "pointer": "Cite step 1 in a later step or remove it.",
         }],
     }
-    with patch("mdc.dianoia_client.audit", return_value=result):
+    with patch("noesis.dianoia_client.audit", return_value=result):
         rc = run_audit(argument_file)
     assert rc == 1
     out = capsys.readouterr().out
@@ -56,7 +56,7 @@ def test_audit_findings_reported(argument_file, capsys):
 def test_audit_resolves_document_to_companion(argument_file, capsys):
     document = argument_file.with_suffix("").with_suffix(".document.md")
     document.write_text("irrelevant", encoding="utf-8")
-    with patch("mdc.dianoia_client.audit",
+    with patch("noesis.dianoia_client.audit",
                return_value={"satisfied": True, "findings": []}):
         rc = run_audit(document)
     assert rc == 0
@@ -69,7 +69,7 @@ def test_audit_missing_companion(tmp_path, capsys):
 
 
 def test_audit_dianoia_error(argument_file, capsys):
-    with patch("mdc.dianoia_client.audit",
+    with patch("noesis.dianoia_client.audit",
                side_effect=RuntimeError("dianoia audit failed")):
         rc = run_audit(argument_file)
     assert rc == 1
@@ -92,7 +92,7 @@ def _analysis_path(argument_file: Path) -> Path:
 
 
 def test_audit_persisted_to_analysis_file(argument_file, capsys):
-    with patch("mdc.dianoia_client.audit", return_value=FINDINGS_RESULT):
+    with patch("noesis.dianoia_client.audit", return_value=FINDINGS_RESULT):
         run_audit(argument_file)
     text = _analysis_path(argument_file).read_text(encoding="utf-8")
     assert "# Sample Argument" in text
@@ -104,7 +104,7 @@ def test_audit_persisted_to_analysis_file(argument_file, capsys):
 
 
 def test_audit_satisfied_persisted(argument_file):
-    with patch("mdc.dianoia_client.audit",
+    with patch("noesis.dianoia_client.audit",
                return_value={"satisfied": True, "findings": []}):
         run_audit(argument_file)
     text = _analysis_path(argument_file).read_text(encoding="utf-8")
@@ -120,7 +120,7 @@ def test_audit_preserves_existing_analysis_blocks(argument_file):
         "### Truth\n\n- 1 truth: 0.9 — Solid.\n",
         encoding="utf-8",
     )
-    with patch("mdc.dianoia_client.audit", return_value=FINDINGS_RESULT):
+    with patch("noesis.dianoia_client.audit", return_value=FINDINGS_RESULT):
         run_audit(argument_file)
     text = analysis.read_text(encoding="utf-8")
     assert "## Audit" in text
@@ -131,9 +131,9 @@ def test_audit_preserves_existing_analysis_blocks(argument_file):
 
 
 def test_rerun_replaces_audit_section(argument_file):
-    with patch("mdc.dianoia_client.audit", return_value=FINDINGS_RESULT):
+    with patch("noesis.dianoia_client.audit", return_value=FINDINGS_RESULT):
         run_audit(argument_file)
-    with patch("mdc.dianoia_client.audit",
+    with patch("noesis.dianoia_client.audit",
                return_value={"satisfied": True, "findings": []}):
         run_audit(argument_file)
     text = _analysis_path(argument_file).read_text(encoding="utf-8")
@@ -143,15 +143,15 @@ def test_rerun_replaces_audit_section(argument_file):
 
 
 def test_analyze_preserves_audit_section(argument_file):
-    from mdc.cmd_analyze import run_analyze
+    from noesis.cmd_analyze import run_analyze
 
-    with patch("mdc.dianoia_client.audit", return_value=FINDINGS_RESULT):
+    with patch("noesis.dianoia_client.audit", return_value=FINDINGS_RESULT):
         run_audit(argument_file)
 
     results = {"results_by_agent": {"truth_evaluator": [{"result_content": {
         "truth_evaluations": [{"symbol": "1", "truth_value": 0.9, "reasoning": "Solid."}],
     }}]}}
-    with patch("mdc.dianoia_client.evaluate", return_value=results):
+    with patch("noesis.dianoia_client.evaluate", return_value=results):
         assert run_analyze(argument_file, 3) == 0
 
     text = _analysis_path(argument_file).read_text(encoding="utf-8")

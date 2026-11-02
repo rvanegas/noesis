@@ -1,4 +1,4 @@
-from mdc.cmd_argue import run_argue
+from noesis.cmd_argue import run_argue
 
 
 def test_argue_reads_a_document_alone(tmp_path, capsys):

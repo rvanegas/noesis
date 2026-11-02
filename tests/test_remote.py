@@ -11,9 +11,9 @@ from pathlib import Path
 import pytest
 import uvicorn
 
-from mdc import server
-from mdc.config import AppConfig
-from mdc.remote import CONFLICT_SUFFIX, Client, remote_argv, run_remote, sync
+from noesis import server
+from noesis.config import AppConfig
+from noesis.remote import CONFLICT_SUFFIX, Client, remote_argv, run_remote, sync
 
 REPO = Path(__file__).resolve().parent.parent
 CHAT = "\n# Old Roman\n2025-04-25\n\n## Prompt\n\nHello.\n\n## Claude\n\nHi.\n\n## References\n\n| Ando, Clifford (2000) *Imperial Ideology*\n"
@@ -24,9 +24,9 @@ LIB = "ann/philosophy"
 def live(tmp_path_factory):
     data = tmp_path_factory.mktemp("data")
     mp = pytest.MonkeyPatch()
-    mp.setenv("MDC_DATA_DIR", str(data))
-    mp.setenv("MDC_CONFIG_DIR", str(data / "config"))
-    mp.setenv("MDC_CACHE_DIR", str(data / "cache"))
+    mp.setenv("NOESIS_DATA_DIR", str(data))
+    mp.setenv("NOESIS_CONFIG_DIR", str(data / "config"))
+    mp.setenv("NOESIS_CACHE_DIR", str(data / "cache"))
     mp.setenv("PYTHONPATH", str(REPO))
     (data / "users.toml").write_text(f'[[tokens]]\nuser = "ann"\nsha256 = "{hashlib.sha256(b"t").hexdigest()}"\n')
     with socket.socket() as s:
@@ -70,8 +70,8 @@ def test_first_sync_makes_the_server_follow(setup):
     (local / "b.md").write_text("mine b")
     (remote / "b.md").write_text("server b")
     (remote / "c.md").write_text("server only")
-    (local / ".mdc").mkdir()
-    (local / ".mdc" / "manifest.json").write_text("{}")
+    (local / ".noesis").mkdir()
+    (local / ".noesis" / "manifest.json").write_text("{}")
     asked = []
     assert _quiet(sync, client, local, LIB, print, lambda library_id, rels: asked.append(rels) or True)[0] == []
     assert asked == [["c.md"]]
@@ -79,15 +79,15 @@ def test_first_sync_makes_the_server_follow(setup):
         "2025/a.chat.md": hashlib.sha256(b"mine").hexdigest(),
         "b.md": hashlib.sha256(b"mine b").hexdigest(),
     }
-    assert not (remote / ".mdc").exists()
+    assert not (remote / ".noesis").exists()
 
 
 def test_first_sync_into_an_empty_copy_takes_the_server_s(setup):
     client, local, remote, _ = setup
     (remote / "2026").mkdir()
     (remote / "2026" / "a.chat.md").write_text("from the web")
-    (local / ".mdc").mkdir()
-    (local / ".mdc" / "manifest.json").write_text("{}")
+    (local / ".noesis").mkdir()
+    (local / ".noesis" / "manifest.json").write_text("{}")
     assert _quiet(sync, client, local, LIB)[0] == []
     assert (local / "2026" / "a.chat.md").read_text() == "from the web"
     assert client.list_files() == {"2026/a.chat.md": hashlib.sha256(b"from the web").hexdigest()}
@@ -215,7 +215,7 @@ def test_scratch_and_backups_stay_where_they_are(setup):
     # Never sent, never fetched, never deleted on either side.
     assert asked == []
     assert sorted(p.name for p in remote.iterdir()) == ["x.chat.md", "y.chat.md~", "z.chat.md.bak"]
-    assert sorted(p.name for p in local.iterdir() if p.name != ".mdc") == [
+    assert sorted(p.name for p in local.iterdir() if p.name != ".noesis") == [
         "#x.chat.md#", "x.chat.md", "x.chat.md.bak", "x.chat.md~",
     ]
     (local / "x.chat.md~").write_text("a newer backup")

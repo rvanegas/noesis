@@ -5,7 +5,7 @@
 #
 #   bin/libraries
 #
-# Runs scripts/libraries.py in a one-off mdc container on the box, so the
+# Runs scripts/libraries.py in a one-off noesis container on the box, so the
 # deployed image must carry the script. Indexed is what the index holds (and
 # so what lookups reach); files is everything kept.
 #
@@ -25,4 +25,4 @@ case "${1:-}" in
   *) echo "usage: bin/libraries" >&2; exit 2 ;;
 esac
 
-$SSH "$HOST" "cd ~/mdc && docker compose run --rm -T mdc python scripts/libraries.py"
+$SSH "$HOST" "cd ~/noesis && docker compose run --rm -T noesis python scripts/libraries.py"

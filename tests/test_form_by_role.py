@@ -4,10 +4,10 @@ from unittest.mock import patch
 
 import pytest
 
-import mdc.config
-from mdc.argue import check_argument
-from mdc.cli import main
-from mdc.library import check_keys
+import noesis.config
+from noesis.argue import check_argument
+from noesis.cli import main
+from noesis.library import check_keys
 
 CHAT = "\n# Old Roman\n2025-04-25\n\n## Prompt\n\nHello.\n\n## Claude\n\nHi.\n"
 PROSE = "\n# Old Roman\n2025-04-25\n\nProse, with an [x]{dir=\"rtl\"} span.\n"
@@ -18,8 +18,8 @@ KEYS = "## Plural\n\nbelief\n\n## Alias\n\nKant, Immanuel\n- Kant\n\n## Exclude\
 def library(tmp_path, monkeypatch):
     lib = tmp_path / "lib"
     (lib / "2025").mkdir(parents=True)
-    monkeypatch.setattr(mdc.config, "DEFAULT_CONFIG_PATH", tmp_path / "config.toml")
-    monkeypatch.setenv("MDC_LIBRARY", str(lib))
+    monkeypatch.setattr(noesis.config, "DEFAULT_CONFIG_PATH", tmp_path / "config.toml")
+    monkeypatch.setenv("NOESIS_LIBRARY", str(lib))
     monkeypatch.chdir(lib / "2025")
     return lib
 
@@ -62,7 +62,7 @@ def test_a_chat_still_takes_a_transcripts_repairs(library):
     assert path.read_text() == CHAT
 
 
-def test_what_mdc_writes_is_left_alone(library, capsys):
+def test_what_noesis_writes_is_left_alone(library, capsys):
     path = _put(library, "2025-04-25-x.review.md", "unfixed")
     _put(library, "MANIFEST.md", "unfixed", where=".")
     assert main(["fix", "--yes", path.name]) == 1
@@ -120,7 +120,7 @@ def test_related_titles_resolve_from_the_files_not_index_state(library, capsys):
     _put(library, "2025-04-30-later.chat.md", "\n# Later Talk\n2025-04-30\n\n## Prompt\n\nHi.\n")
     related = "\n## Related\n\n| *{}*\n"
     path = _put(library, "2025-04-25-old-roman.chat.md", CHAT + related.format("Earlier Thoughts"))
-    assert not (library / ".mdc").exists()
+    assert not (library / ".noesis").exists()
     assert main(["validate", path.name]) == 0
     capsys.readouterr()
     path.write_text(CHAT + related.format("Later Talk"))

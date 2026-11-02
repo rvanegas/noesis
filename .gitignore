@@ -17,7 +17,7 @@ env/
 .env*
 
 # Stamped by bin/deploy, removed once sent
-mdc/deployed.json
+noesis/deployed.json
 
 # pytest
 .pytest_cache/

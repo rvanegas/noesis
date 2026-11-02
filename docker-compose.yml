@@ -1,22 +1,22 @@
 services:
-  mdc:
+  noesis:
     build: .
     restart: unless-stopped
     env_file:
       - .env
     # System-wide config from the image; one asset cache for the server's API
     # key. Libraries are /data/libraries/<user>/<library>, each with its own
-    # .mdc/ state (SERVER.md).
+    # .noesis/ state (SERVER.md).
     environment:
-      MDC_CONFIG_DIR: /etc/mdc
-      MDC_CACHE_DIR: /data/cache
-    # The box's deploy user (ubuntu), which owns /srv/mdc, so files written
+      NOESIS_CONFIG_DIR: /etc/noesis
+      NOESIS_CACHE_DIR: /data/cache
+    # The box's deploy user (ubuntu), which owns /srv/noesis, so files written
     # into the libraries stay editable from the host.
     user: "1000:1000"
     volumes:
-      - /srv/mdc:/data
+      - /srv/noesis:/data
     # commons is a 2 GB box shared with dianoia, imitation and the site: open
-    # sign-up must not let mdc's runs starve them (SERVER.md, Phase 6).
+    # sign-up must not let noesis's runs starve them (SERVER.md, Phase 6).
     mem_limit: 1g
     # Loopback only: Caddy on the box is the one public front door
     # (rvanegas-site's Caddyfile).

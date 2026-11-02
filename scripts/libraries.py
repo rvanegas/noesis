@@ -4,12 +4,12 @@
 An operator task (SERVER.md), run in the container — from the Mac,
 bin/libraries:
 
-    docker compose run --rm -T mdc python scripts/libraries.py
+    docker compose run --rm -T noesis python scripts/libraries.py
 
-A line per library, `libraries/<user>/<library>` under $MDC_DATA_DIR: the
+A line per library, `libraries/<user>/<library>` under $NOESIS_DATA_DIR: the
 documents in its index (what lookups and searches reach, so what was last
 indexed), and its files (everything kept, sources and records but not
-mdc's state or REVISIONS). A user's account address follows their name where
+noesis's state or REVISIONS). A user's account address follows their name where
 they signed up by email (accounts.py).
 """
 
@@ -17,9 +17,9 @@ from __future__ import annotations
 
 import argparse
 
-from mdc import accounts, service
-from mdc.cli import _library_files
-from mdc.library import load_entries
+from noesis import accounts, service
+from noesis.cli import _library_files
+from noesis.library import load_entries
 
 
 def main(argv: list[str] | None = None) -> int:

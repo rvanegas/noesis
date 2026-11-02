@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from mdc import cmd_pdf
+from noesis import cmd_pdf
 
 
 @pytest.fixture

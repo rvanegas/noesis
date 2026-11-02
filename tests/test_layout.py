@@ -4,9 +4,9 @@ from unittest.mock import patch
 
 import pytest
 
-import mdc.config
-from mdc.cli import main
-from mdc.library import load_entries, lookup_term, misplaced, move_documents
+import noesis.config
+from noesis.cli import main
+from noesis.library import load_entries, lookup_term, misplaced, move_documents
 
 DOC = "\n# Old Roman\n2025-04-25\n\n## Prompt\n\nHello.\n\n## Claude\n\nHi.\n"
 
@@ -15,8 +15,8 @@ DOC = "\n# Old Roman\n2025-04-25\n\n## Prompt\n\nHello.\n\n## Claude\n\nHi.\n"
 def library(tmp_path, monkeypatch):
     lib = tmp_path / "lib"
     lib.mkdir()
-    monkeypatch.setattr(mdc.config, "DEFAULT_CONFIG_PATH", tmp_path / "config.toml")
-    monkeypatch.setenv("MDC_LIBRARY", str(lib))
+    monkeypatch.setattr(noesis.config, "DEFAULT_CONFIG_PATH", tmp_path / "config.toml")
+    monkeypatch.setenv("NOESIS_LIBRARY", str(lib))
     return lib
 
 
@@ -33,7 +33,7 @@ def test_move_carries_index_state(library):
     old = library / "2025" / "mmaa" / "2025-04-25-x.md"
     old.parent.mkdir(parents=True)
     old.write_text(DOC)
-    state = library / ".mdc"
+    state = library / ".noesis"
     state.mkdir()
     entry = {"rel_path": "2025/mmaa/2025-04-25-x.md", "title": "Old Roman", "word_count": 2, "summary": "S.", "terms": ["Rome"]}
     (state / "manifest.json").write_text(json.dumps({"entries": [entry]}))
@@ -92,7 +92,7 @@ def test_validate_runs_inside_a_library(library, monkeypatch, capsys):
 
 
 def test_role_of():
-    from mdc.library import lacks_role, role_of
+    from noesis.library import lacks_role, role_of
     assert role_of("2026-10-19-parfit2011.source.pdf") == "source"
     assert role_of("2026-06-29-the-eleatic-critique.chat.md") == "chat"
     assert role_of("2026-06-29-the-eleatic-critique.chat.pdf") == "chat"
@@ -119,14 +119,14 @@ def test_index_refuses_a_library_with_unnamed_roles(library, capsys):
 
 
 def test_voice_by_role():
-    from mdc.cmd_index import _annotate_voice
+    from noesis.cmd_index import _annotate_voice
     assert "user's own writing" in _annotate_voice("text", "document", ("Prompt",), ("Claude",))
     chat = _annotate_voice("\n# T\n\n## Prompt\n\nQ\n\n## Claude\n\nA\n", "chat", ("Prompt",), ("Claude",))
     assert "[VOICE: user]" in chat and "[VOICE: llm" in chat
 
 
 def test_index_takes_a_sessions_document_not_its_chat(tmp_path):
-    from mdc.library import build_index
+    from noesis.library import build_index
     (tmp_path / "2026").mkdir()
     (tmp_path / "2026" / "2026-06-30-x.chat.md").write_text(DOC)
     (tmp_path / "2026" / "2026-06-30-x.document.md").write_text("\n# X\n2026-06-30\n\nProse.\n")
@@ -136,7 +136,7 @@ def test_index_takes_a_sessions_document_not_its_chat(tmp_path):
 
 
 def test_index_leaves_sources_out(tmp_path):
-    from mdc.library import build_index
+    from noesis.library import build_index
     (tmp_path / "2026").mkdir()
     (tmp_path / "2026" / "2026-06-30-x.document.md").write_text("\n# X\n2026-06-30\n\nProse.\n")
     (tmp_path / "2026" / "2026-06-30-parfit2011.source.md").write_text("\n# Parfit\n2026-06-30\n\nTheirs.\n")
@@ -145,12 +145,12 @@ def test_index_leaves_sources_out(tmp_path):
 
 
 def test_a_source_indexed_before_drops_out(tmp_path):
-    from mdc.library import build_index, load_entries
+    from noesis.library import build_index, load_entries
     (tmp_path / "2026").mkdir()
     (tmp_path / "2026" / "2026-06-30-x.document.md").write_text("\n# X\n2026-06-30\n\nProse.\n")
     source = tmp_path / "2026" / "2026-06-30-parfit2011.source.md"
     source.write_text("\n# Parfit\n2026-06-30\n\nTheirs.\n")
-    import mdc.library as library
+    import noesis.library as library
     roles = library.INDEXED_ROLES
     library.INDEXED_ROLES = roles | {"source"}  # as indexed before sources left the index
     try:
@@ -181,7 +181,7 @@ def test_new_goes_into_the_year_directory(library, monkeypatch):
     import datetime
     monkeypatch.chdir(library)
     monkeypatch.delenv("EDITOR", raising=False)
-    monkeypatch.delenv("MDC_EDITOR", raising=False)
+    monkeypatch.delenv("NOESIS_EDITOR", raising=False)
     assert main(["new", "Fresh", "Start"]) == 0
     year = datetime.date.today().isoformat()[:4]
     made = list((library / year).glob("*-fresh-start.chat.md"))

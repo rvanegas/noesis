@@ -7,10 +7,10 @@
 #   bin/cap raise ann 5       adds $5 a month to ann's allowance
 #   bin/cap raise ann -2      takes $2 back, never below the default
 #
-# Each runs scripts/accounts.py in a one-off mdc container on the box
+# Each runs scripts/accounts.py in a one-off noesis container on the box
 # (SERVER.md, Phase 6), so the deployed image must carry the script, and an
 # account exists only once its person has signed in. A raise is kept every
-# month until changed; the all-free cap (MDC_FREE_MONTHLY_CAP_USD) still
+# month until changed; the all-free cap (NOESIS_FREE_MONTHLY_CAP_USD) still
 # applies.
 #
 # The box is commons (~/src/rvanegas-site/PROJECTS.md); COMMONS_HOST overrides.
@@ -25,7 +25,7 @@ usage() {
 }
 
 accounts() {
-  $SSH "$HOST" "cd ~/mdc && docker compose run --rm -T mdc python scripts/accounts.py $*"
+  $SSH "$HOST" "cd ~/noesis && docker compose run --rm -T noesis python scripts/accounts.py $*"
 }
 
 case "${1:-}" in

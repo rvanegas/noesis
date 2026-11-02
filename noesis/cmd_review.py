@@ -1,0 +1,762 @@
+from __future__ import annotations
+
+import datetime
+import textwrap
+from pathlib import Path
+
+from noesis.config import load_config
+from noesis.pdf_utils import _render_review_pdfs
+from noesis.review import sanitize_for_pandoc
+from noesis.text_utils import _format_cost, _format_total, _lookup_price, _print_reply_delta
+
+
+def run_review(reset: bool, theme: str | None = None, selection: bool = False, doc_start: int | None = None, docs: bool = False, evaluate: bool = False, pass2: bool = False, final: bool = False, afterword: bool = False, intro: bool = False, compile_: bool = False, action: str | None = None, action_themes: list[str] | None = None) -> int:
+    import sys
+    from noesis.anthropic_client import AnthropicChatClient
+    from noesis.review import (
+        _DEFAULT_DOC_REVIEW_SYSTEM_PROMPT,
+        _DEFAULT_FINAL_PROMPT,
+        _DEFAULT_AFTERWORD_PROMPT,
+        _REVIEW_PROMPTS_DIR,
+        build_doc_review_messages,
+        build_final_messages,
+        build_afterword_messages,
+        build_introduction_md,
+        build_appendix_md,
+        build_reviews_md,
+        _combo_sort_key,
+        _resolve_related_docs,
+        extract_doc_heading,
+        load_prompt,
+        load_review_state,
+        review_path_for,
+        save_doc_review,
+        build_themed_synthesis_messages,
+        _DEFAULT_THEMED_SYNTHESIS_PASS1_PROMPT,
+        _DEFAULT_THEMED_SYNTHESIS_PASS2_PROMPT,
+        _demote_headings,
+        parse_combinations,
+        parse_themes_md,
+        THEMES_FILENAME,
+        write_themes_md,
+    )
+    from noesis.library import (
+        FINAL_ASSESSMENT_FILENAME,
+        AFTERWORD_FILENAME,
+        INTRODUCTION_FILENAME,
+        APPENDIX_FILENAME,
+        COMPILED_FILENAME,
+        REVIEWS_FILENAME,
+    )
+    from noesis.cmd_reply import _ANTHROPIC_PRICING
+
+    config = load_config()
+    effective_model = config.model
+    if not effective_model:
+        print("Error: no model specified. Set 'model' in config.")
+        return 1
+    if not effective_model.startswith("claude-"):
+        print("Error: noesis review only supports Anthropic (claude-*) models.")
+        return 1
+
+    lib_path = config.library_path
+    if not lib_path:
+        print("Error: no library. Pass --lib or set 'library_path' in config.")
+        return 1
+    if not lib_path.is_dir():
+        print(f"Error: '{lib_path}' is not a directory.")
+        return 1
+
+    # --start: override resume logic, begin at this 1-based document index.
+    forced_start: int | None = (doc_start - 1) if doc_start is not None else None
+
+    themes_path = lib_path / THEMES_FILENAME
+
+    if action == "tokens":
+        if not themes_path.exists():
+            print(f"Error: {THEMES_FILENAME} not found.")
+            return 1
+        all_themes_tok, doc_assignments_tok = parse_themes_md(themes_path)
+        if not all_themes_tok:
+            print(f"No themes defined in {THEMES_FILENAME}.")
+            return 1
+
+        global_state_tok = load_review_state(lib_path)
+        review_by_filename_tok = {r["filename"]: r for r in global_state_tok.doc_reviews}
+
+        from noesis.library import load_entries as _le_tok
+        _entries_tok = _le_tok(lib_path)
+        title_to_filename_tok = {e.title: Path(e.rel_path).name for e in _entries_tok}
+        title_to_path_tok = {e.title: lib_path / e.rel_path for e in _entries_tok}
+
+        def _review_is_current(title: str, r: dict) -> bool:
+            doc_path = title_to_path_tok.get(title)
+            if not doc_path or not doc_path.exists():
+                return True
+            try:
+                return review_path_for(doc_path).stat().st_mtime >= doc_path.stat().st_mtime
+            except OSError:
+                return False
+
+        name_to_code_tok = {v.lower(): k for k, v in all_themes_tok.items()}
+
+        def _theme_tokens(*codes: str) -> tuple[int, int, float]:
+            seen: set[str] = set()
+            reviewed = 0
+            tokens = 0.0
+            for code in codes:
+                for t, t_codes in doc_assignments_tok.items():
+                    if code not in t_codes or t in seen:
+                        continue
+                    seen.add(t)
+                    fn = title_to_filename_tok.get(t)
+                    r = review_by_filename_tok.get(fn) if fn else None
+                    if r and _review_is_current(t, r):
+                        reviewed += 1
+                        tokens += len(r["text"]) / 4
+            return reviewed, len(seen), tokens
+
+        # Resolve requested theme codes.
+        requested: list[str] = []
+        for t in (action_themes or []):
+            if t in all_themes_tok:
+                requested.append(t)
+            elif t.lower() in name_to_code_tok:
+                requested.append(name_to_code_tok[t.lower()])
+            else:
+                print(f"Error: theme '{t}' not found in {THEMES_FILENAME}.")
+                return 1
+
+        def _print_table(rows: list, sum_row: tuple | None = None) -> None:
+            all_rows = list(rows) + ([sum_row] if sum_row else [])
+            name_w = max(len(r[0]) for r in all_rows)
+            frac_w = max(len(f"{r[1]}/{r[2]}") for r in all_rows)
+            tok_w  = max(len(f"~{r[3] / 1000:.0f}k") for r in all_rows)
+            name_w = max(name_w, len("Theme"))
+            frac_w = max(frac_w, len("Rev/Total"))
+            tok_w  = max(tok_w, len("Tokens"))
+            hdr = f"  {'Theme':<{name_w}}  {'Rev/Total':>{frac_w}}  {'Tokens':>{tok_w}}"
+            sep = "  " + "-" * (len(hdr) - 2)
+            print(hdr)
+            print(sep)
+            for name, reviewed, total, tokens in rows:
+                frac = f"{reviewed}/{total}"
+                tok  = f"~{tokens / 1000:.0f}k"
+                print(f"  {name:<{name_w}}  {frac:>{frac_w}}  {tok:>{tok_w}}")
+            if sum_row:
+                name, reviewed, total, tokens = sum_row
+                frac = f"{reviewed}/{total}"
+                tok  = f"~{tokens / 1000:.0f}k"
+                print(sep)
+                print(f"  {name:<{name_w}}  {frac:>{frac_w}}  {tok:>{tok_w}}")
+
+        if requested:
+            total_reviewed = 0
+            total_docs = 0
+            total_tokens = 0.0
+            names = []
+            for code in requested:
+                reviewed, total, tokens = _theme_tokens(code)
+                total_reviewed += reviewed
+                total_docs += total
+                total_tokens += tokens
+                names.append(all_themes_tok[code])
+            rows = [(n, *_theme_tokens(c)) for n, c in zip(names, requested)]
+            _print_table(rows, sum_row=("Sum", total_reviewed, total_docs, total_tokens))
+        else:
+            codes = sorted(all_themes_tok)
+            rows = [(all_themes_tok[c], *_theme_tokens(c)) for c in codes]
+            _print_table(rows)
+
+            combos = parse_combinations(themes_path) if themes_path.exists() else []
+            if combos:
+                print()
+                combo_rows = [
+                    (f"{i}  {', '.join(ns)}", *_theme_tokens(*[name_to_code_tok[n.lower()] for n in ns if n.lower() in name_to_code_tok]))
+                    for i, ns in enumerate(combos, 1)
+                ]
+                _print_table(combo_rows)
+
+        return 0
+
+    if selection:
+        if not themes_path.exists():
+            print(f"Error: {THEMES_FILENAME} not found. Define themes first.")
+            return 1
+        all_themes_ns, doc_assignments_ns = parse_themes_md(themes_path)
+        if not all_themes_ns:
+            print(f"No themes defined in {THEMES_FILENAME}.")
+            return 1
+
+        from noesis.library import load_entries as _le_ns
+        entries_ns = _le_ns(lib_path)
+
+        # Sync: add any library docs not yet in THEMES.md.
+        _library_titles = {e.title for e in entries_ns}
+        _added_sync = 0
+        _removed_sync = 0
+        for _e_sync in entries_ns:
+            if _e_sync.title not in doc_assignments_ns:
+                doc_assignments_ns[_e_sync.title] = set()
+                _added_sync += 1
+        for _t_sync in [t for t in doc_assignments_ns if t not in _library_titles]:
+            del doc_assignments_ns[_t_sync]
+            _removed_sync += 1
+        if _added_sync or _removed_sync:
+            write_themes_md(themes_path, doc_assignments_ns, list(doc_assignments_ns.keys()))
+            if _added_sync:
+                print(f"Added {_added_sync} new document(s) to {THEMES_FILENAME}.")
+            if _removed_sync:
+                print(f"Removed {_removed_sync} deleted document(s) from {THEMES_FILENAME}.")
+
+        summary_by_title_ns = {e.title: e.summary for e in entries_ns}
+        terms_by_title_ns = {e.title: e.terms for e in entries_ns}
+        title_to_path_ns = {e.title: lib_path / Path(e.rel_path) for e in entries_ns}
+        path_to_title_ns = {p: t for t, p in title_to_path_ns.items()}
+
+        title_order_ns = list(doc_assignments_ns.keys())
+        all_lib_paths_ns = [title_to_path_ns[t] for t in title_order_ns if t in title_to_path_ns]
+        total_ns = len(all_lib_paths_ns)
+
+        if forced_start is not None:
+            start_idx_ns = forced_start
+            all_lib_paths_ns = all_lib_paths_ns[start_idx_ns:]
+        else:
+            # Resume after the last doc with any assignment.
+            start_idx_ns = 0
+            for _j, _p in enumerate(all_lib_paths_ns):
+                _t = path_to_title_ns.get(_p)
+                if _t and doc_assignments_ns.get(_t):
+                    start_idx_ns = _j + 1
+            all_lib_paths_ns = all_lib_paths_ns[start_idx_ns:]
+
+        def _read_char() -> str:
+            if not sys.stdin.isatty():
+                try:
+                    return input().strip()[:1]
+                except EOFError:
+                    return "\x00"
+            import tty, termios
+            fd = sys.stdin.fileno()
+            old = termios.tcgetattr(fd)
+            try:
+                tty.setraw(fd)
+                ch = sys.stdin.read(1)
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old)
+            if ch in ("\x03", "\x04", "\x1b"):
+                return "\x00"
+            return ch
+
+        def _render_prompt(codes: set) -> int:
+            tokens = [f"{c}:{all_themes_ns[c]}" for c in sorted(all_themes_ns)]
+            sep = "  "
+            indent = "  "
+            groups: list[list[str]] = []
+            current: list[str] = []
+            current_len = len(indent)
+            for token in tokens:
+                added = len(token) if not current else len(sep) + len(token)
+                if current and current_len + added > 76:
+                    groups.append(current)
+                    current = [token]
+                    current_len = len(indent) + len(token)
+                else:
+                    current.append(token)
+                    current_len += added
+            if current:
+                groups.append(current)
+            output = []
+            for group in groups:
+                parts = []
+                for token in group:
+                    c = token.split(":")[0]
+                    parts.append(f"\033[7m{token}\033[m" if c in codes else token)
+                output.append(indent + sep.join(parts))
+            output.append(indent + "space: next  q: quit")
+            for line in output:
+                print(line)
+            return len(output)
+
+        if start_idx_ns:
+            print(f"Resuming at {start_idx_ns + 1}/{total_ns}.\n")
+        print(f"{total_ns} documents  —  a-z toggle  space/↵ next\n")
+
+        changed = 0
+        stop = False
+        for i, doc_path in enumerate(all_lib_paths_ns, start_idx_ns + 1):
+            title = path_to_title_ns.get(doc_path) or extract_doc_heading(doc_path)
+            date_str = doc_path.name[:10] if len(doc_path.name) > 10 and doc_path.name[4] == "-" else ""
+            header = f'[{i}/{total_ns}] "{title}"'
+            if date_str:
+                header += f" ({date_str})"
+            print(header)
+
+            summary = summary_by_title_ns.get(title, "")
+            if summary:
+                print(f"  {summary}")
+
+            terms = terms_by_title_ns.get(title, ())
+            if terms:
+                for line in textwrap.wrap("; ".join(terms), width=76, initial_indent="  Terms: ", subsequent_indent="         "):
+                    print(line)
+
+            print()
+            current = doc_assignments_ns.get(title, set()).copy()
+            n_prompt = _render_prompt(current)
+
+            while True:
+                ch = _read_char()
+                if ch == "\x00":
+                    stop = True
+                    break
+                if ch in (" ", "\r", "\n", ""):
+                    break
+                if ch in all_themes_ns:
+                    if ch in current:
+                        current.discard(ch)
+                    else:
+                        current.add(ch)
+                    print(f"\033[{n_prompt}A\033[J", end="", flush=True)
+                    n_prompt = _render_prompt(current)
+
+            old_codes = doc_assignments_ns.get(title, set())
+            if current != old_codes:
+                doc_assignments_ns[title] = current
+                changed += 1
+
+            print()
+            if stop:
+                break
+
+        write_themes_md(themes_path, doc_assignments_ns, title_order_ns)
+        print(f"{changed} change(s) written to {THEMES_FILENAME}.")
+        return 0
+
+    def _resolve_theme(
+        theme_arg: str | None,
+        all_themes: dict[str, str],
+        combinations: list[list[str]],
+    ) -> tuple[str, str, set[str]] | None:
+        """Resolve --theme to (display_name, slug, set_of_theme_codes).
+
+        Accepts: a single theme code, a single theme name, or a 1-based combination number.
+        Returns None and prints an error if not found.
+        """
+        if not theme_arg:
+            return None
+        name_to_code = {v.lower(): k for k, v in all_themes.items()}
+        if theme_arg in all_themes:
+            name = all_themes[theme_arg]
+            return name, name.replace(" ", "-").lower(), {theme_arg}
+        if theme_arg.lower() in name_to_code:
+            code = name_to_code[theme_arg.lower()]
+            name = all_themes[code]
+            return name, name.replace(" ", "-").lower(), {code}
+        if theme_arg.isdigit():
+            idx = int(theme_arg) - 1
+            if 0 <= idx < len(combinations):
+                names = combinations[idx]
+                display = ", ".join(names)
+                slug = f"combination-{theme_arg}"
+                codes: set[str] = set()
+                for n in names:
+                    c = name_to_code.get(n.lower())
+                    if c:
+                        codes.add(c)
+                return display, slug, codes
+            print(f"Error: combination {theme_arg} out of range (1–{len(combinations)}).")
+            return None
+        print(f"Error: '{theme_arg}' not found as a theme or combination number in {THEMES_FILENAME}.")
+        return None
+
+    if docs:
+        if not themes_path.exists():
+            print(f"Error: {THEMES_FILENAME} not found. Run 'noesis review --selection' first.")
+            return 1
+        all_themes_d, doc_assignments_docs = parse_themes_md(themes_path)
+        combinations_d = parse_combinations(themes_path)
+        if theme:
+            resolved_d = _resolve_theme(theme, all_themes_d, combinations_d)
+            if resolved_d is None:
+                return 1
+            theme_name_d, _, theme_codes_d = resolved_d
+            all_doc_titles = [t for t, codes in doc_assignments_docs.items() if codes & theme_codes_d]
+            if not all_doc_titles:
+                print(f"No documents assigned to {theme_name_d}. Run 'noesis review --selection' first.")
+                return 1
+        else:
+            all_doc_titles = [t for t, codes in doc_assignments_docs.items() if codes]
+            if not all_doc_titles:
+                print("No documents assigned to any theme. Run 'noesis review --selection' first.")
+                return 1
+
+        global_state = load_review_state(lib_path)
+        review_by_filename = {r["filename"]: r for r in global_state.doc_reviews}
+
+        from noesis.library import load_entries as _le2
+        _entries2 = _le2(lib_path)
+        _title_to_path2 = {e.title: lib_path / Path(e.rel_path) for e in _entries2}
+        unmatched = [t for t in all_doc_titles if t not in _title_to_path2]
+        if unmatched:
+            print(f"Warning: {len(unmatched)} title(s) not found in library — skipping.")
+
+        def _themed_needs_review(doc_path: Path) -> bool:
+            try:
+                return doc_path.stat().st_mtime > review_path_for(doc_path).stat().st_mtime
+            except OSError:
+                return True
+
+        pending = [
+            _title_to_path2[t] for t in all_doc_titles
+            if t in _title_to_path2 and _themed_needs_review(_title_to_path2[t])
+        ]
+        if not pending:
+            print(f"All {len(all_doc_titles)} selected documents already have up-to-date reviews.")
+            print("  Next: noesis review --evaluate")
+            return 0
+        stale = sum(1 for t in all_doc_titles if t in _title_to_path2 and review_by_filename.get(_title_to_path2[t].name) and _themed_needs_review(_title_to_path2[t]))
+        new_count = len(pending) - stale
+        parts = []
+        if new_count:
+            parts.append(f"{new_count} new")
+        if stale:
+            parts.append(f"{stale} updated since last review")
+        print(f"{len(pending)} of {len(all_doc_titles)} document(s) need reviews ({', '.join(parts)}).")
+        doc_review_system_prompt = load_prompt(_REVIEW_PROMPTS_DIR / "doc-system.md", _DEFAULT_DOC_REVIEW_SYSTEM_PROMPT)
+        client = AnthropicChatClient(model=effective_model, api_key=config.anthropic_api_key)
+        rates = _lookup_price(effective_model, _ANTHROPIC_PRICING)
+        cumulative_cost = 0.0
+        title_to_path_all = {e.title: lib_path / Path(e.rel_path) for e in _entries2}
+        cached = dict(review_by_filename)
+        for i, doc_path in enumerate(pending, 1):
+            title = extract_doc_heading(doc_path)
+            date = doc_path.name[:10] if len(doc_path.name) > 10 and doc_path.name[4] == "-" else ""
+            label = f'"{title}" ({date})' if date else f'"{title}"'
+            print(f"\n[{i}/{len(pending)}] {label}")
+            review_reply = client.generate_reply(
+                [{"type": "text", "text": doc_review_system_prompt, "cache_control": {"type": "ephemeral"}}],
+                build_doc_review_messages(doc_path, title_to_path_all,
+                                          reviews={k: v["text"] for k, v in cached.items()}),
+                on_delta=_print_reply_delta,
+                reasoning_effort="none",
+            )
+            print()
+            if rates:
+                in_rate, out_rate = rates
+                cost = (
+                    review_reply.input_tokens * in_rate / 1_000_000
+                    + review_reply.output_tokens * out_rate / 1_000_000
+                    + review_reply.cache_creation_tokens * in_rate * 1.25 / 1_000_000
+                    + review_reply.cache_read_tokens * in_rate * 0.10 / 1_000_000
+                )
+                cumulative_cost += cost
+                print(f"  {_format_cost(cost)}  (total {_format_total(cumulative_cost)})")
+            entry = {
+                "filename": doc_path.name,
+                "label": label,
+                "text": review_reply.text,
+            }
+            save_doc_review(review_path_for(doc_path), review_reply.text)
+            cached[doc_path.name] = entry
+        print("\nReviews complete. Run:")
+        print("  noesis review --evaluate")
+        return 0
+
+    if evaluate:
+        if not theme:
+            print("Error: --assess requires --theme.")
+            return 1
+        if not themes_path.exists():
+            print(f"Error: {THEMES_FILENAME} not found. Run 'noesis review --selection' first.")
+            return 1
+        all_themes_ev, doc_assignments_ev = parse_themes_md(themes_path)
+        combinations_ev = parse_combinations(themes_path)
+        resolved_ev = _resolve_theme(theme, all_themes_ev, combinations_ev)
+        if resolved_ev is None:
+            return 1
+        theme_name_ev, theme_slug_ev, theme_codes_ev = resolved_ev
+        all_evaluate_titles = [t for t, codes in doc_assignments_ev.items() if codes & theme_codes_ev]
+        if not all_evaluate_titles:
+            print(f"No documents assigned to {theme_name_ev}. Run 'noesis review --selection' first.")
+            return 1
+
+        global_state = load_review_state(lib_path)
+        review_by_filename = {r["filename"]: r for r in global_state.doc_reviews}
+
+        from noesis.library import load_entries as _le
+        _entries = _le(lib_path)
+        _title_to_path = {e.title: lib_path / Path(e.rel_path) for e in _entries}
+
+        selected_reviews: list[dict] = []
+        missing_reviews: list[str] = []
+        for title in all_evaluate_titles:
+            p = _title_to_path.get(title)
+            if not p:
+                print(f"Warning: '{title}' not found in library — skipping.")
+                continue
+            review = review_by_filename.get(p.name)
+            if not review:
+                missing_reviews.append(title)
+                continue
+            selected_reviews.append(review)
+
+        if missing_reviews:
+            print(f"Note: {len(missing_reviews)} document(s) not yet reviewed (will be omitted from synthesis):")
+            for t in missing_reviews[:5]:
+                print(f"  - {t}")
+            if len(missing_reviews) > 5:
+                print(f"  ... and {len(missing_reviews) - 5} more")
+            print("  Run 'noesis review --docs' to generate missing reviews.")
+
+        if not selected_reviews:
+            print("No reviews available yet. Run 'noesis review --docs' first.")
+            return 1
+
+        total_review_tokens = sum(len(r["text"]) / 4 for r in selected_reviews)
+        rates = _lookup_price(effective_model, _ANTHROPIC_PRICING)
+        print(f"\nReviews: {len(selected_reviews)} documents  •  ~{total_review_tokens / 1000:.0f}k tokens")
+        if rates:
+            in_rate, out_rate = rates
+            cost_est = total_review_tokens * in_rate / 1_000_000 + 1500 * out_rate / 1_000_000
+            print(f"Cost estimate: ~${cost_est:.2f}")
+
+        answer = input("\nProceed? [y/N] ").strip().lower()
+        if answer != "y":
+            return 0
+
+        if pass2:
+            synthesis_prompt = load_prompt(_REVIEW_PROMPTS_DIR / "synthesis-theme-pass2.md", _DEFAULT_THEMED_SYNTHESIS_PASS2_PROMPT)
+        else:
+            synthesis_prompt = load_prompt(_REVIEW_PROMPTS_DIR / "synthesis-theme-pass1.md", _DEFAULT_THEMED_SYNTHESIS_PASS1_PROMPT)
+        client = AnthropicChatClient(model=effective_model, api_key=config.anthropic_api_key)
+
+        # Build collection map so the model can situate itself within the whole.
+        combos_ev = parse_combinations(themes_path)
+
+        theme_names = sorted(all_themes_ev.values())
+        lines = ["This collection is organized into the following themes:"]
+        lines.append("  " + ", ".join(theme_names))
+        if combos_ev:
+            lines.append("\nAnd the following theme groups:")
+            for i, ns in enumerate(combos_ev, 1):
+                lines.append(f"  {i}. {', '.join(ns)}")
+        collection_context = "\n".join(lines)
+
+        # For pass2, load sibling pass1 assessments as additional context.
+        sibling_assessments: list[tuple[str, str]] | None = None
+        if pass2:
+            sibling_assessments = []
+            pass1_suffix = f"ASSESSMENT-{theme_slug_ev}-pass1.md"
+            for af in sorted(lib_path.glob("ASSESSMENT-*-pass1.md")):
+                if af.name == pass1_suffix:
+                    continue
+                try:
+                    text = af.read_text(encoding="utf-8")
+                    af_lines = text.splitlines()
+                    af_name = af_lines[0].lstrip("# ").strip() if af_lines else af.stem
+                    af_body = "\n".join(af_lines[1:]).strip()
+                    sibling_assessments.append((af_name, af_body))
+                except OSError:
+                    pass
+            if not sibling_assessments:
+                print("Warning: no sibling pass1 assessments found. Run pass1 for other groups first.")
+
+        pass_label = "pass2" if pass2 else "pass1"
+        print(f"\n>>> Thematic synthesis ({pass_label}): {theme_name_ev} ({len(selected_reviews)} reviews) <<<\n")
+        messages = build_themed_synthesis_messages(
+            selected_reviews, synthesis_prompt, collection_context, sibling_assessments
+        )
+        reply = client.generate_reply([], messages, on_delta=_print_reply_delta, reasoning_effort="medium")
+        print()
+
+        if rates:
+            in_rate, out_rate = rates
+            cost = (
+                reply.input_tokens * in_rate / 1_000_000
+                + reply.output_tokens * out_rate / 1_000_000
+                + reply.cache_creation_tokens * in_rate * 1.25 / 1_000_000
+                + reply.cache_read_tokens * in_rate * 0.10 / 1_000_000
+            )
+            print(f"  {_format_cost(cost)}")
+
+        assessment_filename = f"ASSESSMENT-{theme_slug_ev}-{pass_label}.md"
+        assessment_path = lib_path / assessment_filename
+        assessment_path.write_text(
+            sanitize_for_pandoc(f"# Assessment: {theme_name_ev}\n\n{_demote_headings(reply.text)}\n"),
+            encoding="utf-8",
+        )
+        print(f"Wrote {assessment_filename}.")
+        _render_review_pdfs(assessment_path)
+        return 0
+
+    if afterword:
+        if not action:
+            print("Error: --afterword requires a response document title.")
+            return 1
+        from noesis.library import load_entries as _load_entries_aw
+        _entries_aw = _load_entries_aw(lib_path)
+        _entry_aw = next((e for e in _entries_aw if e.title.casefold() == action.casefold()), None)
+        if _entry_aw is None:
+            print(f"Error: '{action}' not found in library index.")
+            return 1
+        response_file = lib_path / _entry_aw.rel_path
+        if not response_file.exists():
+            print(f"Error: '{action}' found in index but file missing.")
+            return 1
+
+        final_path = lib_path / FINAL_ASSESSMENT_FILENAME
+        if not final_path.exists():
+            print(f"Error: {FINAL_ASSESSMENT_FILENAME} not found. Run 'noesis review --final' first.")
+            return 1
+        final_text_raw = final_path.read_text(encoding="utf-8")
+        final_lines = final_text_raw.splitlines()
+        final_assessment = "\n".join(final_lines[1:]).strip() if final_lines and final_lines[0].startswith("#") else final_text_raw.strip()
+
+        user_response = response_file.read_text(encoding="utf-8")
+
+        import re as _re
+        from noesis.library import load_entries as _load_entries
+        _italic_re = _re.compile(r"(?<!\*)\*([^*\n]+)\*(?!\*)")
+        _entries = _load_entries(lib_path)
+        _title_map = {e.title.casefold(): e for e in _entries}
+        source_docs: list[tuple[str, str]] = []
+        _seen_titles: set[str] = set()
+        for m in _italic_re.finditer(user_response):
+            key = m.group(1).casefold()
+            if key in _seen_titles:
+                continue
+            entry = _title_map.get(key)
+            if entry is None:
+                continue
+            _seen_titles.add(key)
+            doc_path = lib_path / entry.rel_path
+            rp = review_path_for(doc_path)
+            if not rp.exists():
+                print(f"Error: no review for '{entry.title}'. Run 'noesis review --docs' first.")
+                return 1
+            source_docs.append((entry.title, rp.read_text(encoding="utf-8")))
+        if source_docs:
+            print(f"Resolved {len(source_docs)} document review(s) from response.")
+
+        afterword_prompt = load_prompt(_REVIEW_PROMPTS_DIR / "afterword.md", _DEFAULT_AFTERWORD_PROMPT)
+        client = AnthropicChatClient(model=effective_model, api_key=config.anthropic_api_key)
+        n_src = len(source_docs)
+        print(f"\n>>> Afterword (final assessment + {n_src} source doc(s)) <<<\n")
+        messages = build_afterword_messages(final_assessment, source_docs, user_response, afterword_prompt)
+        reply = client.generate_reply([], messages, on_delta=_print_reply_delta, reasoning_effort="medium")
+        print()
+
+        rates = _lookup_price(effective_model, _ANTHROPIC_PRICING)
+        if rates:
+            in_rate, out_rate = rates
+            cost = (
+                reply.input_tokens * in_rate / 1_000_000
+                + reply.output_tokens * out_rate / 1_000_000
+                + reply.cache_creation_tokens * in_rate * 1.25 / 1_000_000
+                + reply.cache_read_tokens * in_rate * 0.10 / 1_000_000
+            )
+            print(f"  {_format_cost(cost)}")
+
+        afterword_path = lib_path / AFTERWORD_FILENAME
+        afterword_path.write_text(
+            sanitize_for_pandoc(f"# Afterword\n\n{_demote_headings(reply.text)}\n"),
+            encoding="utf-8",
+        )
+        print(f"Wrote {AFTERWORD_FILENAME}.")
+        _render_review_pdfs(afterword_path)
+        return 0
+
+    if intro:
+        intro_md = build_introduction_md(lib_path)
+        intro_path = lib_path / INTRODUCTION_FILENAME
+        intro_path.write_text(sanitize_for_pandoc(intro_md), encoding="utf-8")
+        print(f"Wrote {INTRODUCTION_FILENAME}.")
+        appendix_md = build_appendix_md(lib_path)
+        appendix_path = lib_path / APPENDIX_FILENAME
+        appendix_path.write_text(sanitize_for_pandoc(appendix_md), encoding="utf-8")
+        print(f"Wrote {APPENDIX_FILENAME}.")
+        return 0
+
+    if compile_:
+        intro_path = lib_path / INTRODUCTION_FILENAME
+        appendix_path = lib_path / APPENDIX_FILENAME
+        pass2_files = sorted(lib_path.glob("ASSESSMENT-*-pass2.md"), key=_combo_sort_key)
+        final_path = lib_path / FINAL_ASSESSMENT_FILENAME
+        afterword_path = lib_path / AFTERWORD_FILENAME
+
+        if not intro_path.exists():
+            print(f"Warning: {INTRODUCTION_FILENAME} not found. Run 'noesis review --intro' first.")
+
+        sections: list[str] = []
+        if intro_path.exists():
+            sections.append(intro_path.read_text(encoding="utf-8").rstrip())
+        if not pass2_files:
+            print("Warning: no ASSESSMENT-*-pass2.md files found.")
+        for f in pass2_files:
+            sections.append(f.read_text(encoding="utf-8").rstrip())
+        if final_path.exists():
+            sections.append(final_path.read_text(encoding="utf-8").rstrip())
+        else:
+            print(f"Warning: {FINAL_ASSESSMENT_FILENAME} not found.")
+        if afterword_path.exists():
+            sections.append(afterword_path.read_text(encoding="utf-8").rstrip())
+        if appendix_path.exists():
+            sections.append(appendix_path.read_text(encoding="utf-8").rstrip())
+        elif not appendix_path.exists():
+            print(f"Warning: {APPENDIX_FILENAME} not found. Run 'noesis review --intro' first.")
+
+        compiled = "\n\n\\newpage\n\n".join(sections) + "\n"
+        compiled_path = lib_path / COMPILED_FILENAME
+        compiled_path.write_text(sanitize_for_pandoc(compiled), encoding="utf-8")
+        print(f"Wrote {COMPILED_FILENAME} ({len(sections)} section(s)).")
+        _render_review_pdfs(compiled_path)
+        return 0
+
+    if not final:
+        print("No action taken. Use --selection, --docs, --evaluate, --final, --afterword, --intro, or --compile.")
+        return 0
+
+    # Final cross-theme assessment.
+    final_prompt_text = load_prompt(_REVIEW_PROMPTS_DIR / "final.md", _DEFAULT_FINAL_PROMPT)
+
+    assessment_files = sorted(lib_path.glob("ASSESSMENT-*-pass2.md"), key=_combo_sort_key)
+    if not assessment_files:
+        print("No pass2 assessments found. Run 'noesis review --evaluate --pass2' for each theme group first.")
+        return 1
+
+    assessments: list[tuple[str, str]] = []
+    for af in assessment_files:
+        text = af.read_text(encoding="utf-8")
+        lines = text.splitlines()
+        name = lines[0].lstrip("# ").strip() if lines and lines[0].startswith("#") else af.stem
+        body = "\n".join(lines[1:]).strip()
+        assessments.append((name, body))
+
+    print(f"\n>>> Final assessment ({len(assessments)} theme assessments) <<<\n")
+    client = AnthropicChatClient(model=effective_model, api_key=config.anthropic_api_key)
+    messages = build_final_messages(assessments, final_prompt_text)
+    reply = client.generate_reply(
+        [], messages, on_delta=_print_reply_delta, reasoning_effort="medium"
+    )
+    print()
+
+    rates = _lookup_price(effective_model, _ANTHROPIC_PRICING)
+    if rates:
+        in_rate, out_rate = rates
+        cost = (
+            reply.input_tokens * in_rate / 1_000_000
+            + reply.output_tokens * out_rate / 1_000_000
+            + reply.cache_creation_tokens * in_rate * 1.25 / 1_000_000
+            + reply.cache_read_tokens * in_rate * 0.10 / 1_000_000
+        )
+        print(f"  {_format_cost(cost)}")
+
+    assessment_path = lib_path / FINAL_ASSESSMENT_FILENAME
+    assessment_path.write_text(
+        sanitize_for_pandoc(f"# Final Assessment\n\n{_demote_headings(reply.text)}\n"),
+        encoding="utf-8",
+    )
+    print(f"Wrote {FINAL_ASSESSMENT_FILENAME}.")
+    _render_review_pdfs(assessment_path)
+    return 0

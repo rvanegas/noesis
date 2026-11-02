@@ -1,0 +1,110 @@
+%YAML 1.2
+---
+name: NOESIS Transcript
+file_extensions: []
+scope: text.noesis
+
+# NOESIS-format markdown conversation transcripts.
+# Auto-assigned by the plugin when the preamble is detected;
+# not tied to a file extension because .md is already claimed by Markdown.
+
+contexts:
+  main:
+    - include: preamble
+    - include: section-header
+    - include: reference-line
+    - include: note-line
+    - include: markdown-block
+    - include: markdown-inline
+
+  # ── Preamble (title, date, optional edit directives) ──────────────────────
+
+  preamble:
+    - match: '^(# )(.+)$'
+      captures:
+        1: punctuation.definition.heading.1.noesis
+        2: entity.name.section.noesis markup.heading.1.noesis
+    - match: '^(\d{4}-\d{2}-\d{2})$'
+      scope: constant.other.date.noesis
+
+  # ── Section headers ────────────────────────────────────────────────────────
+
+  section-header:
+    - match: '^(## )(.+)$'
+      captures:
+        1: punctuation.definition.heading.2.noesis
+        2: entity.name.section.speaker.noesis markup.heading.2.noesis
+
+  # ── Reference and note lines ───────────────────────────────────────────────
+
+  reference-line:
+    - match: '^(\| )(.+?)(\s+\([^)]+\)\s+)(\*.+\*)(.*)$'
+      captures:
+        1: punctuation.definition.list.table.noesis
+        2: entity.name.author.noesis
+        3: constant.other.year.noesis
+        4: markup.italic.noesis string.other.title.noesis
+        5: meta.reference.noesis
+    - match: '^(\| )(.+?)(\s+\([^)]+\)\s+)(.+)$'
+      captures:
+        1: punctuation.definition.list.table.noesis
+        2: entity.name.author.noesis
+        3: constant.other.year.noesis
+        4: string.other.title.noesis
+
+  note-line:
+    - match: '^(\| )(\[\d+\])(.+)$'
+      captures:
+        1: punctuation.definition.list.table.noesis
+        2: constant.numeric.noesis
+        3: comment.noesis
+
+  # ── Markdown block-level elements ──────────────────────────────────────────
+
+  markdown-block:
+    - match: '^(```|~~~)(\w*)$'
+      captures:
+        1: punctuation.definition.raw.code-fence.noesis
+        2: constant.other.language-name.noesis
+      push:
+        - meta_scope: markup.raw.block.noesis
+        - match: '^\1$'
+          captures:
+            0: punctuation.definition.raw.code-fence.noesis
+          pop: true
+        - match: '.+'
+          scope: markup.raw.block.noesis
+    - match: '^(    |\t).+$'
+      scope: markup.raw.block.noesis
+    - match: '^(#{3,6} )(.+)$'
+      captures:
+        1: punctuation.definition.heading.noesis
+        2: markup.heading.noesis
+    - match: '^([-*+] |\d+\. ).+$'
+      captures:
+        1: punctuation.definition.list.noesis
+      scope: markup.list.noesis
+    - match: '^> .+$'
+      scope: markup.quote.noesis
+    - match: '^---+$|^\*\*\*+$'
+      scope: punctuation.separator.thematic-break.noesis
+
+  # ── Markdown inline elements ───────────────────────────────────────────────
+
+  markdown-inline:
+    - match: '\*\*\*(?=\S)(.+?)(?<=\S)\*\*\*'
+      scope: markup.bold.italic.noesis
+    - match: '\*\*(?=\S)(.+?)(?<=\S)\*\*'
+      scope: markup.bold.noesis
+    - match: '\*(?=\S)(.+?)(?<=\S)\*'
+      scope: markup.italic.noesis
+    - match: '`[^`\n]+`'
+      scope: markup.raw.inline.noesis
+    - match: '\[([^\]]+)\]\(([^)]+)\)'
+      captures:
+        1: markup.underline.link.noesis
+        2: string.other.link.noesis markup.underline.link.noesis
+    - match: '\[([^\]]+)\]\[([^\]]*)\]'
+      captures:
+        1: markup.underline.link.noesis
+        2: constant.other.reference.link.noesis

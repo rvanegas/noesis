@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from mdc import dianoia_client
-from mdc.config import AppConfig
+from noesis import dianoia_client
+from noesis.config import AppConfig
 
 
 BASE = "https://dianoia.example/api"
@@ -21,9 +21,9 @@ ARGS = {"argument": [
 
 # Shaped after dianoia's AuditResult and AgentResultManager.get_formatted_results.
 AUDIT_RESULT = {"satisfied": True, "findings": []}
-STARTED = {"conversation_id": "abc:mdc", "snapshot_id": "1"}
+STARTED = {"conversation_id": "abc:noesis", "snapshot_id": "1"}
 RESULTS_PARTIAL = {
-    "conversation_id": "abc:mdc", "snapshot_id": "1",
+    "conversation_id": "abc:noesis", "snapshot_id": "1",
     "results_by_agent": {"formalizer": [{"result_content": "{}"}]},
     "total_count": 1, "agent_types": ["formalizer"],
     "tasks_complete": False, "active_tasks": [],
@@ -68,7 +68,7 @@ class FakeDianoia:
 @pytest.fixture
 def configured():
     config = AppConfig(dianoia_api_url=BASE + "/", dianoia_token=TOKEN)
-    with patch("mdc.config.load_config", return_value=config):
+    with patch("noesis.config.load_config", return_value=config):
         yield
 
 
@@ -108,7 +108,7 @@ def test_evaluate_polls_until_complete(configured, capsys):
     assert start["url"] == f"{BASE}/argument/evaluate"
     assert [s["symbol"] for s in start["body"]["argument"]] == ["1", "2", "3", "4"]
     assert first_poll["method"] == "GET"
-    assert first_poll["url"] == f"{BASE}/agents/results?conversation_id=abc%3Amdc&snapshot_id=1"
+    assert first_poll["url"] == f"{BASE}/agents/results?conversation_id=abc%3Anoesis&snapshot_id=1"
     assert second_poll["url"] == first_poll["url"]
     assert capsys.readouterr().err == "formalizer done\ntruth_evaluator done\n"
 
@@ -152,6 +152,6 @@ def test_unreachable_becomes_runtime_error(configured):
 
 
 def test_missing_config_is_reported():
-    with patch("mdc.config.load_config", return_value=AppConfig()), \
+    with patch("noesis.config.load_config", return_value=AppConfig()), \
          pytest.raises(RuntimeError, match="dianoia_api_url and dianoia_token"):
         dianoia_client.audit(ARGS)

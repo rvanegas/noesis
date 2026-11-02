@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Register an application as an OAuth client of mdc, with its one redirect.
+"""Register an application as an OAuth client of noesis, with its one redirect.
 
 An operator task (SERVER.md, Phase 6). Self-registration is open only to
 claude.ai's callbacks and to localhost (oauth.allowed_redirect); an
@@ -10,8 +10,8 @@ application's own configuration; oauth.json keeps them as it keeps a
 self-registered client's. Its tokens reach /mcp and /me, not the file and run
 API (oauth.API_CLIENTS).
 
-    docker compose run --rm -T mdc python scripts/add_client.py thefloor \\
-        --name "The Floor" --redirect https://thefloor.rvanegas.co/mdc/callback
+    docker compose run --rm -T noesis python scripts/add_client.py thefloor \\
+        --name "The Floor" --redirect https://thefloor.rvanegas.co/noesis/callback
 
 Registering the same id again replaces it, with a new secret: the old one
 stops working, and grants already made stay.
@@ -27,7 +27,7 @@ from urllib.parse import urlparse
 
 from mcp.shared.auth import OAuthClientInformationFull
 
-from mdc.oauth import WEB_CLIENT_ID, provider
+from noesis.oauth import WEB_CLIENT_ID, provider
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -35,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("client_id", help="lowercase letters, digits and -")
     parser.add_argument("--name", required=True, help="what the sign-in page calls it")
     parser.add_argument("--redirect", required=True, help="its one callback, https")
-    parser.add_argument("--prefix", default="MDC", help="the printed lines' prefix: <PREFIX>_CLIENT_ID")
+    parser.add_argument("--prefix", default="NOESIS", help="the printed lines' prefix: <PREFIX>_CLIENT_ID")
     args = parser.parse_args(argv)
     if not re.match(r"^[a-z0-9][a-z0-9-]*$", args.client_id) or args.client_id == WEB_CLIENT_ID:
         raise SystemExit(f"✗ not a client id: {args.client_id!r}")

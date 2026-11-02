@@ -1,9 +1,9 @@
-"""Tests for mdc.form — format validation and auto-fixing."""
+"""Tests for noesis.form — format validation and auto-fixing."""
 
 import pytest
 from pathlib import Path
 
-from mdc.form import (
+from noesis.form import (
     check_file,
     fix_object_replacement,
     fix_rtl_spans,

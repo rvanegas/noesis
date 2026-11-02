@@ -3,13 +3,13 @@
 
 An operator task (SERVER.md, Phase 6), run in the container:
 
-    docker compose run --rm mdc python scripts/accounts.py list
-    docker compose run --rm mdc python scripts/accounts.py link rodrigo@example.com rodvandur --plan unlimited
-    docker compose run --rm mdc python scripts/accounts.py plan ann unlimited
-    docker compose run --rm mdc python scripts/accounts.py raise ann 5
-    docker compose run --rm mdc python scripts/accounts.py raised
-    docker compose run --rm mdc python scripts/accounts.py names rodvandur Rodrigo "Rodrigo Vanegas"
-    docker compose run --rm mdc python scripts/accounts.py disable ann
+    docker compose run --rm noesis python scripts/accounts.py list
+    docker compose run --rm noesis python scripts/accounts.py link rodrigo@example.com rodvandur --plan unlimited
+    docker compose run --rm noesis python scripts/accounts.py plan ann unlimited
+    docker compose run --rm noesis python scripts/accounts.py raise ann 5
+    docker compose run --rm noesis python scripts/accounts.py raised
+    docker compose run --rm noesis python scripts/accounts.py names rodvandur Rodrigo "Rodrigo Vanegas"
+    docker compose run --rm noesis python scripts/accounts.py disable ann
 
 `link` gives an existing user (one users.toml names, whose libraries are
 already on the server) the address they sign in with, so signing in reaches
@@ -27,7 +27,7 @@ from __future__ import annotations
 import argparse
 import time
 
-from mdc import accounts
+from noesis import accounts
 
 
 def main(argv: list[str] | None = None) -> int:

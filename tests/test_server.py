@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from mdc import server
+from noesis import server
 
 REPO = Path(__file__).resolve().parent.parent
 CHAT = "\n# Old Roman\n2025-04-25\n\n## Prompt\n\nHello.\n\n## Claude\n\nHi.\n"
@@ -18,10 +18,10 @@ def _sha(data: bytes) -> str:
 
 @pytest.fixture
 def data(tmp_path, monkeypatch):
-    monkeypatch.setenv("MDC_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("MDC_CONFIG_DIR", str(tmp_path / "config"))
-    monkeypatch.setenv("MDC_CACHE_DIR", str(tmp_path / "cache"))
-    # The run's subprocess imports this checkout's mdc.
+    monkeypatch.setenv("NOESIS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NOESIS_CONFIG_DIR", str(tmp_path / "config"))
+    monkeypatch.setenv("NOESIS_CACHE_DIR", str(tmp_path / "cache"))
+    # The run's subprocess imports this checkout's noesis.
     monkeypatch.setenv("PYTHONPATH", str(REPO))
     (tmp_path / "users.toml").write_text(
         f'[[tokens]]\nuser = "ann"\nsha256 = "{_sha(b"ann-token")}"\n'
@@ -31,8 +31,8 @@ def data(tmp_path, monkeypatch):
     lib = tmp_path / "libraries" / "ann" / "philosophy"
     (lib / "2025").mkdir(parents=True)
     (lib / "2025" / "2025-04-25-old-roman.chat.md").write_text(CHAT)
-    (lib / ".mdc").mkdir()
-    (lib / ".mdc" / "manifest.json").write_text("{}")
+    (lib / ".noesis").mkdir()
+    (lib / ".noesis" / "manifest.json").write_text("{}")
     (tmp_path / "libraries" / "bob" / "notes").mkdir(parents=True)
     return tmp_path
 
@@ -97,7 +97,7 @@ def test_a_user_creates_a_library_of_their_own(client, data):
 
 def test_a_new_library_needs_a_fresh_valid_name_and_a_user(client):
     assert client.post("/libraries", headers=ANN, json={"name": "philosophy"}).status_code == 409
-    for name in ["", "Drafts", "../bob", ".mdc", "-x", "a/b"]:
+    for name in ["", "Drafts", "../bob", ".noesis", "-x", "a/b"]:
         assert client.post("/libraries", headers=ANN, json={"name": name}).status_code == 400
     service = {"Authorization": "Bearer service-token"}
     assert client.post("/libraries", headers=service, json={"name": "drafts"}).status_code == 400
@@ -109,7 +109,7 @@ def test_listing_hides_dotfiles(client):
     assert files == {"2025/2025-04-25-old-roman.chat.md": _sha(CHAT.encode())}
 
 
-@pytest.mark.parametrize("rel", ["../../bob/notes/x.md", ".mdc/manifest.json", "2025/.hidden", "%2e%2e/x"])
+@pytest.mark.parametrize("rel", ["../../bob/notes/x.md", ".noesis/manifest.json", "2025/.hidden", "%2e%2e/x"])
 def test_paths_stay_inside_and_visible(client, rel):
     assert client.get(f"{BASE}/files/{rel}", headers=ANN).status_code in (400, 404)
     assert client.put(f"{BASE}/files/{rel}", headers={**ANN, "If-None-Match": "*"}, content=b"x").status_code in (400, 404)
@@ -188,12 +188,12 @@ def test_a_run_knows_the_owners_names_whoever_starts_it(client, monkeypatch):
     client.put("/me/names", headers=ANN, json={"names": ["Ann", "Mary Ann"]})
     for who in (ANN, {"Authorization": "Bearer service-token"}):
         client.post(f"{BASE}/run", headers=who, json={"argv": ["check", "old-roman"]})
-    assert [e["MDC_USER_NAMES"] for e in envs] == ["Ann,Mary Ann", "Ann,Mary Ann"]
+    assert [e["NOESIS_USER_NAMES"] for e in envs] == ["Ann,Mary Ann", "Ann,Mary Ann"]
 
 
 def test_one_run_at_a_time_and_no_writes_meanwhile(client, data):
     import asyncio
-    from mdc import service
+    from noesis import service
     lock = service.lock_for(data / "libraries/ann/philosophy")
     asyncio.run(lock.acquire())
     try:
@@ -206,7 +206,7 @@ def test_one_run_at_a_time_and_no_writes_meanwhile(client, data):
 
 def test_import_writes_into_the_library_and_keeps_nothing_else(client, data):
     import tempfile
-    staged = set(Path(tempfile.gettempdir()).glob("mdc-import-*"))
+    staged = set(Path(tempfile.gettempdir()).glob("noesis-import-*"))
     body = b"# Notes on Quine\n\nTwo dogmas, one paragraph.\n"
     response = client.post(f"{BASE}/import", headers=ANN, params={"filename": "notes-on-quine.md"}, content=body)
     events = _events(response.text)
@@ -214,7 +214,7 @@ def test_import_writes_into_the_library_and_keeps_nothing_else(client, data):
     changed = list(events[-1][1]["changed"])
     assert len(changed) == 1 and changed[0].endswith("-notes-on-quine.document.md")
     assert "Two dogmas" in (data / "libraries/ann/philosophy" / changed[0]).read_text()
-    assert set(Path(tempfile.gettempdir()).glob("mdc-import-*")) == staged
+    assert set(Path(tempfile.gettempdir()).glob("noesis-import-*")) == staged
 
 
 @pytest.mark.parametrize("filename", ["../x.md", "a/b.md", ".hidden", " "])
@@ -230,7 +230,7 @@ def test_import_takes_only_text_and_claude_exports(client):
 
 def test_import_is_a_run(client, data):
     import asyncio
-    from mdc import service
+    from noesis import service
     lock = service.lock_for(data / "libraries/ann/philosophy")
     asyncio.run(lock.acquire())
     try:

@@ -1,0 +1,49 @@
+# API key. Can also be set via ANTHROPIC_API_KEY environment variable.
+anthropic_api_key = "sk-ant-..."
+
+# Model used by "noesis reply". Default: claude-sonnet-4-6
+model = "claude-sonnet-4-6"
+
+# Directory of markdown files to use as a knowledge library. Run "noesis index"
+# to build INDEX.md from these files; its state is kept in the library's .noesis/
+# directory. Its SYSTEM_PROMPT.md, if any, is added to every reply's system
+# prompt. --lib, or NOESIS_LIBRARY, chooses another library for one run.
+library_path = "~/notes"
+
+# Model used by "noesis index" to summarize library documents. Default: claude-haiku-4-5
+index_model = "claude-haiku-4-5"
+
+# Column width for paragraph wrapping applied by "noesis fix" and "noesis reply".
+wrap_width = 100
+
+# Revision files older than this many days are deleted after each "noesis reply". Default: 7.
+# revision_retention_days = 7
+
+# Your name as it appears in section headings of your transcripts, beside
+# "Prompt", which is always recognized. Used to classify documents during
+# indexing and to validate reply targets. NOESIS_USER_NAMES (comma-separated)
+# overrides it for one run.
+# user_names = ["YourName"]
+
+# Section headings recognized as LLM voice in transcripts. noesis replies as
+# Claude (Anthropic models only); GPT is read in older transcripts.
+llm_names = ["Claude", "GPT"]
+
+# --- Dianoia ---
+
+# API base URL and service token used by "noesis argue", "noesis analyze" and "noesis audit".
+# The token is dianoia's NOESIS_TOKEN. Can also be set via DIANOIA_API_URL /
+# DIANOIA_TOKEN environment variables.
+# dianoia_api_url = "https://dianoia.rvanegas.co/api"
+# dianoia_token = "..."
+
+# --- Roxana ---
+
+# AppSync endpoint and API key used by "noesis export". Values come from the roxana
+# repo's .env.local (VITE_APPSYNC_ENDPOINT, VITE_APPSYNC_API_KEY). Can also be set
+# via ROXANA_API_URL / ROXANA_API_KEY environment variables.
+# roxana_api_url = "https://....appsync-api.us-west-2.amazonaws.com/graphql"
+# roxana_api_key = "da2-..."
+
+# Web app base URL, used to print a link to the exported discussion.
+# roxana_web_url = "https://..."

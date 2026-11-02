@@ -1,8 +1,8 @@
-"""Tests for mdc.transcript — parsing, appending, reference management."""
+"""Tests for noesis.transcript — parsing, appending, reference management."""
 
 import pytest
 
-from mdc.transcript import (
+from noesis.transcript import (
     TranscriptError,
     append_assistant_reply,
     extract_references,

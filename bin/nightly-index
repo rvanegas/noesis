@@ -1,18 +1,18 @@
 #!/bin/bash
 #
-# Indexes every library through mdc's API (SERVER.md, Phase 2), for cron on
+# Indexes every library through noesis's API (SERVER.md, Phase 2), for cron on
 # the commons box:
 #
-#   30 9 * * *  ~/mdc/bin/nightly-index >> ~/.local/state/mdc-nightly.log 2>&1
+#   30 9 * * *  ~/noesis/bin/nightly-index >> ~/.local/state/noesis-nightly.log 2>&1
 #
 # It goes through the API, with a service token ("*" in users.toml), like
-# any other client, never `docker exec`. The token lives outside ~/mdc, which
+# any other client, never `docker exec`. The token lives outside ~/noesis, which
 # bin/deploy mirrors with --delete. A library busy with a run (409) is left
 # for the next night.
 set -euo pipefail
 
-API=${MDC_API:-http://127.0.0.1:8001}
-TOKEN=$(cat "${MDC_NIGHTLY_TOKEN_FILE:-$HOME/.config/mdc/nightly-token}")
+API=${NOESIS_API:-http://127.0.0.1:8001}
+TOKEN=$(cat "${NOESIS_NIGHTLY_TOKEN_FILE:-$HOME/.config/noesis/nightly-token}")
 AUTH="Authorization: Bearer $TOKEN"
 
 echo "== $(date -u +%Y-%m-%dT%H:%M:%SZ)"

@@ -10,17 +10,17 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from mdc import accounts, server
+from noesis import accounts, server
 
 REPO = Path(__file__).resolve().parent.parent
 
 
 @pytest.fixture
 def data(tmp_path, monkeypatch):
-    monkeypatch.setenv("MDC_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("MDC_CONFIG_DIR", str(tmp_path / "config"))
-    for name in ("MDC_ACCOUNT", "MDC_FREE_ALLOWANCE_USD", "MDC_FREE_MONTHLY_CAP_USD", "MDC_FREE_STORAGE_MB",
-                 "MDC_FREE_FILE_MB", "MDC_FREE_LIBRARIES"):
+    monkeypatch.setenv("NOESIS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NOESIS_CONFIG_DIR", str(tmp_path / "config"))
+    for name in ("NOESIS_ACCOUNT", "NOESIS_FREE_ALLOWANCE_USD", "NOESIS_FREE_MONTHLY_CAP_USD", "NOESIS_FREE_STORAGE_MB",
+                 "NOESIS_FREE_FILE_MB", "NOESIS_FREE_LIBRARIES"):
         monkeypatch.delenv(name, raising=False)
     (tmp_path / "users.toml").write_text(
         f'[[tokens]]\nuser = "ann"\nsha256 = "{hashlib.sha256(b"ann-token").hexdigest()}"\n'
@@ -36,7 +36,7 @@ ROD = {"Authorization": "Bearer rod-token"}
 
 
 def test_user_names_come_from_the_address_and_are_unique(data):
-    assert accounts.user_stem("Jane.Doe+mdc@example.com") == "jane-doe"
+    assert accounts.user_stem("Jane.Doe+noesis@example.com") == "jane-doe"
     assert accounts.user_stem("..@example.com") == "user"
     # Taken by users.toml (and its libraries directory), by an account, then free.
     assert accounts.create_account("ann@a.example").user == "ann-2"
@@ -69,7 +69,7 @@ def test_sign_in_mail_is_limited(data):
 
 def test_a_free_account_spends_its_allowance_and_then_stops(data, monkeypatch):
     accounts.create_account("zed@example.com")
-    monkeypatch.setenv("MDC_ACCOUNT", "zed")
+    monkeypatch.setenv("NOESIS_ACCOUNT", "zed")
     accounts.check_spend()
     # A million output tokens of Haiku 4.5: $5, more than the $1 allowance.
     accounts.charge_anthropic("claude-haiku-4-5", SimpleNamespace(input_tokens=0, output_tokens=200_000))
@@ -77,13 +77,13 @@ def test_a_free_account_spends_its_allowance_and_then_stops(data, monkeypatch):
     with pytest.raises(accounts.AllowanceExhausted, match="allowance"):
         accounts.check_spend()
     # Allowance 0: free model use is off.
-    monkeypatch.setenv("MDC_FREE_ALLOWANCE_USD", "0")
+    monkeypatch.setenv("NOESIS_FREE_ALLOWANCE_USD", "0")
     accounts.create_account("yan@example.com")
     assert "allowance" in accounts.refusal("yan")
 
 
 def test_free_accounts_together_have_a_cap(data, monkeypatch):
-    monkeypatch.setenv("MDC_FREE_MONTHLY_CAP_USD", "1.50")
+    monkeypatch.setenv("NOESIS_FREE_MONTHLY_CAP_USD", "1.50")
     for name in ("x", "y"):
         accounts.create_account(f"{name}@example.com")
     accounts.charge("x", 0.80)
@@ -98,7 +98,7 @@ def test_free_accounts_together_have_a_cap(data, monkeypatch):
 def test_the_meter_is_off_outside_a_server_run(data):
     accounts.create_account("zed@example.com")
     accounts.charge("zed", 50)
-    accounts.check_spend()  # no MDC_ACCOUNT: the Mac, or a test
+    accounts.check_spend()  # no NOESIS_ACCOUNT: the Mac, or a test
     accounts.charge_dianoia()
     assert accounts.spent("zed") == 50
 
@@ -112,7 +112,7 @@ def test_cost_at_list_price():
 
 
 def test_a_free_account_stores_within_its_limits(data, monkeypatch):
-    monkeypatch.setenv("MDC_FREE_STORAGE_MB", "0.01")  # 10 KiB
+    monkeypatch.setenv("NOESIS_FREE_STORAGE_MB", "0.01")  # 10 KiB
     accounts.link("ann@example.com", "ann", accounts.FREE)
     client = TestClient(server.app)
     put = lambda path, body: client.put(f"/libraries/ann/notes/files/{path}", headers={**ANN, "If-None-Match": "*"},
@@ -135,7 +135,7 @@ def test_a_free_account_stores_within_its_limits(data, monkeypatch):
 
 
 def test_a_free_accounts_spending_run_needs_allowance(data, monkeypatch):
-    # The run's subprocess imports this checkout's mdc.
+    # The run's subprocess imports this checkout's noesis.
     monkeypatch.setenv("PYTHONPATH", str(REPO))
     accounts.link("ann@example.com", "ann", accounts.FREE)
     accounts.charge("ann", 5)
@@ -167,10 +167,10 @@ def test_the_accounts_script(data):
 
 
 def test_the_model_client_charges_the_run_and_refuses_past_the_allowance(data, monkeypatch):
-    from mdc.anthropic_client import AnthropicChatClient
-    monkeypatch.setenv("MDC_CACHE_DIR", str(data / "cache"))
+    from noesis.anthropic_client import AnthropicChatClient
+    monkeypatch.setenv("NOESIS_CACHE_DIR", str(data / "cache"))
     accounts.create_account("zed@example.com")
-    monkeypatch.setenv("MDC_ACCOUNT", "zed")
+    monkeypatch.setenv("NOESIS_ACCOUNT", "zed")
     calls = []
 
     class Stream:
@@ -198,10 +198,10 @@ def test_the_operator_raises_one_accounts_allowance(data, monkeypatch):
     assert accounts.raise_allowance("zed", 5) == pytest.approx(6.0)
     assert accounts.refusal("zed") is None
     # It is kept as the default moves, and stays when the default is 0.
-    monkeypatch.setenv("MDC_FREE_ALLOWANCE_USD", "0")
+    monkeypatch.setenv("NOESIS_FREE_ALLOWANCE_USD", "0")
     assert accounts.allowance("zed") == pytest.approx(5.0)
     assert accounts.refusal("zed") is None
-    monkeypatch.delenv("MDC_FREE_ALLOWANCE_USD")
+    monkeypatch.delenv("NOESIS_FREE_ALLOWANCE_USD")
     # Taking back stops at the default.
     assert accounts.raise_allowance("zed", -2) == pytest.approx(4.0)
     with pytest.raises(ValueError, match="only \\$3.00"):
@@ -252,20 +252,20 @@ def test_speaker_names_are_any_users_and_replaced_whole(data):
 
 def test_the_operator_registers_an_application(data):
     import asyncio
-    from mdc.oauth import provider
+    from noesis.oauth import provider
     spec = importlib.util.spec_from_file_location("add_client", REPO / "scripts" / "add_client.py")
     script = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(script)
     out = io.StringIO()
     with redirect_stdout(out):
-        script.main(["thefloor", "--name", "The Floor", "--redirect", "https://floor.example/mdc/callback",
-                     "--prefix", "MDC"])
+        script.main(["thefloor", "--name", "The Floor", "--redirect", "https://floor.example/noesis/callback",
+                     "--prefix", "NOESIS"])
     lines = dict(line.split("=", 1) for line in out.getvalue().split())
-    assert lines["MDC_CLIENT_ID"] == "thefloor" and len(lines["MDC_CLIENT_SECRET"]) > 30
+    assert lines["NOESIS_CLIENT_ID"] == "thefloor" and len(lines["NOESIS_CLIENT_SECRET"]) > 30
     client = asyncio.run(provider.get_client("thefloor"))
-    assert client.client_name == "The Floor" and client.client_secret == lines["MDC_CLIENT_SECRET"]
-    assert [str(u) for u in client.redirect_uris] == ["https://floor.example/mdc/callback"]
-    for bad in (["mdc-web", "--name", "x", "--redirect", "https://a.example/cb"],
+    assert client.client_name == "The Floor" and client.client_secret == lines["NOESIS_CLIENT_SECRET"]
+    assert [str(u) for u in client.redirect_uris] == ["https://floor.example/noesis/callback"]
+    for bad in (["noesis-web", "--name", "x", "--redirect", "https://a.example/cb"],
                 ["floor", "--name", "x", "--redirect", "http://a.example/cb"]):
         with pytest.raises(SystemExit):
             script.main(bad)
@@ -273,7 +273,7 @@ def test_the_operator_registers_an_application(data):
 
 def test_me_answers_an_applications_token_and_the_api_does_not(data):
     import asyncio
-    from mdc.oauth import provider
+    from noesis.oauth import provider
     accounts.link("ann@example.com", "ann", accounts.FREE)
     issued = asyncio.run(_issue_for("thefloor", "ann"))
     client = TestClient(server.app)
@@ -284,7 +284,7 @@ def test_me_answers_an_applications_token_and_the_api_does_not(data):
 
 
 async def _issue_for(client_id, user):
-    from mdc.oauth import provider
+    from noesis.oauth import provider
     data = provider._load()
     token = provider._issue(data, client_id, user, [], None)
     provider._save(data)
@@ -300,8 +300,8 @@ def test_the_libraries_report(data):
     (notes / "2026").mkdir()
     (notes / "2026" / "2026-10-30-a.document.md").write_text("\n# A\n2026-10-30\n\nText.\n")
     (notes / "2026" / "2026-10-30-b.source.md").write_text("\n# B\n2026-10-30\n\nText.\n")
-    (notes / ".mdc").mkdir()
-    (notes / ".mdc" / "manifest.json").write_text(json.dumps({"entries": [
+    (notes / ".noesis").mkdir()
+    (notes / ".noesis" / "manifest.json").write_text(json.dumps({"entries": [
         {"rel_path": "2026/2026-10-30-a.document.md", "title": "A", "word_count": 1,
          "summary": "", "terms": [], "refs": [], "related": []}]}))
     accounts.link("ann@example.com", "ann", accounts.FREE)

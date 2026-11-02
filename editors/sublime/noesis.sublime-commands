@@ -1,0 +1,8 @@
+[
+    { "caption": "NOESIS: Reply",    "command": "noesis_reply"    },
+    { "caption": "NOESIS: Fix",      "command": "noesis_fix"      },
+    { "caption": "NOESIS: Check",    "command": "noesis_check"    },
+    { "caption": "NOESIS: Validate", "command": "noesis_validate" },
+    { "caption": "NOESIS: New",        "command": "noesis_new"        },
+    { "caption": "NOESIS: Goto Input", "command": "noesis_goto_input" }
+]

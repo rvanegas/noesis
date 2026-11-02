@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 
-import mdc.config
-from mdc.asset_cache import AssetCache
-from mdc.assets import LocalAssetReference
+import noesis.config
+from noesis.asset_cache import AssetCache
+from noesis.assets import LocalAssetReference
 
 
 @pytest.fixture
 def cache_dir(tmp_path, monkeypatch):
-    monkeypatch.setattr(mdc.config, "_cache_dir", tmp_path / "cache")
+    monkeypatch.setattr(noesis.config, "_cache_dir", tmp_path / "cache")
     return tmp_path / "cache"
 
 

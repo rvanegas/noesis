@@ -10,12 +10,12 @@ dated like documents. Decided 2026-10-26 for rodvandur/philosophy. This:
    it, its old name the slug: `parfit2011.pdf` → `2026-10-19-parfit2011.source.pdf`;
 3. gives each document of TOPICS' "related" groups a Related entry for every
    member before it, so the last relates them all (a Related title must
-   precede its document: `mdc validate`);
+   precede its document: `noesis validate`);
 4. writes a hub document for each of TOPICS' "hub" groups, dated by its last
    member so that all of them precede it, whose Related lists the group (the
    folder kept the relation; the hub keeps it now);
 5. names the role of every bare dated file: a markdown file is a chat or a
-   document by mdc's old guess from its headings (`_is_library_transcript`,
+   document by noesis's old guess from its headings (`_is_library_transcript`,
    made once here), any other format takes the role of its stem's document;
 6. rewrites, in place, every reference to a moved or renamed file in the
    library's markdown (documents, reviews, the generated INDEX/MANIFEST/
@@ -24,9 +24,9 @@ dated like documents. Decided 2026-10-26 for rodvandur/philosophy. This:
    whether in a link, a `[asset: …]` line or prose;
 7. moves every file to its name and year directory in one step, carrying the
    index state (library.move_documents), renames each renamed document's
-   REVISIONS backups to match (`x--3.md` → `x.chat--3.md`, so `mdc diff`
+   REVISIONS backups to match (`x--3.md` → `x.chat--3.md`, so `noesis diff`
    still finds them), and removes the emptied folders;
-8. re-keys the asset cache by content (mdc/asset_cache.py) and drops the
+8. re-keys the asset cache by content (noesis/asset_cache.py) and drops the
    retired OpenAI and Ollama settings from config.toml.
 
 Prints the plan; changes nothing without --apply.
@@ -43,10 +43,10 @@ import json
 import re
 from pathlib import Path
 
-from mdc.config import load_config
-from mdc.form import slugify
-from mdc.library import _STRUCTURAL_HEADINGS, _extract_related, lacks_role, move_documents, role_of
-from mdc.transcript import update_related_section
+from noesis.config import load_config
+from noesis.form import slugify
+from noesis.library import _STRUCTURAL_HEADINGS, _extract_related, lacks_role, move_documents, role_of
+from noesis.transcript import update_related_section
 
 TOPICS = [
     {
@@ -69,8 +69,8 @@ RETIRED_CONFIG_KEYS = ("openai_api_key", "ollama_base_url")
 
 _DATED_RE = re.compile(r"^(\d{4})-\d{2}-\d{2}-")
 _LINK_RE = re.compile(r"\]\(([^)\s/]+)\)")
-_SKIP_DIRS = {"REVISIONS", ".mdc"}
-_UNSORTED_DIRS = {"REVISIONS", "ASSESSMENTS", ".mdc"}
+_SKIP_DIRS = {"REVISIONS", ".noesis"}
+_UNSORTED_DIRS = {"REVISIONS", "ASSESSMENTS", ".noesis"}
 
 
 
@@ -79,13 +79,13 @@ def _is_library_transcript(
     user_names: tuple[str, ...],
     llm_names: tuple[str, ...],
 ) -> bool:
-    """mdc's old guess that content is a transcript, from its headings.
+    """noesis's old guess that content is a transcript, from its headings.
 
     Rules:
       1. Every ## heading is a single word.
       2. At least one heading (excluding structural ones) matches a known name.
     """
-    from mdc.transcript import HEADING_RE
+    from noesis.transcript import HEADING_RE
     headings = [m.group(2).strip() for m in HEADING_RE.finditer(content)]
     if not headings:
         return False
@@ -213,7 +213,7 @@ def rewrite_references(library: Path, moves: dict[Path, Path], apply: bool) -> N
         return new.replace("_", "\\_") if escaped else new
 
     for doc in sorted(library.rglob("*.md")):
-        if ".mdc" in doc.relative_to(library).parts or role_of(doc.name) == "source":
+        if ".noesis" in doc.relative_to(library).parts or role_of(doc.name) == "source":
             continue
         text = doc.read_text(encoding="utf-8", errors="replace")
         new_text, count = token.subn(replace, text)
@@ -294,9 +294,9 @@ def drop_retired_settings(config: Path, apply: bool) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("library", type=Path)
-    parser.add_argument("--cache-dir", type=Path, default=Path("~/.cache/mdc"))
-    parser.add_argument("--config-dir", type=Path, default=Path("~/.config/mdc"))
-    parser.add_argument("--trash", type=Path, default=Path(f"~/.Trash/mdc-{datetime.date.today().isoformat()}"))
+    parser.add_argument("--cache-dir", type=Path, default=Path("~/.cache/noesis"))
+    parser.add_argument("--config-dir", type=Path, default=Path("~/.config/noesis"))
+    parser.add_argument("--trash", type=Path, default=Path(f"~/.Trash/noesis-{datetime.date.today().isoformat()}"))
     parser.add_argument("--apply", action="store_true", help="Make the changes; without it, only print them.")
     args = parser.parse_args(argv)
     library = args.library.expanduser().resolve()

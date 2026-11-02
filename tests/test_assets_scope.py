@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-import mdc.config
-from mdc.assets import collect_local_assets
-from mdc.transcript import TranscriptError, parse_transcript
+import noesis.config
+from noesis.assets import collect_local_assets
+from noesis.transcript import TranscriptError, parse_transcript
 
 
 def _transcript(path: Path, link: str) -> Path:
@@ -23,8 +23,8 @@ def library(tmp_path, monkeypatch):
     lib = tmp_path / "lib"
     (lib / "2026").mkdir(parents=True)
     (lib / "2026" / "2026-10-19-parfit2011.pdf").write_bytes(b"%PDF-1.4 parfit")
-    monkeypatch.setattr(mdc.config, "DEFAULT_CONFIG_PATH", tmp_path / "config.toml")
-    monkeypatch.setenv("MDC_LIBRARY", str(lib))
+    monkeypatch.setattr(noesis.config, "DEFAULT_CONFIG_PATH", tmp_path / "config.toml")
+    monkeypatch.setenv("NOESIS_LIBRARY", str(lib))
     return lib
 
 

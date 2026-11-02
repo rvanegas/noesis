@@ -3,10 +3,10 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mdc"
+name = "noesis"
 version = "0.1.23"
 description = "Unified CLI for markdown chats with LLMs."
-readme = "mdc/README.md"
+readme = "noesis/README.md"
 requires-python = ">=3.11"
 dependencies = [
   "anthropic>=0.40.0",
@@ -23,13 +23,13 @@ test = [
 ]
 
 [project.scripts]
-mdc = "mdc.cli:main"
+noesis = "noesis.cli:main"
 
 [tool.setuptools]
-packages = ["mdc"]
+packages = ["noesis"]
 
 [tool.setuptools.package-data]
-mdc = ["*.toml", "*.md", "deployed.json", "web/*"]
+noesis = ["*.toml", "*.md", "deployed.json", "web/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

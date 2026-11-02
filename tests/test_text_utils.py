@@ -2,7 +2,7 @@
 
 import pytest
 
-from mdc.text_utils import _parse_index_reply, _upgrade_reply_headings, wrap_paragraphs
+from noesis.text_utils import _parse_index_reply, _upgrade_reply_headings, wrap_paragraphs
 
 
 # ---------------------------------------------------------------------------

@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-import mdc.config
-from mdc.cli import main
-from mdc.form import check_file
+import noesis.config
+from noesis.cli import main
+from noesis.form import check_file
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -16,9 +16,9 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 def library(tmp_path, monkeypatch):
     lib = tmp_path / "lib"
     lib.mkdir()
-    monkeypatch.setattr(mdc.config, "DEFAULT_CONFIG_PATH", tmp_path / "config.toml")
-    monkeypatch.setenv("MDC_LIBRARY", str(lib))
-    monkeypatch.delenv("MDC_SERVER_URL", raising=False)
+    monkeypatch.setattr(noesis.config, "DEFAULT_CONFIG_PATH", tmp_path / "config.toml")
+    monkeypatch.setenv("NOESIS_LIBRARY", str(lib))
+    monkeypatch.delenv("NOESIS_SERVER_URL", raising=False)
     monkeypatch.chdir(lib)
     return lib
 
@@ -87,7 +87,7 @@ def test_anything_else_is_a_document(library):
     assert "Two dogmas, one paragraph." in docs[0].read_text()
 
 
-def test_an_mdc_chat_keeps_its_title_date_and_turns(library):
+def test_an_noesis_chat_keeps_its_title_date_and_turns(library):
     src = library.parent / "2026-05-02-on-names.chat.md"
     src.write_text("# On Names\n*2026-05-01*\n## Prompt\nWhat is a name?\n\n\n## Claude\nA rigid designator.\n")
     assert main(["import", str(src)]) == 0
@@ -149,7 +149,7 @@ def test_zip_only_skip_and_replace(library, capsys):
 
 
 def test_a_file_that_fails_its_check_is_not_written(library, monkeypatch, capsys):
-    import mdc.cmd_import as imp
+    import noesis.cmd_import as imp
     monkeypatch.setattr(imp, "_problems", lambda path, role: ["broken"])
     existing = library / "2026" / "2026-09-14-being-and-seeming.chat.md"
     existing.parent.mkdir()
@@ -185,7 +185,7 @@ Exactly.
 @pytest.fixture
 def titles(monkeypatch):
     """The index model, scripted: each call takes the next title, and keeps what it was sent."""
-    import mdc.cmd_import as imp
+    import noesis.cmd_import as imp
     script: list[str] = []
     sent: list[list[dict]] = []
 
@@ -231,7 +231,7 @@ def test_a_zip_imports_each_text_inside(library, titles):
 
 
 def test_a_finder_zip_name_is_read_as_utf8():
-    from mdc.cmd_import import _member_name
+    from noesis.cmd_import import _member_name
     name = "The Floor — Reading Group — 2026-10-30 1609.txt"
     # Finder writes UTF-8 without the flag that says so; zipfile reads cp437.
     assert _member_name(zipfile.ZipInfo(name.encode("utf-8").decode("cp437"))) == name

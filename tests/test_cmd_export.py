@@ -4,8 +4,8 @@ from unittest.mock import patch
 
 import pytest
 
-from mdc.cmd_export import _argument_contents, _layout_entry, run_export
-from mdc.roxana_client import _ID_ALPHABET, generate_discussion_id
+from noesis.cmd_export import _argument_contents, _layout_entry, run_export
+from noesis.roxana_client import _ID_ALPHABET, generate_discussion_id
 
 
 ARGUMENT_TEXT = """
@@ -59,7 +59,7 @@ def test_generate_discussion_id():
 
 
 def test_dry_run_makes_no_network_calls(argument_file, capsys):
-    with patch("mdc.roxana_client._graphql") as graphql:
+    with patch("noesis.roxana_client._graphql") as graphql:
         assert run_export(argument_file, dry_run=True) == 0
         graphql.assert_not_called()
     out = capsys.readouterr().out
@@ -72,7 +72,7 @@ def test_missing_companion(tmp_path, capsys):
     doc = tmp_path / "2026-07-08-sample.document.md"
     doc.write_text("\n# Sample\n2026-07-08\n\nText.\n", encoding="utf-8")
     assert run_export(doc) == 1
-    assert "mdc argue" in capsys.readouterr().out
+    assert "noesis argue" in capsys.readouterr().out
 
 
 def test_bad_extension(tmp_path, capsys):
@@ -112,7 +112,7 @@ class FakeRoxana:
 
 @pytest.fixture
 def configured():
-    with patch("mdc.config.load_config") as load_config:
+    with patch("noesis.config.load_config") as load_config:
         config = load_config.return_value
         config.roxana_api_url = "https://example/graphql"
         config.roxana_api_key = "da2-test"
@@ -122,7 +122,7 @@ def configured():
 
 def _run_with(fake: FakeRoxana, path: Path) -> int:
     with patch.multiple(
-        "mdc.roxana_client",
+        "noesis.roxana_client",
         generate_discussion_id=fake.generate_discussion_id,
         discussion_exists=fake.discussion_exists,
         create_sentence=fake.create_sentence,
@@ -214,7 +214,7 @@ def test_export_summary_counts_analyses(argument_file, analysis_file, configured
 
 
 def test_dry_run_lists_analysis_positions(argument_file, analysis_file, capsys):
-    with patch("mdc.roxana_client._graphql") as graphql:
+    with patch("noesis.roxana_client._graphql") as graphql:
         assert run_export(argument_file, dry_run=True) == 0
         graphql.assert_not_called()
     assert "Analyses: positions 1, 2" in capsys.readouterr().out
@@ -232,7 +232,7 @@ def test_cleanup_on_midflight_failure(argument_file, configured, capsys):
 
 def test_missing_config(argument_file, configured, capsys):
     configured.roxana_api_url = None
-    with patch("mdc.roxana_client._graphql") as graphql:
+    with patch("noesis.roxana_client._graphql") as graphql:
         assert run_export(argument_file) == 1
         graphql.assert_not_called()
     assert "roxana_api_url" in capsys.readouterr().out

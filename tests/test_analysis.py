@@ -1,4 +1,4 @@
-from mdc.analysis import parse_analysis_result, render_analysis_body, render_audit_body
+from noesis.analysis import parse_analysis_result, render_analysis_body, render_audit_body
 
 
 RESULTS = {

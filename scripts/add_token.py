@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Mint a bearer token for mdc's API and record its hash in users.toml.
+"""Mint a bearer token for noesis's API and record its hash in users.toml.
 
 An operator task (SERVER.md, Phase 2). The token is printed once and stored
 nowhere; users.toml keeps only its SHA-256. "*" is a service: it reaches
 every library (the nightly index).
 
-    docker compose run --rm mdc python scripts/add_token.py rodvandur --note "Mac CLI"
+    docker compose run --rm noesis python scripts/add_token.py rodvandur --note "Mac CLI"
 
 Stdlib only.
 """
@@ -24,7 +24,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("user", help='a user name, or "*" for a service')
     parser.add_argument("--note", default="", help="what the token is for")
-    parser.add_argument("--users", type=Path, default=Path(os.environ.get("MDC_DATA_DIR", "/data")) / "users.toml")
+    parser.add_argument("--users", type=Path, default=Path(os.environ.get("NOESIS_DATA_DIR", "/data")) / "users.toml")
     args = parser.parse_args(argv)
     if args.user != "*" and not re.match(r"^[a-z0-9][a-z0-9_-]*$", args.user):
         raise SystemExit(f"✗ not a user name: {args.user!r}")

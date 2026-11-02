@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Move a library's index state and the user's system prompt into the library.
 
-The data migration for mdc's library layout (SERVER.md, *Where things live*).
+The data migration for noesis's library layout (SERVER.md, *Where things live*).
 Before it, index state was one set of files per home, stamped with the
 library's path, and the reply system prompt began with the user's
-~/.config/mdc/system.md. After it, a library carries both:
+~/.config/noesis/system.md. After it, a library carries both:
 
-- ~/.local/state/mdc/library-{manifest,index,relations}.json move to
-  <library>/.mdc/{manifest,index,relations}.json, without the path stamp;
+- ~/.local/state/noesis/library-{manifest,index,relations}.json move to
+  <library>/.noesis/{manifest,index,relations}.json, without the path stamp;
   a state file stamped with another library is left alone;
 - system.md (its "//" comment lines dropped) goes at the top of
   <library>/SYSTEM_PROMPT.md, and system.md and its editor backup are deleted;
@@ -34,7 +34,7 @@ STATE_FILES = {
 
 def migrate_state(library: Path, state_dir: Path) -> list[str]:
     done = []
-    target_dir = library / ".mdc"
+    target_dir = library / ".noesis"
     for old_name, new_name in STATE_FILES.items():
         old = state_dir / old_name
         if not old.exists():
@@ -56,7 +56,7 @@ def migrate_state(library: Path, state_dir: Path) -> list[str]:
         state_dir.rmdir()
         done.append(f"removed the empty {state_dir}")
     elif leftovers:
-        done.append(f"still in {state_dir} (mdc no longer reads it): {', '.join(leftovers)}")
+        done.append(f"still in {state_dir} (noesis no longer reads it): {', '.join(leftovers)}")
     return done
 
 
@@ -92,8 +92,8 @@ def migrate_system_prompt(library: Path, config_dir: Path) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("library", type=Path, help="The library directory.")
-    parser.add_argument("--state-dir", type=Path, default=Path("~/.local/state/mdc"))
-    parser.add_argument("--config-dir", type=Path, default=Path("~/.config/mdc"))
+    parser.add_argument("--state-dir", type=Path, default=Path("~/.local/state/noesis"))
+    parser.add_argument("--config-dir", type=Path, default=Path("~/.config/noesis"))
     args = parser.parse_args(argv)
 
     library = args.library.expanduser().resolve()

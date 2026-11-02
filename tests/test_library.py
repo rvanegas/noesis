@@ -2,9 +2,9 @@ import datetime
 from pathlib import Path
 
 import pytest
-import mdc.library
+import noesis.library
 
-from mdc.library import (
+from noesis.library import (
     INDEX_FILENAME,
     KEYS_FILENAME,
     MANIFEST_FILENAME,

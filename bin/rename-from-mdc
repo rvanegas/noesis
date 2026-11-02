@@ -1,0 +1,84 @@
+#!/bin/bash
+#
+# Moves what is on disk from mdc's names to noesis's, once (2026-11-02,
+# rvanegas-site TODO.md). Run from the Mac, in this checkout.
+#
+#   bin/rename-from-mdc box   on commons: stops the mdc container, moves
+#                             /srv/mdc, each library's .mdc/, ~/mdc, its .env
+#                             keys, ~/.config/mdc and the nightly crontab line
+#   bin/rename-from-mdc mac   here: ~/.config/mdc and its server_url, each
+#                             mirrored library's .mdc/, the pipx install
+#
+# Each part refuses if it finds noesis's names already there, and stops at the
+# first failure. Accounts, spend, tokens and libraries move as they are; the
+# OAuth grants stop working only because their issuer's address changes.
+# After `box`: install rvanegas-site's Caddyfile with the noesis block, then
+# bin/deploy. The SES configuration set `noesis` must exist before the first
+# sign-in mail.
+set -euo pipefail
+
+HOST=${COMMONS_HOST:-ubuntu@32.190.173.222}
+KEY=${COMMONS_KEY:-~/.ssh/lightsail-ubuntu}
+SSH="ssh -i $KEY -o BatchMode=yes"
+
+box() {
+  $SSH "$HOST" 'set -euo pipefail
+    [ -d ~/mdc ] && [ -d /srv/mdc ] || { echo "✗ no ~/mdc or /srv/mdc: already moved?" >&2; exit 1; }
+    [ ! -e ~/noesis ] && [ ! -e /srv/noesis ] || { echo "✗ ~/noesis or /srv/noesis exists" >&2; exit 1; }
+
+    echo "→ stop the mdc container"
+    (cd ~/mdc && docker compose down 2>&1 | tail -1)
+
+    echo "→ /srv/mdc → /srv/noesis, and each library'"'"'s .mdc/"
+    sudo mv /srv/mdc /srv/noesis
+    find /srv/noesis/libraries -mindepth 3 -maxdepth 3 -type d -name .mdc | while IFS= read -r d; do
+      mv "$d" "$(dirname "$d")/.noesis"
+      echo "  ${d#/srv/noesis/libraries/}"
+    done
+
+    echo "→ ~/mdc → ~/noesis, its .env keys and mail settings"
+    mv ~/mdc ~/noesis
+    sed -i -E "s/^MDC_/NOESIS_/;
+      s/^NOESIS_MAIL_FROM=.*/NOESIS_MAIL_FROM=noesis <noesis@rvanegas.co>/;
+      s/^NOESIS_SES_CONFIGURATION_SET=.*/NOESIS_SES_CONFIGURATION_SET=noesis/" ~/noesis/.env
+    grep -oE "^[A-Z_]+=" ~/noesis/.env | tr "\n" " "; echo
+    stat -c "  mode %a" ~/noesis/.env
+
+    echo "→ ~/.config/mdc, the nightly log and crontab"
+    mv ~/.config/mdc ~/.config/noesis
+    [ -f ~/.local/state/mdc-nightly.log ] && mv ~/.local/state/mdc-nightly.log ~/.local/state/noesis-nightly.log
+    crontab -l | sed "s#/mdc/bin/#/noesis/bin/#; s#mdc-nightly\.log#noesis-nightly.log#" | crontab -
+    crontab -l | grep -v "^#"
+
+    echo "→ the old image"
+    docker image rm mdc-mdc:latest >/dev/null 2>&1 && echo "  mdc-mdc removed" || echo "  no mdc-mdc image"'
+  echo "✓ box moved; now the Caddyfile, then bin/deploy"
+}
+
+mac() {
+  [ -d ~/.config/mdc ] || { echo "✗ no ~/.config/mdc: already moved?" >&2; exit 1; }
+  [ ! -e ~/.config/noesis ] || { echo "✗ ~/.config/noesis exists" >&2; exit 1; }
+
+  echo "→ ~/.config/mdc → ~/.config/noesis, server_url"
+  mv ~/.config/mdc ~/.config/noesis
+  sed -i '' 's#https://mdc\.rvanegas\.co#https://noesis.rvanegas.co#' ~/.config/noesis/config.toml
+  grep -E '^server_url' ~/.config/noesis/config.toml
+
+  echo "→ each mirrored library's .mdc/"
+  sed -nE 's/^local_root *= *"(.*)"/\1/p' ~/.config/noesis/config.toml | while IFS= read -r root; do
+    root=${root/#\~/$HOME}
+    if [ -d "$root/.mdc" ]; then mv "$root/.mdc" "$root/.noesis"; echo "  $root"; fi
+  done
+
+  echo "→ the CLI"
+  pipx uninstall mdc >/dev/null 2>&1 || true
+  pipx install --editable "$(cd "$(dirname "$0")/.." && pwd)" >/dev/null
+  command -v noesis
+  echo "✓ Mac moved; Emacs loads editors/emacs/noesis.el with (require 'noesis')"
+}
+
+case "${1:-}" in
+  box) box ;;
+  mac) mac ;;
+  *) awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "$0"; exit 2 ;;
+esac

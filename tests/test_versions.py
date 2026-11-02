@@ -1,4 +1,4 @@
-from mdc.edit_tools import _write_version
+from noesis.edit_tools import _write_version
 
 
 def _versions(rev):

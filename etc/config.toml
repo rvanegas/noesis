@@ -1,7 +1,7 @@
-# mdc's system-wide config on the server, baked into the image at
-# /etc/mdc/config.toml (MDC_CONFIG_DIR). No secrets: the keys come from the
+# noesis's system-wide config on the server, baked into the image at
+# /etc/noesis/config.toml (NOESIS_CONFIG_DIR). No secrets: the keys come from the
 # box's .env. No library or user: each run names its library (--lib) and its
-# user's names (MDC_USER_NAMES). SERVER.md, *Where things live*.
+# user's names (NOESIS_USER_NAMES). SERVER.md, *Where things live*.
 
 model = "claude-sonnet-5"
 index_model = "claude-haiku-4-5"

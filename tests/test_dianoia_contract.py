@@ -1,22 +1,22 @@
-"""mdc's reading of dianoia's GET /api/agents/results, against a real response.
+"""noesis's reading of dianoia's GET /api/agents/results, against a real response.
 
 fixtures/dianoia_agents_results.json is the response dianoia's own contract test
 validates (dianoia's src/tests/fixtures/agents_results.json, recorded
 2026-10-25 through `dianoia_client.evaluate` for a three-proposition argument).
 When dianoia's agents change, it re-records that file against its published
-schema; copy it here, and a shape mdc no longer reads fails this test instead
+schema; copy it here, and a shape noesis no longer reads fails this test instead
 of rendering an analysis with sections silently missing.
 """
 
 import json
 from pathlib import Path
 
-from mdc.analysis import parse_analysis_result, render_analysis_body
+from noesis.analysis import parse_analysis_result, render_analysis_body
 
 RECORDED = json.loads((Path(__file__).parent / "fixtures" / "dianoia_agents_results.json").read_text())
 
 # The agents render_analysis_body reads, by the names dianoia publishes.
-READ_BY_MDC = {
+READ_BY_NOESIS = {
     "truth_evaluator",
     "content_validity_evaluator",
     "phrasing_evaluator",
@@ -34,9 +34,9 @@ def by_symbol(items: list, key: str) -> dict:
     return {item["symbol"]: item[key] for item in items}
 
 
-def test_every_agent_mdc_reads_is_published():
+def test_every_agent_noesis_reads_is_published():
     assert RECORDED["tasks_complete"] is True
-    assert READ_BY_MDC <= set(RECORDED["results_by_agent"])
+    assert READ_BY_NOESIS <= set(RECORDED["results_by_agent"])
 
 
 def test_scores_survive_rendering_and_parsing():

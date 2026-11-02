@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from mdc.library import load_entries, load_relations, load_terms
+from noesis.library import load_entries, load_relations, load_terms
 
 _SPEC = importlib.util.spec_from_file_location(
     "migrate_library", Path(__file__).resolve().parent.parent / "scripts" / "migrate_library.py"
@@ -31,7 +31,7 @@ def mac(tmp_path):
     config.mkdir()
     (config / "system.md").write_text("// a comment\nWrite in continuous prose.\n")
     (config / "system.md~").write_text("old\n")
-    (config / "config.toml").write_text('model = "claude-sonnet-5"\nsystem_prompt_file = "~/.config/mdc/system.md"\nuser_names = ["Prompt", "Rodrigo"]\n')
+    (config / "config.toml").write_text('model = "claude-sonnet-5"\nsystem_prompt_file = "~/.config/noesis/system.md"\nuser_names = ["Prompt", "Rodrigo"]\n')
     return library, state, config
 
 
@@ -42,8 +42,8 @@ def _run(library, state, config):
 def test_state_moves_into_the_library_and_still_loads(mac):
     library, state, config = mac
     _run(*mac)
-    assert sorted(p.name for p in (library / ".mdc").iterdir()) == ["index.json", "manifest.json", "relations.json"]
-    assert "library_path" not in json.loads((library / ".mdc/manifest.json").read_text())
+    assert sorted(p.name for p in (library / ".noesis").iterdir()) == ["index.json", "manifest.json", "relations.json"]
+    assert "library_path" not in json.loads((library / ".noesis/manifest.json").read_text())
     lib = library.resolve()
     assert [e.rel_path for e in load_entries(lib)] == ["a.md"]
     assert load_terms(lib) == {"x"}
@@ -57,7 +57,7 @@ def test_state_of_another_library_stays(mac, tmp_path):
     other.mkdir()
     migrate_library.main([str(other), "--state-dir", str(state), "--config-dir", str(config)])
     assert (state / "library-manifest.json").exists()
-    assert not (other / ".mdc").exists()
+    assert not (other / ".noesis").exists()
 
 
 def test_system_md_heads_the_library_prompt(mac):

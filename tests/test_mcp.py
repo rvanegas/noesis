@@ -28,17 +28,17 @@ def live(tmp_path_factory):
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
     mp = pytest.MonkeyPatch()
-    mp.setenv("MDC_DATA_DIR", str(data))
-    mp.setenv("MDC_CONFIG_DIR", str(data / "config"))
-    mp.setenv("MDC_PUBLIC_URL", f"http://127.0.0.1:{port}")
-    mp.setattr("mdc.mail.send_code", lambda to, code, client_name: SENT.__setitem__(to, code))
+    mp.setenv("NOESIS_DATA_DIR", str(data))
+    mp.setenv("NOESIS_CONFIG_DIR", str(data / "config"))
+    mp.setenv("NOESIS_PUBLIC_URL", f"http://127.0.0.1:{port}")
+    mp.setattr("noesis.mail.send_code", lambda to, code, client_name: SENT.__setitem__(to, code))
     # Every test here signs in from 127.0.0.1; the limits have tests of their own.
-    mp.setattr("mdc.accounts.SEND_LIMITS", (("email", 3600, 100), ("ip", 3600, 100), ("all", 86400, 1000)))
+    mp.setattr("noesis.accounts.SEND_LIMITS", (("email", 3600, 100), ("ip", 3600, 100), ("all", 86400, 1000)))
     (data / "users.toml").write_text(
         f'[[tokens]]\nuser = "ann"\nsha256 = "{hashlib.sha256(b"ann").hexdigest()}"\n'
         f'[[tokens]]\nuser = "bob"\nsha256 = "{hashlib.sha256(b"bob").hexdigest()}"\n'
     )
-    from mdc import accounts, server
+    from noesis import accounts, server
     # ann was the operator's before she signed in by email: linked, as scripts/accounts.py does.
     accounts.link("ann@example.com", "ann", accounts.UNLIMITED)
     uv = uvicorn.Server(uvicorn.Config(server.app, host="127.0.0.1", port=port, log_level="warning"))
@@ -63,12 +63,12 @@ def library(live):
     (root / "2025" / "2025-04-25-old-roman.chat.md").write_text(CHAT)
     (root / "2026" / "2026-10-27-essay.document.md").write_text(DOC)
     (root / "2026" / "2026-10-19-parfit2011.source.md").write_text("\n# Parfit\n2026-10-19\n\nNot yours to edit.\n")
-    (root / ".mdc").mkdir()
-    (root / ".mdc" / "manifest.json").write_text(json.dumps({"entries": [
+    (root / ".noesis").mkdir()
+    (root / ".noesis" / "manifest.json").write_text(json.dumps({"entries": [
         {"rel_path": "2026/2026-10-27-essay.document.md", "title": "Essay", "word_count": 2,
          "summary": "On prose.", "terms": ["prose"], "refs": [], "related": []},
     ]}))
-    (root / ".mdc" / "index.json").write_text(json.dumps({"terms": {
+    (root / ".noesis" / "index.json").write_text(json.dumps({"terms": {
         "prose": [{"rel_path": "2026/2026-10-27-essay.document.md", "title": "Essay"}]}}))
     (data / "libraries" / "bob" / "notes").mkdir(parents=True, exist_ok=True)
     return root, url
@@ -126,7 +126,7 @@ def test_reading(library):
 
 def test_nothing_writes(library):
     # claude.ai edits with its own documents, and a conversation reaches the
-    # library by its export and mdc import: edit_file is mdc reply's alone,
+    # library by its export and noesis import: edit_file is noesis reply's alone,
     # and append_turn is gone.
     root, url = library
     for tool, args in (
@@ -154,12 +154,12 @@ def two_libraries(library):
     shutil.rmtree(notes, ignore_errors=True)
     (notes / "2026").mkdir(parents=True)
     (notes / "2026" / "2026-10-30-fragment.document.md").write_text("\n# Fragment\n2026-10-30\n\nOn prose, briefly.\n")
-    (notes / ".mdc").mkdir()
-    (notes / ".mdc" / "manifest.json").write_text(json.dumps({"entries": [
+    (notes / ".noesis").mkdir()
+    (notes / ".noesis" / "manifest.json").write_text(json.dumps({"entries": [
         {"rel_path": "2026/2026-10-30-fragment.document.md", "title": "Fragment", "word_count": 3,
          "summary": "Prose, briefly.", "terms": ["prose"], "refs": [], "related": []},
     ]}))
-    (notes / ".mdc" / "index.json").write_text(json.dumps({"terms": {
+    (notes / ".noesis" / "index.json").write_text(json.dumps({"terms": {
         "prose": [{"rel_path": "2026/2026-10-30-fragment.document.md", "title": "Fragment"}]}}))
     yield root, url
     shutil.rmtree(notes, ignore_errors=True)
@@ -242,7 +242,7 @@ def test_claude_ai_signs_in_with_an_emailed_code(library, live):
     request_id = _authorize(url, client, challenge)
     page = httpx.get(f"{url}/oauth/login", params={"request": request_id})
     assert page.status_code == 200 and "Claude" in page.text and "claude.ai" in page.text
-    assert "to read your mdc libraries" in page.text and 'type="email"' in page.text
+    assert "to read your noesis libraries" in page.text and 'type="email"' in page.text
     bad = httpx.post(f"{url}/oauth/login", data={"request": request_id, "email": "nope", "action": "send"})
     assert "not an email address" in bad.text
     sent = httpx.post(f"{url}/oauth/login", data={"request": request_id, "email": " Ann@Example.com ", "action": "send"})
@@ -272,7 +272,7 @@ def test_claude_ai_signs_in_with_an_emailed_code(library, live):
         "client_id": client["client_id"], "client_secret": client["client_secret"]})
     assert again.status_code == 400
     # Disabling the account takes its OAuth access with it.
-    from mdc import accounts
+    from noesis import accounts
     accounts.set_disabled("ann", True)
     try:
         assert httpx.post(f"{url}/mcp", json={}, headers={
@@ -305,18 +305,18 @@ def test_a_new_address_makes_a_free_account(library, live):
     redirect = f"{url}/web/"
     verifier, challenge = _pkce()
     r = httpx.get(f"{url}/authorize", params={
-        "response_type": "code", "client_id": "mdc-web", "redirect_uri": redirect,
+        "response_type": "code", "client_id": "noesis-web", "redirect_uri": redirect,
         "code_challenge": challenge, "code_challenge_method": "S256", "state": "n1"})
     request_id = r.headers["location"].split("request=")[1]
     # "ann" is taken, by the operator's user: the new account is ann-2.
-    back = _sign_in(url, request_id, "ann+mdc@elsewhere.example")
+    back = _sign_in(url, request_id, "ann+noesis@elsewhere.example")
     code = parse_qs(urlparse(back.headers["location"]).query)["code"][0]
     tokens = httpx.post(f"{url}/token", data={
         "grant_type": "authorization_code", "code": code, "redirect_uri": redirect,
-        "client_id": "mdc-web", "code_verifier": verifier}).json()
+        "client_id": "noesis-web", "code_verifier": verifier}).json()
     bearer = {"Authorization": f"Bearer {tokens['access_token']}"}
     me = httpx.get(f"{url}/me", headers=bearer).json()
-    assert me["user"] == "ann-2" and me["plan"] == "free" and me["email"] == "ann+mdc@elsewhere.example"
+    assert me["user"] == "ann-2" and me["plan"] == "free" and me["email"] == "ann+noesis@elsewhere.example"
     assert me["spent_usd"] == 0 and me["allowance_usd"] == 1.0
     assert httpx.get(f"{url}/libraries", headers=bearer).json() == {"libraries": []}
     assert httpx.get(f"{url}/libraries/ann/philosophy/files", headers=bearer).status_code == 403
@@ -337,19 +337,19 @@ def test_the_web_client_signs_in_and_reaches_the_api(library, live):
     redirect = f"{url}/web/"
     verifier, challenge = _pkce()
     r = httpx.get(f"{url}/authorize", params={
-        "response_type": "code", "client_id": "mdc-web", "redirect_uri": redirect,
+        "response_type": "code", "client_id": "noesis-web", "redirect_uri": redirect,
         "code_challenge": challenge, "code_challenge_method": "S256", "state": "w1"})
     assert r.status_code == 302, r.text
     request_id = r.headers["location"].split("request=")[1]
     page = httpx.get(f"{url}/oauth/login", params={"request": request_id})
-    assert "mdc on the web" in page.text and "run mdc's commands" in page.text
+    assert "noesis on the web" in page.text and "run noesis's commands" in page.text
     back = _sign_in(url, request_id)
     assert back.status_code == 302 and back.headers["location"].startswith(redirect)
     code = parse_qs(urlparse(back.headers["location"]).query)["code"][0]
     # A public client: no secret, the verifier alone.
     tokens = httpx.post(f"{url}/token", data={
         "grant_type": "authorization_code", "code": code, "redirect_uri": redirect,
-        "client_id": "mdc-web", "code_verifier": verifier}).json()
+        "client_id": "noesis-web", "code_verifier": verifier}).json()
     bearer = {"Authorization": f"Bearer {tokens['access_token']}"}
     assert httpx.get(f"{url}/libraries", headers=bearer).json() == {"libraries": ["ann/philosophy"]}
     assert "2026/2026-10-27-essay.document.md" in httpx.get(
@@ -357,12 +357,12 @@ def test_the_web_client_signs_in_and_reaches_the_api(library, live):
     assert httpx.get(f"{url}/libraries/bob/notes/files", headers=bearer).status_code == 403
     # Signing out revokes, as the page sends it: a public client, an empty secret.
     revoked = httpx.post(f"{url}/revoke", data={
-        "client_id": "mdc-web", "client_secret": "", "token": tokens["refresh_token"]})
+        "client_id": "noesis-web", "client_secret": "", "token": tokens["refresh_token"]})
     assert revoked.status_code == 200
     assert httpx.get(f"{url}/libraries", headers=bearer).status_code == 401
     # Its only redirect is the page: a code cannot be sent anywhere else.
     elsewhere = httpx.get(f"{url}/authorize", params={
-        "response_type": "code", "client_id": "mdc-web", "redirect_uri": "https://evil.example/web/",
+        "response_type": "code", "client_id": "noesis-web", "redirect_uri": "https://evil.example/web/",
         "code_challenge": challenge, "code_challenge_method": "S256", "state": "w2"})
     assert elsewhere.status_code == 400
 
@@ -392,7 +392,7 @@ FLOOR = ("\n# Lunch\n2026-10-30\n\n## Ann\n\nMine.\n\n## Bea\n\nHers.\n\n"
 
 
 def test_a_chat_of_several_people_says_whose_voice_each_heading_is(library):
-    from mdc import accounts
+    from noesis import accounts
     root, url = library
     (root / "2026" / "2026-10-30-lunch.chat.md").write_text(FLOOR)
     accounts.set_speaker_names("ann", ["Ann"])

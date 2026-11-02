@@ -1,10 +1,10 @@
-"""Tests for mdc.review message-building and storage functions."""
+"""Tests for noesis.review message-building and storage functions."""
 
 from pathlib import Path
 
 import pytest
 
-from mdc.review import (
+from noesis.review import (
     build_doc_review_messages,
     build_final_messages,
     extract_doc_heading,
