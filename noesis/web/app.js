@@ -395,6 +395,7 @@ async function openFile(path) {
   // came to, from which an argument is then extracted.
   $("file-document").hidden = !path.endsWith(".chat.md")
     || files[path.replace(/\.chat\.md$/, ".document.md")] !== undefined;
+  $("file-claude").hidden = $("file-document").hidden;
   $("file-note").textContent = setting ? SETTINGS.get(path) : note || "";
   $("file-note").hidden = !setting && !note;
   $("file-edit").hidden = !setting;
@@ -467,6 +468,35 @@ function pickImport(file) {
   $("import-only").value = "";
   $("import-replace").checked = false;
   $("import").hidden = false;
+}
+
+// Two steps, so the instructions come before claude.ai opens: Claude reads
+// the chat through the noesis connector and writes the document with the
+// person, who downloads it and imports it here as the chat's pair. noesis
+// writes nothing for claude.ai; the document returns by Import.
+function draftPrompt(path) {
+  return [
+    `Using noesis, read the chat \`${path.split("/").pop()}\` in my library \`${library}\` (read_file).`,
+    "Help me write its document: the position this conversation came to, in my voice, as I would hold it now.",
+    "Where it is unclear what I hold, ask me rather than settling it yourself.",
+    "When we are done, give the whole document as Markdown starting with `# <title>`,",
+    "so that I can import it into noesis as this chat's document.",
+  ].join(" ");
+}
+
+function showDraft() {
+  const prompt = draftPrompt(open.path);
+  $("draft-chat").textContent = open.path;
+  $("draft-prompt").textContent = prompt;
+  $("draft-open").href = `https://claude.ai/new?q=${encodeURIComponent(prompt)}`;
+  $("draft").hidden = false;
+  $("draft").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function copyDraft() {
+  await navigator.clipboard.writeText($("draft-prompt").textContent);
+  $("draft-copy").textContent = "Copied";
+  setTimeout(() => { $("draft-copy").textContent = "Copy the prompt"; }, 2000);
 }
 
 async function importDocument() {
@@ -642,6 +672,8 @@ function wire() {
   });
   $("import").addEventListener("submit", guard(importFile));
   $("document-pick").addEventListener("change", guard(importDocument));
+  $("file-claude").addEventListener("click", showDraft);
+  $("draft-copy").addEventListener("click", guard(copyDraft));
   for (const button of document.querySelectorAll("[data-close]")) {
     button.addEventListener("click", () => closePanel(button.closest(".panel").id));
   }

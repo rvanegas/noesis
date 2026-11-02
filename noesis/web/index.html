@@ -68,6 +68,22 @@
       <div class="actions"><button>Import</button><button type="button" class="quiet" data-close>Cancel</button></div>
     </form>
 
+    <section id="draft" class="panel" hidden>
+      <div class="heading"><h2>Draft its document in Claude</h2><button class="quiet" data-close>Close</button></div>
+      <p class="hint">Claude reads <code id="draft-chat"></code> from this library and writes its document with
+        you: the position the conversation came to, in your words. Then it comes back here as the chat's pair.</p>
+      <ol class="hint">
+        <li>Be signed in to claude.ai, with the noesis connector enabled (Settings → Connectors, at
+          <code>https://noesis.rvanegas.co/mcp</code>), signed in as the owner of this library, so Claude can read the chat.</li>
+        <li><em>Open claude.ai</em> starts a conversation with the prompt below. If the prompt is not filled in,
+          <em>Copy the prompt</em> and paste it.</li>
+        <li>When the document is done, download it as Markdown (or save it as a <code>.md</code> file).</li>
+        <li>Back here, open the chat and choose <em>Import its document</em>.</li>
+      </ol>
+      <pre id="draft-prompt"></pre>
+      <div class="actions"><a id="draft-open" class="button" target="_blank" rel="noopener">Open claude.ai</a><button id="draft-copy" class="quiet">Copy the prompt</button></div>
+    </section>
+
     <section id="output" class="panel" hidden>
       <div class="heading"><h2 id="output-title"></h2><button class="quiet" data-close>Close</button></div>
       <pre id="output-text"></pre>
@@ -84,6 +100,7 @@
         <button data-run="fix">Fix</button>
         <button data-run="argue">Extract argument</button>
         <button data-run="export">Send to Roxana</button>
+        <button id="file-claude" hidden>Draft its document in Claude</button>
         <label class="button" id="file-document" hidden>Import its document<input id="document-pick" type="file" accept=".md,.markdown,.txt" hidden></label>
         <button id="file-edit">Edit</button>
         <button id="file-download" class="quiet">Download</button>
