@@ -324,7 +324,7 @@ def main(argv: list[str] | None = None) -> int:
             path = _resolve_path_abbrev(args.path, Path.cwd(), secondary_priority=("argument", "document"))
             if path is None:
                 return 1
-            return run_export(path, dry_run=args.dry_run)
+            return run_export(path, dry_run=args.dry_run, new=args.new)
         if args.command == "edit":
             if _require_bare(args.path):
                 return 1
@@ -729,6 +729,11 @@ def build_parser() -> argparse.ArgumentParser:
         "-n", "--dry-run",
         action="store_true",
         help="Print what would be created without contacting Roxana.",
+    )
+    export_parser.add_argument(
+        "--new",
+        action="store_true",
+        help="Start another discussion for an argument already sent, after it has changed.",
     )
 
     return parser

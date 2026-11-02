@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 
 _ID_ATTEMPTS = 8
+
+# What was exported, per argument file, in the library's .noesis/: a
+# discussion in Roxana is public dialectic and belongs to no one, so it is
+# never replaced; exporting the same argument again names the discussion it
+# already has (rvanegas-site CLAUDE.md, *Public dialectic has no owner*).
+EXPORTS = "exports.json"
 
 
 def _primary(companion: Path) -> Path:
@@ -57,7 +65,34 @@ def _analysis_results(companion: Path, argument: list[dict]) -> dict[int, dict]:
             if prop_num in position_by_prop}
 
 
-def run_export(path: Path, dry_run: bool = False) -> int:
+def _digest(propositions: list[str], arguments: list[str], analyses: dict) -> str:
+    payload = json.dumps([propositions, arguments, analyses], sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _exports_path(library: Path | None) -> Path | None:
+    from noesis.config import library_state_dir
+    return library_state_dir(library) / EXPORTS if library else None
+
+
+def _export_key(companion: Path, library: Path | None) -> str:
+    try:
+        return companion.resolve().relative_to(library.resolve()).as_posix() if library else companion.name
+    except ValueError:
+        return companion.resolve().as_posix()
+
+
+def _load_exports(path: Path | None) -> dict:
+    if path is None or not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _discussion_link(web_url: str | None, discussion_id: str) -> str:
+    return f"{web_url.rstrip('/')}/discussions/{discussion_id}" if web_url else f"discussion {discussion_id}"
+
+
+def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
     from noesis.argue import markdown_to_argument
     from noesis.config import load_config
     from noesis import roxana_client
@@ -103,6 +138,25 @@ def run_export(path: Path, dry_run: bool = False) -> int:
         return 1
     url, api_key = config.roxana_api_url, config.roxana_api_key
 
+    exports_path = _exports_path(config.library_path)
+    exports = _load_exports(exports_path)
+    key = _export_key(companion, config.library_path)
+    digest = _digest(proposition_contents, argument_contents, analysis_results)
+    previous = exports.get(key)
+    if previous and not new:
+        link = _discussion_link(config.roxana_web_url, previous["discussion_id"])
+        if previous["digest"] == digest:
+            print(f"Already in Roxana as discussion {previous['discussion_id']}, sent {previous['exported_at']};"
+                  " unchanged since.")
+            print(link)
+            return 0
+        print(f"Sent to Roxana before, as discussion {previous['discussion_id']} ({previous['exported_at']}),"
+              f" and {companion.name} has changed since. A discussion is not replaced: what people"
+              " have accepted or rejected there stands. Send it again with --new to start another"
+              " discussion.")
+        print(link)
+        return 1
+
     try:
         for _ in range(_ID_ATTEMPTS):
             discussion_id = roxana_client.generate_discussion_id()
@@ -143,6 +197,15 @@ def run_export(path: Path, dry_run: bool = False) -> int:
     exported_analyses = f", {len(analysis_results)} analyses" if analysis_results else ""
     print(f"Exported {len(proposition_entries)} propositions, {len(argument_entries)} arguments"
           f"{exported_analyses} to discussion {discussion_id}.")
-    if config.roxana_web_url:
-        print(f"{config.roxana_web_url.rstrip('/')}/discussions/{discussion_id}")
+    if exports_path is not None:
+        earlier = [*previous.get("earlier", []), previous["discussion_id"]] if previous else []
+        exports[key] = {
+            "discussion_id": discussion_id,
+            "exported_at": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "digest": digest,
+            **({"earlier": earlier} if earlier else {}),
+        }
+        exports_path.parent.mkdir(parents=True, exist_ok=True)
+        exports_path.write_text(json.dumps(exports, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(_discussion_link(config.roxana_web_url, discussion_id))
     return 0

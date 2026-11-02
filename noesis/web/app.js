@@ -379,10 +379,16 @@ async function openFile(path) {
   const markdown = path.endsWith(".md");
   const setting = SETTINGS.has(path);
   const note = writtenBy(path);
+  // A document's argument is its .argument.md: Extract makes it, once, and
+  // Send to Roxana sends it, from either file.
+  const pair = /\.(document|argument)\.md$/;
+  const argued = pair.test(path) && files[path.replace(pair, ".argument.md")] !== undefined;
   for (const button of $("file-actions").querySelectorAll("[data-run]")) {
     const run = button.dataset.run;
     button.hidden = setting ? !(run === "validate" && path === "KEYS.md" && sha)
-      : !markdown || !!note || (run === "check" && !path.endsWith(".chat.md"));
+      : !markdown || !!note || (run === "check" && !path.endsWith(".chat.md"))
+        || (run === "argue" && (!path.endsWith(".document.md") || argued))
+        || (run === "export" && !argued);
   }
   $("file-note").textContent = setting ? SETTINGS.get(path) : note || "";
   $("file-note").hidden = !setting && !note;
@@ -473,16 +479,37 @@ async function importFile(event) {
 
 // fix asks before it applies anything, and a run on the server has nobody to
 // answer, so a plain fix is a preview; Apply runs it again with --yes.
+// export ends with the discussion's address, made a link here; an argument
+// changed since it was sent is refused, since a discussion in Roxana belongs
+// to no one and is never replaced, and Send as a new discussion asks again
+// with --new.
 async function run(argv) {
   await stream(`noesis ${argv.join(" ")}`, libraryPath("/run"), {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ argv }),
   });
+  const output = $("output-text").textContent;
   const preview = argv[0] === "fix" && !argv.includes("--yes") && !argv.includes("-y");
-  if (preview && $("output-text").textContent.includes("Skipped.")) {
-    $("output-apply").onclick = guard(() => run(["fix", "--yes", ...argv.slice(1)]));
-    $("output-apply").hidden = false;
+  if (preview && output.includes("Skipped.")) {
+    offer("Apply these fixes", ["fix", "--yes", ...argv.slice(1)]);
   }
+  if (argv[0] === "export") {
+    const address = output.match(/https:\/\/\S+\/discussions\/\w+/);
+    if (address) {
+      $("output-link").href = address[0];
+      $("output-link").textContent = "Open in Roxana";
+      $("output-link").hidden = false;
+    }
+    if (!argv.includes("--new") && output.includes("--new")) {
+      offer("Send as a new discussion", ["export", "--new", ...argv.slice(1)]);
+    }
+  }
+}
+
+function offer(label, argv) {
+  $("output-apply").textContent = label;
+  $("output-apply").onclick = guard(() => run(argv));
+  $("output-apply").hidden = false;
 }
 
 async function stream(title, path, options) {
@@ -496,6 +523,7 @@ async function stream(title, path, options) {
   $("output-text").textContent = "";
   $("output-changes").replaceChildren();
   $("output-apply").hidden = true;
+  $("output-link").hidden = true;
   $("output").hidden = false;
   $("output").scrollIntoView({ behavior: "smooth", block: "start" });
   try {

@@ -72,7 +72,7 @@
       <div class="heading"><h2 id="output-title"></h2><button class="quiet" data-close>Close</button></div>
       <pre id="output-text"></pre>
       <ul id="output-changes"></ul>
-      <div class="actions"><button id="output-apply" hidden>Apply these fixes</button></div>
+      <div class="actions"><a id="output-link" class="button" target="_blank" rel="noopener" hidden></a><button id="output-apply" hidden>Apply these fixes</button></div>
     </section>
 
     <section id="file" class="panel" hidden>
@@ -82,6 +82,8 @@
         <button data-run="check">Check</button>
         <button data-run="validate">Validate</button>
         <button data-run="fix">Fix</button>
+        <button data-run="argue">Extract argument</button>
+        <button data-run="export">Send to Roxana</button>
         <button id="file-edit">Edit</button>
         <button id="file-download" class="quiet">Download</button>
         <button id="file-delete" class="danger">Delete</button>

@@ -245,6 +245,18 @@ On subsequent runs (companion exists), noesis submits the argument file to diano
 | `-v`, `--verbose` | Show extra detail. |
 | `-m N`, `--max-props N` | Maximum number of propositions passed to dianoia extract. |
 
+### `noesis export`
+
+Send a document's argument to Roxana as a new public discussion: its propositions, its arguments, and any analyses in `<stem>.analysis.md`. The web client's *Send to Roxana* runs it.
+
+```bash
+noesis export essay.md             # send essay.argument.md; prints the discussion's address
+noesis export essay.md --new       # changed since it was sent: start another discussion
+noesis export essay.md -n          # show what would be sent, sending nothing
+```
+
+A discussion in Roxana belongs to no one: anyone in it may accept or reject any proposition or argument. So noesis never replaces one. What it sent is recorded in the library's `.noesis/exports.json`; sending an unchanged argument again names the discussion it already has, and sending a changed one is refused until `--new`, which starts another discussion and keeps the earlier one's id.
+
 ---
 
 ### `noesis index`

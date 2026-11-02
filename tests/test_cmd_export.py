@@ -111,16 +111,17 @@ class FakeRoxana:
 
 
 @pytest.fixture
-def configured():
+def configured(tmp_path):
     with patch("noesis.config.load_config") as load_config:
         config = load_config.return_value
+        config.library_path = tmp_path
         config.roxana_api_url = "https://example/graphql"
         config.roxana_api_key = "da2-test"
         config.roxana_web_url = "https://roxana.example"
         yield config
 
 
-def _run_with(fake: FakeRoxana, path: Path) -> int:
+def _run_with(fake: FakeRoxana, path: Path, new: bool = False) -> int:
     with patch.multiple(
         "noesis.roxana_client",
         generate_discussion_id=fake.generate_discussion_id,
@@ -129,7 +130,7 @@ def _run_with(fake: FakeRoxana, path: Path) -> int:
         create_discussion=fake.create_discussion,
         delete_sentence=fake.delete_sentence,
     ):
-        return run_export(path)
+        return run_export(path, new=new)
 
 
 def test_export_flow(argument_file, configured, capsys):
@@ -236,3 +237,54 @@ def test_missing_config(argument_file, configured, capsys):
         assert run_export(argument_file) == 1
         graphql.assert_not_called()
     assert "roxana_api_url" in capsys.readouterr().out
+
+
+def _exports(library: Path) -> dict:
+    return json.loads((library / ".noesis" / "exports.json").read_text(encoding="utf-8"))
+
+
+def test_export_is_recorded(argument_file, configured):
+    assert _run_with(FakeRoxana(), argument_file) == 0
+    record = _exports(configured.library_path)[argument_file.name]
+    assert record["discussion_id"] == "k2rw"
+    assert "earlier" not in record
+
+
+def test_unchanged_argument_names_its_discussion(argument_file, configured, capsys):
+    assert _run_with(FakeRoxana(), argument_file) == 0
+    capsys.readouterr()
+    again = FakeRoxana()
+    assert _run_with(again, argument_file) == 0
+    assert again.calls == []
+    out = capsys.readouterr().out
+    assert "Already in Roxana as discussion k2rw" in out
+    assert "https://roxana.example/discussions/k2rw" in out
+
+
+def test_changed_argument_is_not_sent_without_new(argument_file, configured, capsys):
+    assert _run_with(FakeRoxana(), argument_file) == 0
+    argument_file.write_text(ARGUMENT_TEXT.replace("Socrates will die.", "Socrates will die one day."),
+                             encoding="utf-8")
+    capsys.readouterr()
+    again = FakeRoxana()
+    assert _run_with(again, argument_file) == 1
+    assert again.calls == []
+    out = capsys.readouterr().out
+    assert "--new" in out
+    assert "https://roxana.example/discussions/k2rw" in out
+
+
+class NextRoxana(FakeRoxana):
+    def generate_discussion_id(self):
+        return "m7qp"
+
+
+def test_new_starts_another_discussion_and_keeps_the_first(argument_file, configured, capsys):
+    assert _run_with(FakeRoxana(), argument_file) == 0
+    argument_file.write_text(ARGUMENT_TEXT.replace("Socrates will die.", "Socrates will die one day."),
+                             encoding="utf-8")
+    assert _run_with(NextRoxana(), argument_file, new=True) == 0
+    record = _exports(configured.library_path)[argument_file.name]
+    assert record["discussion_id"] == "m7qp"
+    assert record["earlier"] == ["k2rw"]
+    assert "https://roxana.example/discussions/m7qp" in capsys.readouterr().out
