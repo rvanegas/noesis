@@ -1,5 +1,11 @@
 # mdc as a service on the commons box
 
+**mdc was renamed noesis on 2026-11-02** (rvanegas-site `CLAUDE.md` § *What
+each project is for*): the package, the CLI, `NOESIS_*`, `/srv/noesis`,
+`noesis.rvanegas.co`, `.noesis/` in each library, the format and editor modes.
+What follows is the record as written, under the old name; `bin/rename-from-mdc`
+moved what was on disk.
+
 A plan, not yet executed (written 2026-10-24). It moves all of mdc's
 functionality onto the server and leaves the Mac holding only the files Rodrigo
 edits. It sits inside the site plan, `~/src/rvanegas-site/SITE.md`: mdc becomes
