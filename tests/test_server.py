@@ -136,7 +136,14 @@ def test_read_write_delete_with_preconditions(client):
     assert client.get(rel, headers=ANN).status_code == 404
 
 
-def test_run_streams_and_reports_changes(client, data):
+def test_run_streams_and_reports_changes(client, data, monkeypatch, tmp_path):
+    # An editor that leaves a mark if it is ever started: a run never starts one.
+    opened = tmp_path / "opened"
+    editor = tmp_path / "editor"
+    editor.write_text(f"#!/bin/sh\ntouch {opened}\n")
+    editor.chmod(0o755)
+    monkeypatch.setenv("EDITOR", str(editor))
+    monkeypatch.setenv("NOESIS_EDITOR", str(editor))
     response = client.post(f"{BASE}/run", headers=ANN, json={"argv": ["new", "Fresh", "Start"]})
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
@@ -146,6 +153,7 @@ def test_run_streams_and_reports_changes(client, data):
     assert done["exit_code"] == 0
     assert [rel.split("/")[-1].split("-", 3)[-1] for rel in done["changed"]] == ["fresh-start.chat.md"]
     assert "fresh-start.chat.md" in "".join(e[1]["text"] for e in events if e[0] == "output")
+    assert not opened.exists()
 
 
 def test_run_resolves_names_across_the_library(client):

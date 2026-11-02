@@ -439,7 +439,10 @@ async def _execute(root: Path, argv: list[str], events: asyncio.Queue,
     from noesis import accounts
     try:
         before = await asyncio.to_thread(tree_hashes, root)
-        env = {k: v for k, v in os.environ.items() if k != "NOESIS_LIBRARY"}
+        # No editor either: a run has nobody at a terminal, and `new` opens what
+        # it makes in $EDITOR, which on a machine that has one (a test on the
+        # Mac) would open it there.
+        env = {k: v for k, v in os.environ.items() if k not in ("NOESIS_LIBRARY", "EDITOR", "NOESIS_EDITOR")}
         # NOESIS_RUN_LOCAL: this noesis is the server's, never a client of it.
         # NOESIS_ACCOUNT: whose allowance the run's model calls spend (accounts.py).
         # NOESIS_USER_NAMES: whose voice is whose in the owner's chats.
