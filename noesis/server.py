@@ -14,7 +14,7 @@ run:
 - PUT    …/files/{rel_path}                  If-None-Match: * creates; If-Match: "<sha>" replaces
 - DELETE …/files/{rel_path}                  If-Match: "<sha>"
 - POST   …/run {argv}                        server-sent events: output, then done
-- POST   …/import?filename=…[&only=…&replace=true]   the body is the file; as /run
+- POST   …/import?filename=…[&only=…&replace=true&document_of=…]   the body is the file; as /run
 - GET    /me                                 the caller's account: plan, spend, storage, names
                                              (any client's token, not only the API's)
 - PUT    /me/names {names}                   the headings that are the caller's voice in chats
@@ -375,11 +375,18 @@ async def import_file(
     filename: str,
     only: str | None = None,
     replace: bool = False,
+    document_of: str | None = None,
     root: Path = Depends(library),
 ) -> StreamingResponse:
-    """`noesis import` on an uploaded file, kept outside the library while it runs."""
+    """`noesis import` on an uploaded file, kept outside the library while it runs;
+    with document_of, as that chat's document."""
     if "/" in filename or "\\" in filename or filename.startswith(".") or not filename.strip():
         raise HTTPException(400, f"a file name, not a path: {filename!r}")
+    if document_of is not None:
+        chat = PurePosixPath(document_of)
+        if chat.is_absolute() or ".." in chat.parts or not chat.name.endswith(".chat.md") \
+                or not (root / chat).is_file():
+            raise HTTPException(404, f"no chat {document_of!r} in this library")
     from noesis.cmd_import import IMPORTABLE
     if Path(filename).suffix.lower() not in IMPORTABLE:
         raise HTTPException(415, f"import takes Markdown or text, or claude.ai's export ({', '.join(sorted(IMPORTABLE))})")
@@ -402,6 +409,8 @@ async def import_file(
         argv += ["--only", only]
     if replace:
         argv.append("--replace")
+    if document_of is not None:
+        argv += ["--document-of", document_of]
     return _stream(root, argv, lock, cleanup=lambda: shutil.rmtree(staging, ignore_errors=True))
 
 

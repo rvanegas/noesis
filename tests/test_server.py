@@ -217,6 +217,25 @@ def test_import_writes_into_the_library_and_keeps_nothing_else(client, data):
     assert set(Path(tempfile.gettempdir()).glob("noesis-import-*")) == staged
 
 
+def test_import_as_a_chats_document(client, data):
+    lib = data / "libraries/ann/philosophy"
+    (lib / "2026").mkdir(exist_ok=True)
+    (lib / "2026/2026-05-01-on-names.chat.md").write_text(
+        "\n# On Names\n2026-05-01\n\n## Prompt\n\nWhat is a name?\n\n## Claude\n\nA rigid designator.\n")
+    response = client.post(f"{BASE}/import", headers=ANN, content=b"Names designate rigidly.\n",
+                           params={"filename": "draft.md", "document_of": "2026/2026-05-01-on-names.chat.md"})
+    events = _events(response.text)
+    assert events[-1][0] == "done" and events[-1][1]["exit_code"] == 0
+    assert list(events[-1][1]["changed"]) == ["2026/2026-05-01-on-names.document.md"]
+
+
+@pytest.mark.parametrize("chat", ["../x.chat.md", "/etc/x.chat.md", "2026/missing.chat.md", "2026/x.document.md"])
+def test_import_as_a_document_needs_a_chat_here(client, chat):
+    response = client.post(f"{BASE}/import", headers=ANN, content=b"x",
+                           params={"filename": "draft.md", "document_of": chat})
+    assert response.status_code == 404
+
+
 @pytest.mark.parametrize("filename", ["../x.md", "a/b.md", ".hidden", " "])
 def test_import_takes_a_name_not_a_path(client, filename):
     assert client.post(f"{BASE}/import", headers=ANN, params={"filename": filename}, content=b"x").status_code == 400

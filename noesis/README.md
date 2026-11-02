@@ -434,6 +434,7 @@ noesis import ~/Downloads/data-2026-10-27.zip                 # every claude.ai 
 noesis import conversations.json --only "Being and Seeming"   # one, by name or uuid
 noesis import 2026-08-03-verbal-disputes.md                   # a saveai.net export
 noesis import notes-on-quine.md                               # anything else: a .document.md
+noesis import draft.md --document-of 2026/2026-05-01-on-names.chat.md   # a chat's document
 ```
 
 | Input | Becomes |
@@ -443,6 +444,8 @@ noesis import notes-on-quine.md                               # anything else: a
 | anything else | a `.document.md`, its text as it is |
 
 Headings inside a turn are promoted to `###`, as `reply` does. Each file is checked (`check` for a chat, the global checks for a document) before it is written. A file that already exists is skipped; `--replace` overwrites it.
+
+`--document-of` brings in one text as a chat's document, `<stem>.document.md` beside the chat, as `noesis new --edit` pairs them: the position a conversation came to, written elsewhere (with Claude in claude.ai, or in an editor), from which `argue` then extracts the argument. It keeps its own `# Title` if it has one, else takes the chat's, and takes the chat's date. In the web client, a chat without a document offers *Import its document*.
 
 ### `noesis sync` and the server
 

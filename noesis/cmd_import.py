@@ -454,9 +454,12 @@ def settle(item: Imported, stem: str) -> tuple[Imported, str, list[str], str | N
     return (item, text, problems, None) if still else (document, text, [], problems[0])
 
 
-def run_import(paths: list[Path], only: str | None = None, replace: bool = False) -> int:
+def run_import(paths: list[Path], only: str | None = None, replace: bool = False,
+               document_of: str | None = None) -> int:
     from noesis.cli import _collect_existing_slugs, _is_within
     from noesis.library import library_titles
+    if document_of is not None:
+        return _import_document_of(paths, document_of, replace)
     library = load_config().library_path
     in_library = library is not None and _is_within(Path.cwd().resolve(), library.resolve())
     taken = _collect_existing_slugs(library if in_library else None)
@@ -526,3 +529,54 @@ def run_import(paths: list[Path], only: str | None = None, replace: bool = False
             written += 1
     print(f"{written} imported, {skipped} skipped, {failed} failed.")
     return 1 if failed else 0
+
+
+def _import_document_of(paths: list[Path], chat_name: str, replace: bool) -> int:
+    """One text as a chat's document, `<stem>.document.md` beside it, as
+    `noesis new --edit` pairs them: written elsewhere (claude.ai, an editor)
+    and brought in as the position the conversation came to. It keeps its own
+    `# Title` if it has one, else takes the chat's; the date is the chat's."""
+    from noesis.cli import _is_within
+    from noesis.library import _extract_title, library_titles
+    library = load_config().library_path
+    chat = (library / chat_name).resolve() if library else None
+    if chat is None or not chat.name.endswith(".chat.md") or not chat.is_file() \
+            or not _is_within(chat, library.resolve()):
+        print(f"Error: {chat_name} is not a chat in this library.")
+        return 1
+    if len(paths) != 1 or paths[0].suffix.lower() not in {".md", ".markdown", ".txt"}:
+        print("Error: a chat's document is one Markdown or text file.")
+        return 1
+    source = paths[0]
+    stem = chat.name[: -len(".chat.md")]
+    target = chat.with_name(f"{stem}.document.md")
+    rel = target.relative_to(library.resolve()).as_posix()
+    if target.exists() and not replace:
+        print(f"skipped  {target.name} (exists)")
+        print("0 imported, 1 skipped, 0 failed.")
+        return 0
+    text = source.read_text(encoding="utf-8", errors="replace")
+    chat_title = _extract_title(chat.read_text(encoding="utf-8", errors="replace"), stem)
+    item = _headed(text, PurePath(f"{stem}.document.md"), stem[:10], "document")
+    if not text.lstrip("\n").startswith("# "):
+        item = with_fields(item, title=chat_title)
+    dated = _DATED_STEM_RE.match(stem)
+    if dated:
+        item = with_fields(item, date=dated[1])
+    pair = {chat.relative_to(library.resolve()).as_posix(), rel}
+    holder = {slugify(title): r for r, title in library_titles(library).items()}.get(slugify(item.title))
+    if holder and holder not in pair:
+        print(f"failed   {target.name}: the title \"{item.title}\" is {Path(holder).name}'s")
+        print("0 imported, 0 skipped, 1 failed.")
+        return 1
+    item, written, problems, _ = settle(item, stem)
+    if problems:
+        print(f"failed   {target.name}: {problems[0]}")
+        print("0 imported, 0 skipped, 1 failed.")
+        return 1
+    tmp = target.with_name(f".{target.name}.import")
+    tmp.write_text(written, encoding="utf-8")
+    tmp.replace(target)
+    print(f"imported {rel} (the document of {chat.name})")
+    print("1 imported, 0 skipped, 0 failed.")
+    return 0

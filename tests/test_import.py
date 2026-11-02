@@ -294,3 +294,63 @@ def test_without_a_key_a_floor_text_fails_alone(library, monkeypatch, capsys):
     src.write_text(FLOOR)
     assert main(["import", str(src)]) == 1
     assert "needs an Anthropic key" in capsys.readouterr().out
+
+
+def _chat(library: Path) -> Path:
+    chat = library / "2026" / "2026-05-01-on-names.chat.md"
+    chat.parent.mkdir(parents=True, exist_ok=True)
+    chat.write_text("\n# On Names\n2026-05-01\n\n## Prompt\n\nWhat is a name?\n\n## Claude\n\nA rigid designator.\n")
+    return chat
+
+
+def test_a_chats_document_is_written_beside_it(library, capsys):
+    _chat(library)
+    src = library.parent / "draft.md"
+    src.write_text("Names designate rigidly; descriptions need not.\n")
+    assert main(["import", str(src), "--document-of", "2026/2026-05-01-on-names.chat.md"]) == 0
+    doc = library / "2026" / "2026-05-01-on-names.document.md"
+    assert doc.read_text().startswith("\n# On Names\n2026-05-01\n")
+    assert "descriptions need not." in doc.read_text()
+    assert "the document of 2026-05-01-on-names.chat.md" in capsys.readouterr().out
+
+
+def test_a_chats_document_keeps_its_own_title(library):
+    _chat(library)
+    src = library.parent / "draft.md"
+    src.write_text("# Rigid Designation\n\nNames designate rigidly.\n")
+    assert main(["import", str(src), "--document-of", "2026/2026-05-01-on-names.chat.md"]) == 0
+    doc = library / "2026" / "2026-05-01-on-names.document.md"
+    assert doc.read_text().startswith("\n# Rigid Designation\n2026-05-01\n")
+
+
+def test_a_chats_document_is_not_replaced_unasked(library, capsys):
+    _chat(library)
+    doc = library / "2026" / "2026-05-01-on-names.document.md"
+    doc.write_text("\n# On Names\n2026-05-01\n\nThe first.\n")
+    src = library.parent / "draft.md"
+    src.write_text("The second.\n")
+    chat = "2026/2026-05-01-on-names.chat.md"
+    assert main(["import", str(src), "--document-of", chat]) == 0
+    assert "The first." in doc.read_text()
+    assert "skipped" in capsys.readouterr().out
+    assert main(["import", str(src), "--document-of", chat, "--replace"]) == 0
+    assert "The second." in doc.read_text()
+
+
+@pytest.mark.parametrize("chat", ["2026/missing.chat.md", "2026/2026-05-01-on-names.document.md", "../outside.chat.md"])
+def test_document_of_needs_a_chat_in_the_library(library, capsys, chat):
+    _chat(library)
+    (library / "2026" / "2026-05-01-on-names.document.md").write_text("\n# On Names\n2026-05-01\n\nText.\n")
+    (library.parent / "outside.chat.md").write_text("\n# Outside\n2026-05-01\n\n## Prompt\n\nHi.\n")
+    src = library.parent / "draft.md"
+    src.write_text("Text.\n")
+    assert main(["import", str(src), "--document-of", chat]) == 1
+    assert "is not a chat in this library" in capsys.readouterr().out
+
+
+def test_document_of_takes_one_text(library, capsys):
+    _chat(library)
+    src = library.parent / "conversations.json"
+    src.write_text("[]")
+    assert main(["import", str(src), "--document-of", "2026/2026-05-01-on-names.chat.md"]) == 1
+    assert "one Markdown or text file" in capsys.readouterr().out

@@ -390,6 +390,11 @@ async function openFile(path) {
         || (run === "argue" && (!path.endsWith(".document.md") || argued))
         || (run === "export" && !argued);
   }
+  // A chat without its document takes one written elsewhere (claude.ai, an
+  // editor), as <stem>.document.md beside it: the position the conversation
+  // came to, from which an argument is then extracted.
+  $("file-document").hidden = !path.endsWith(".chat.md")
+    || files[path.replace(/\.chat\.md$/, ".document.md")] !== undefined;
   $("file-note").textContent = setting ? SETTINGS.get(path) : note || "";
   $("file-note").hidden = !setting && !note;
   $("file-edit").hidden = !setting;
@@ -462,6 +467,15 @@ function pickImport(file) {
   $("import-only").value = "";
   $("import-replace").checked = false;
   $("import").hidden = false;
+}
+
+async function importDocument() {
+  const file = $("document-pick").files[0];
+  $("document-pick").value = "";
+  if (!file || !open) return;
+  const query = new URLSearchParams({ filename: file.name, document_of: open.path });
+  await stream(`import ${file.name} as the document of ${open.path.split("/").pop()}`,
+    libraryPath(`/import?${query}`), { body: file });
 }
 
 async function importFile(event) {
@@ -627,6 +641,7 @@ function wire() {
     if (file) pickImport(file);
   });
   $("import").addEventListener("submit", guard(importFile));
+  $("document-pick").addEventListener("change", guard(importDocument));
   for (const button of document.querySelectorAll("[data-close]")) {
     button.addEventListener("click", () => closePanel(button.closest(".panel").id));
   }

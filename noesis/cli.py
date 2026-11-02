@@ -225,7 +225,8 @@ def main(argv: list[str] | None = None) -> int:
             )
         if args.command == "import":
             from noesis.cmd_import import run_import
-            return run_import([Path(p).expanduser() for p in args.files], only=args.only, replace=args.replace)
+            return run_import([Path(p).expanduser() for p in args.files], only=args.only, replace=args.replace,
+                              document_of=args.document_of)
         if args.command == "new":
             config = load_config()
             return run_new(" ".join(args.title_words) or None, edit=args.edit, library_path=config.library_path)
@@ -661,6 +662,7 @@ def build_parser() -> argparse.ArgumentParser:
     import_parser.add_argument("files", nargs="+", help="A claude.ai export (zip or conversations.json), saveai.net Markdown, or any text file.")
     import_parser.add_argument("--only", metavar="NAME", help="From a claude.ai export, only the conversation with this name or uuid.")
     import_parser.add_argument("--replace", action="store_true", help="Overwrite a file the import would otherwise skip as existing.")
+    import_parser.add_argument("--document-of", metavar="CHAT", help="Import one Markdown or text file as this chat's document: <stem>.document.md beside it (a path in the library).")
 
     # sync
     subparsers.add_parser(
