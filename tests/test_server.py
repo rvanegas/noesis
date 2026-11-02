@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -134,6 +135,14 @@ def test_read_write_delete_with_preconditions(client):
     assert client.delete(rel, headers={**ANN, "If-Match": f'"{_sha(b"one")}"'}).status_code == 412
     assert client.delete(rel, headers={**ANN, "If-Match": f'"{_sha(b"two")}"'}).status_code == 204
     assert client.get(rel, headers=ANN).status_code == 404
+
+
+def test_read_says_when_the_file_was_last_modified(client, data):
+    path = data / "libraries/ann/philosophy/notes.md"
+    path.write_text("x")
+    os.utime(path, (1_700_000_000, 1_700_000_000))
+    got = client.get(f"{BASE}/files/notes.md", headers=ANN)
+    assert got.headers["Last-Modified"] == "Tue, 14 Nov 2023 22:13:20 GMT"
 
 
 def test_run_streams_and_reports_changes(client, data, monkeypatch, tmp_path):

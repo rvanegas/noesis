@@ -46,8 +46,9 @@ const $ = (id) => document.getElementById(id);
 let access = null;           // {token, expires}
 let library = null;          // "<user>/<library>"
 let files = {};              // {rel_path: sha256}
-let open = null;             // {path, sha, blob}
+let open = null;             // {path, sha, blob, modified}
 let running = false;
+let exitCode = 0;            // the last run's, -1 if it never finished
 let names = [];              // the chat headings, besides Prompt, that are the user
 
 // ---------------------------------------------------------------------------
@@ -304,7 +305,7 @@ async function loadFiles() {
 function renderFiles() {
   const words = $("filter").value.toLowerCase().split(/\s+/).filter(Boolean);
   const paths = Object.keys(files)
-    .filter((p) => words.every((w) => p.toLowerCase().includes(w)))
+    .filter((p) => !madePdf(p) && words.every((w) => p.toLowerCase().includes(w)))
     .sort((a, b) => sortKey(b).localeCompare(sortKey(a)));
   // A library made before it had its settings still lists them, to be written.
   fill("settings-files", [...SETTINGS.keys()].filter((p) => words.every((w) => p.toLowerCase().includes(w))));
@@ -312,7 +313,7 @@ function renderFiles() {
   group("records", paths.filter((p) => RECORDS.test(p)), false);
   const own = (p) => !SETTINGS.has(p) && !GENERATED.has(p) && !RECORDS.test(p);
   fill("files", paths.filter(own));
-  const total = Object.keys(files).filter(own).length;
+  const total = Object.keys(files).filter((p) => own(p) && !madePdf(p)).length;
   const shown = paths.filter(own).length;
   $("filter").hidden = !total;
   $("count").textContent = !total
@@ -341,6 +342,12 @@ function fill(id, paths) {
   }));
 }
 
+// A PDF that noesis pdf made of a Markdown file is shown with that file,
+// whose PDF button fetches it, rather than listed beside it.
+function madePdf(path) {
+  return path.endsWith(".pdf") && files[path.replace(/\.pdf$/, ".md")] !== undefined;
+}
+
 // Why noesis keeps a file to itself, or null if it is the user's.
 function writtenBy(path) {
   if (GENERATED.has(path)) return `Written by noesis ${GENERATED.get(path)}, which rewrites it; view only.`;
@@ -359,7 +366,7 @@ function sortKey(path) {
 
 // A setting not yet written opens empty; saving it writes it.
 async function openFile(path) {
-  let blob, sha = null;
+  let blob, sha = null, modified = null;
   if (SETTINGS.has(path) && files[path] === undefined) {
     blob = new Blob([""]);
   } else {
@@ -370,8 +377,9 @@ async function openFile(path) {
     }
     blob = await response.blob();
     sha = response.headers.get("ETag").replace(/"/g, "");
+    modified = lastModified(response);
   }
-  open = { path, sha, blob };
+  open = { path, sha, blob, modified };
   $("file-name").textContent = path;
   $("file-text").textContent = TEXT.test(path) ? await blob.text() : `${blob.size.toLocaleString()} bytes`;
   $("file-text").hidden = false;
@@ -400,18 +408,45 @@ async function openFile(path) {
   $("file-note").hidden = !setting && !note;
   $("file-edit").hidden = !setting;
   $("file-download").hidden = !sha;
+  $("file-pdf").hidden = !markdown || setting || !sha;
   $("file-delete").hidden = !!note || setting;
   $("file-delete").textContent = "Delete";
   $("file").hidden = false;
   $("file").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-function download() {
+function download(blob = open.blob, path = open.path) {
   const link = document.createElement("a");
-  link.href = URL.createObjectURL(open.blob);
-  link.download = open.path.split("/").pop();
+  link.href = URL.createObjectURL(blob);
+  link.download = path.split("/").pop();
   link.click();
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+function lastModified(response) {
+  return Date.parse(response.headers.get("Last-Modified"));
+}
+
+// The file's PDF, <stem>.pdf beside it: downloaded as it is if it is newer
+// than the file, and otherwise made again by noesis pdf first.
+async function pdf() {
+  if (running) {
+    say("A run is in progress.");
+    return;
+  }
+  const { path, modified } = open;
+  const target = path.replace(/\.md$/, ".pdf");
+  let response = files[target] === undefined ? null : await api(filePath(target));
+  if (!response?.ok || !(lastModified(response) > modified)) {
+    await run(["pdf", "--quiet", path.split("/").pop()]);
+    if (exitCode) return;
+    response = await api(filePath(target));
+    if (!response.ok) {
+      say(`${target}: ${await detail(response)}`);
+      return;
+    }
+  }
+  download(await response.blob(), target);
 }
 
 // Two presses, rather than a dialog.
@@ -569,6 +604,7 @@ async function stream(title, path, options) {
   $("output-apply").hidden = true;
   $("output-link").hidden = true;
   $("output").hidden = false;
+  exitCode = -1;  // until its done event says otherwise
   $("output").scrollIntoView({ behavior: "smooth", block: "start" });
   try {
     const response = await api(path, { method: "POST", ...options });
@@ -615,6 +651,7 @@ function event(block) {
     const changed = Object.keys(data.changed || {}).map((p) => `changed ${p}`);
     const deleted = (data.deleted || []).map((p) => `deleted ${p}`);
     const lines = [...changed, ...deleted];
+    exitCode = data.exit_code || 0;
     if (data.exit_code) lines.unshift(`exit ${data.exit_code}`);
     $("output-changes").replaceChildren(...lines.map((text) => {
       const item = document.createElement("li");
@@ -663,7 +700,8 @@ function wire() {
   $("file-edit").addEventListener("click", guard(edit));
   $("file-cancel").addEventListener("click", cancelEdit);
   $("file-editor").addEventListener("submit", guard(save));
-  $("file-download").addEventListener("click", download);
+  $("file-download").addEventListener("click", () => download());
+  $("file-pdf").addEventListener("click", guard(pdf));
   $("file-delete").addEventListener("click", guard(remove));
   $("import-pick").addEventListener("change", (event) => {
     const [file] = event.target.files;

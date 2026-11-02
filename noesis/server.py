@@ -10,7 +10,7 @@ run:
 - GET    /libraries                          the caller's library ids
 - POST   /libraries {name}                   a new library of the caller's, its settings empty
 - GET    /libraries/{user}/{library}/files   {rel_path: sha256}
-- GET    …/files/{rel_path}                  the bytes, ETag their sha256
+- GET    …/files/{rel_path}                  the bytes, ETag their sha256, Last-Modified their mtime
 - PUT    …/files/{rel_path}                  If-None-Match: * creates; If-Match: "<sha>" replaces
 - DELETE …/files/{rel_path}                  If-Match: "<sha>"
 - POST   …/run {argv}                        server-sent events: output, then done
@@ -58,6 +58,7 @@ import shutil
 import sys
 import tempfile
 from contextlib import asynccontextmanager
+from email.utils import formatdate
 from pathlib import Path, PurePosixPath
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
@@ -323,7 +324,8 @@ def read_file(rel_path: str, root: Path = Depends(library)) -> Response:
         raise HTTPException(404, "no such file")
     data = path.read_bytes()
     return Response(data, media_type="application/octet-stream",
-                    headers={"ETag": _etag(hashlib.sha256(data).hexdigest())})
+                    headers={"ETag": _etag(hashlib.sha256(data).hexdigest()),
+                             "Last-Modified": formatdate(path.stat().st_mtime, usegmt=True)})
 
 
 @app.put("/libraries/{user}/{library}/files/{rel_path:path}")
