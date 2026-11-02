@@ -405,3 +405,29 @@ def test_roxanas_people_are_linked_by_their_usernames(data):
 def _write(path, text):
     path.write_text(text, encoding="utf-8")
     return path
+
+
+def test_the_operator_renames_an_account_everywhere(data):
+    import asyncio
+    from noesis.oauth import provider
+    script = _script("rename_user")
+    found = accounts.create_account("freeyourtime@example.com")
+    old = found.user
+    (data / "libraries" / old / "notes").mkdir(parents=True)
+    accounts.set_speaker_names(old, ["Rochelle"])
+    accounts.charge(old, 0.25)
+    issued = asyncio.run(_issue_for("thefloor", old))
+    out = io.StringIO()
+    with redirect_stdout(out):
+        script.main([old, "rochelle"])
+    assert f"{old}/notes" in out.getvalue() and accounts.account(old) is not None  # a plan changes nothing
+    for bad in ([old, "ann"], [old, "Bad Name"], ["nobody", "x"], ["ann", "x"]):  # taken, invalid, none, operator
+        with pytest.raises(SystemExit):
+            script.main(bad)
+    with redirect_stdout(io.StringIO()):
+        script.main([old, "rochelle", "--apply"])
+    assert accounts.account(old) is None and accounts.account("rochelle").email == "freeyourtime@example.com"
+    assert accounts.speaker_names("rochelle") == ("Rochelle",) and accounts.spent("rochelle") == 0.25
+    assert (data / "libraries" / "rochelle" / "notes").is_dir() and not (data / "libraries" / old).exists()
+    me = TestClient(server.app).get("/me", headers={"Authorization": f"Bearer {issued.access_token}"}).json()
+    assert me["user"] == "rochelle" and me["libraries"] == ["rochelle/notes"]
