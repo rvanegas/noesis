@@ -429,6 +429,118 @@ def test_a_connectors_token_does_not_reach_the_api(library, live):
                         headers={**bearer, "If-Match": "*"}).status_code == 401
 
 
+def _floor_client(url, *, imports=True):
+    """The Floor as the operator registers it: confidential, and marked to file conversations."""
+    import importlib.util
+    import io
+    from contextlib import redirect_stdout
+    scripts = Path(__file__).parent.parent / "scripts"
+    out = io.StringIO()
+    with redirect_stdout(out):
+        for name, argv in (("add_client", ["thefloor", "--name", "The Floor", "--redirect", FLOOR_CALLBACK]),
+                           ("client_imports", ["thefloor"] if imports else None)):
+            if argv is None:
+                continue
+            spec = importlib.util.spec_from_file_location(name, scripts / f"{name}.py")
+            script = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(script)
+            script.main(argv)
+    lines = dict(line.split("=", 1) for line in out.getvalue().split() if "=" in line)
+    return lines["NOESIS_CLIENT_SECRET"]
+
+
+FLOOR_CALLBACK = "https://floor.example/noesis/callback"
+
+
+def _floor_tokens(url, secret, scope):
+    from urllib.parse import parse_qs, urlparse
+    verifier, challenge = _pkce()
+    r = httpx.get(f"{url}/authorize", params={
+        "response_type": "code", "client_id": "thefloor", "redirect_uri": FLOOR_CALLBACK,
+        "code_challenge": challenge, "code_challenge_method": "S256", "state": "f1", "scope": scope})
+    request_id = r.headers["location"].split("request=")[1]
+    page = httpx.get(f"{url}/oauth/login", params={"request": request_id}).text
+    back = _sign_in(url, request_id)
+    code = parse_qs(urlparse(back.headers["location"]).query)["code"][0]
+    tokens = httpx.post(f"{url}/token", data={
+        "grant_type": "authorization_code", "code": code, "redirect_uri": FLOOR_CALLBACK,
+        "client_id": "thefloor", "client_secret": secret, "code_verifier": verifier}).json()
+    return tokens, page
+
+
+def test_the_floor_files_a_conversation_and_nothing_else(library, live, monkeypatch):
+    """A client the operator marked asks for `import`, the sign-in says so, and its
+    token reaches import and the speaker names — not the rest of the file and run API."""
+    data, url = live
+    # The import's subprocess imports this checkout's noesis.
+    monkeypatch.setenv("PYTHONPATH", str(Path(__file__).parent.parent))
+    secret = _floor_client(url)
+    tokens, page = _floor_tokens(url, secret, "import")
+    assert "add conversations to them" in page
+    assert tokens["scope"] == "import"
+    bearer = {"Authorization": f"Bearer {tokens['access_token']}"}
+    imported = httpx.post(f"{url}/libraries/ann/philosophy/import?filename=lunch.md", headers=bearer,
+                          content=b"Said at lunch.\n", timeout=60)
+    assert imported.status_code == 200 and '"exit_code": 0' in imported.text, imported.text
+    assert httpx.put(f"{url}/me/names", headers=bearer, json={"names": ["Ann"]}).json()["names"] == ["Ann"]
+    # Not another person's library, and nothing else of the API.
+    assert httpx.post(f"{url}/libraries/bob/notes/import?filename=a.md", headers=bearer,
+                      content=b"x").status_code in (403, 404)
+    assert httpx.get(f"{url}/libraries", headers=bearer).status_code == 401
+    assert httpx.post(f"{url}/libraries/ann/philosophy/run", headers=bearer,
+                      json={"argv": ["check"]}).status_code == 401
+    assert httpx.put(f"{url}/libraries/ann/philosophy/files/2026/x.document.md",
+                     headers={**bearer, "If-None-Match": "*"}, content=b"x").status_code == 401
+    # A refresh keeps the scope; the operator's unmarking stops it at once.
+    refreshed = httpx.post(f"{url}/token", data={
+        "grant_type": "refresh_token", "refresh_token": tokens["refresh_token"],
+        "client_id": "thefloor", "client_secret": secret}).json()
+    assert refreshed["scope"] == "import"
+    _script = Path(__file__).parent.parent / "scripts" / "client_imports.py"
+    import importlib.util, io
+    from contextlib import redirect_stdout
+    spec = importlib.util.spec_from_file_location("client_imports", _script)
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    with redirect_stdout(io.StringIO()):
+        script.main(["thefloor", "--off"])
+    again = {"Authorization": f"Bearer {refreshed['access_token']}"}
+    assert httpx.put(f"{url}/me/names", headers=again, json={"names": ["Ann"]}).status_code == 401
+    assert httpx.get(f"{url}/me", headers=again).status_code == 200
+
+
+def test_only_the_operators_mark_grants_import(library, live):
+    data, url = live
+    # Unmarked, The Floor cannot ask for it at all.
+    secret = _floor_client(url, imports=False)
+    _, challenge = _pkce()
+    refused = httpx.get(f"{url}/authorize", params={
+        "response_type": "code", "client_id": "thefloor", "redirect_uri": FLOOR_CALLBACK,
+        "code_challenge": challenge, "code_challenge_method": "S256", "state": "f2", "scope": "import"})
+    assert "invalid_scope" in refused.headers.get("location", "")
+    # A self-registered client claiming the scope is let ask, and is not given it.
+    from urllib.parse import parse_qs, urlparse
+    claimed = httpx.post(f"{url}/register", json={
+        "redirect_uris": [CALLBACK], "client_name": "Claude", "scope": "import",
+        "grant_types": ["authorization_code", "refresh_token"], "response_types": ["code"],
+        "token_endpoint_auth_method": "client_secret_post"}).json()
+    verifier, challenge = _pkce()
+    r = httpx.get(f"{url}/authorize", params={
+        "response_type": "code", "client_id": claimed["client_id"], "redirect_uri": CALLBACK,
+        "code_challenge": challenge, "code_challenge_method": "S256", "state": "c1", "scope": "import"})
+    request_id = r.headers["location"].split("request=")[1]
+    assert "add conversations" not in httpx.get(f"{url}/oauth/login", params={"request": request_id}).text
+    back = _sign_in(url, request_id)
+    code = parse_qs(urlparse(back.headers["location"]).query)["code"][0]
+    tokens = httpx.post(f"{url}/token", data={
+        "grant_type": "authorization_code", "code": code, "redirect_uri": CALLBACK,
+        "client_id": claimed["client_id"], "client_secret": claimed["client_secret"],
+        "code_verifier": verifier}).json()
+    assert "scope" not in tokens or not tokens["scope"]
+    assert httpx.post(f"{url}/libraries/ann/philosophy/import?filename=a.md",
+                      headers={"Authorization": f"Bearer {tokens['access_token']}"}, content=b"x").status_code == 401
+
+
 FLOOR = ("\n# Lunch\n2026-10-30\n\n## Ann\n\nMine.\n\n## Bea\n\nHers.\n\n"
          "## Claude\n\nThe model's.\n\n## Related\n\n| *Essay*\n")
 

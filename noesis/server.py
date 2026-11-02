@@ -3,7 +3,9 @@
 Every route but /healthz and the web client's pages needs a bearer token:
 a minted one, which /data/users.toml maps by its SHA-256 to a user, or to "*"
 for a service (the nightly index); or an OAuth access token issued to noesis's
-own web client (oauth.API_CLIENTS). A user reaches only their own libraries,
+own web client (oauth.API_CLIENTS). An application granted the import scope
+(The Floor; oauth.IMPORT_SCOPE) reaches /import and PUT /me/names alone.
+A user reaches only their own libraries,
 /data/libraries/<user>/<library>. A library is files to sync and commands to
 run:
 
@@ -154,6 +156,26 @@ def library(user: str, library: str, who: str = Depends(caller)) -> Path:
         raise HTTPException(exc.status, str(exc)) from None
 
 
+async def filer(authorization: str | None = Header(default=None)) -> str:
+    """As caller, and also an application granted the import scope (oauth.IMPORT_SCOPE)."""
+    from noesis.oauth import API_CLIENTS, provider
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "a bearer token is required")
+    token = await provider.load_access_token(authorization.removeprefix("Bearer "))
+    if token is None or not token.subject or not (
+            token.client_id in API_CLIENTS or provider.may_import(token)):
+        raise HTTPException(401, "unknown token")
+    return token.subject
+
+
+def filed_library(user: str, library: str, who: str = Depends(filer)) -> Path:
+    """As library, for what an importing application may reach: import, and nothing else."""
+    try:
+        return library_root(user, library, who)
+    except LibraryError as exc:
+        raise HTTPException(exc.status, str(exc)) from None
+
+
 @app.get("/libraries")
 def libraries(who: str = Depends(caller)) -> dict:
     return {"libraries": library_ids(who)}
@@ -215,7 +237,7 @@ class SpeakerNames(BaseModel):
 
 
 @app.put("/me/names")
-def put_names(body: SpeakerNames, who: str = Depends(caller)) -> dict:
+def put_names(body: SpeakerNames, who: str = Depends(filer)) -> dict:
     """The chat headings, besides "Prompt", that are the caller's own voice."""
     from noesis import accounts
     if who == "*":
@@ -427,7 +449,7 @@ async def import_file(
     only: str | None = None,
     replace: bool = False,
     document_of: str | None = None,
-    root: Path = Depends(library),
+    root: Path = Depends(filed_library),
 ) -> StreamingResponse:
     """`noesis import` on an uploaded file, kept outside the library while it runs;
     with document_of, as that chat's document."""
@@ -567,13 +589,16 @@ def _human(form: dict, ip: str) -> bool:
 def _login_page(request_id: str, sign_in, error: str = "") -> HTMLResponse:
     from html import escape
     from urllib.parse import urlparse
-    from noesis.oauth import WEB_CLIENT_ID, provider
+    from noesis.oauth import IMPORT_SCOPE, WEB_CLIENT_ID, provider
     client_name = escape(sign_in.client.client_name or "An application")
     redirect_host = escape(urlparse(str(sign_in.params.redirect_uri)).hostname or "")
     if sign_in.client.client_id == WEB_CLIENT_ID:
         asks = "to keep your libraries: to read and change them, and to run noesis's commands on them"
     elif provider.identity_only(sign_in.client.client_id):
         asks = "to know who you are: your noesis user name and email address, not your libraries"
+    elif IMPORT_SCOPE in (sign_in.params.scopes or []) and provider.imports(sign_in.client.client_id):
+        asks = ("to read your noesis libraries, and to add conversations to them when you send one "
+                "— with the name you speak under there kept as yours")
     else:
         asks = "to read your noesis libraries"
     note = f'<p class="error">{escape(error)}</p>' if error else ""

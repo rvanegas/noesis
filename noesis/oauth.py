@@ -40,6 +40,14 @@ the CLI), through `load_access_token`.
   not the file and run API. dianoia accepts them from Roxana's callers by
   asking /me, which names the client a token was issued to. Its redirects'
   origins are the browser origins /me answers (`browser_origins`).
+- **An application that files conversations** (The Floor: a room's text,
+  sent from its *Record* tab) is a confidential client the operator has
+  marked as one (`scripts/client_imports.py`). It may ask for the `import`
+  scope, which the sign-in page names, and a token carrying it reaches
+  `POST …/import` and `PUT /me/names` besides /mcp and /me — nothing else of
+  the file and run API. Only the operator's mark lets a client have it:
+  registration is open, and what a client says of itself there is not
+  consulted, so claude.ai's connector can never be given it.
 """
 
 from __future__ import annotations
@@ -83,6 +91,10 @@ WEB_CLIENT_ID = "noesis-web"
 # as load_access_token names it): only noesis's own web client. A connector's
 # token stays on /mcp, which writes nothing.
 API_CLIENTS = frozenset({"noesis-token", WEB_CLIENT_ID})
+
+# What an application the operator marked (`imports`) may ask for: to file
+# conversations into the person's libraries, and say whose voice is theirs.
+IMPORT_SCOPE = "import"
 
 
 def web_client() -> OAuthClientInformationFull:
@@ -162,6 +174,15 @@ class NoesisOAuthProvider:
         raw = self._load()["clients"].get(client_id)
         return bool(raw and raw.get("identity_only"))
 
+    def imports(self, client_id: str) -> bool:
+        """A client the operator marked as one that files conversations (IMPORT_SCOPE)."""
+        raw = self._load()["clients"].get(client_id)
+        return bool(raw and raw.get("imports"))
+
+    def may_import(self, token: AccessToken) -> bool:
+        """A token that was granted the import scope, by a client still marked for it."""
+        return IMPORT_SCOPE in (token.scopes or []) and self.imports(token.client_id)
+
     def browser_origins(self) -> set[str]:
         """The origins of identity-only clients' redirects: the browser apps that read /me."""
         return {_origin(uri) for raw in self._load()["clients"].values() if raw.get("identity_only")
@@ -227,8 +248,11 @@ class NoesisOAuthProvider:
         del self.sign_ins[request_id]
         oauth_code = secrets.token_urlsafe(32)
         params = sign_in.params
+        # The import scope only where the operator marked the client, whatever it asked.
+        scopes = [s for s in params.scopes or []
+                  if s != IMPORT_SCOPE or self.imports(sign_in.client.client_id)]
         self.codes[oauth_code] = AuthorizationCode(
-            code=oauth_code, scopes=params.scopes or [], expires_at=time.time() + CODE_TTL,
+            code=oauth_code, scopes=scopes, expires_at=time.time() + CODE_TTL,
             client_id=sign_in.client.client_id, code_challenge=params.code_challenge,
             redirect_uri=params.redirect_uri,
             redirect_uri_provided_explicitly=params.redirect_uri_provided_explicitly,
