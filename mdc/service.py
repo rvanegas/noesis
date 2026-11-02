@@ -70,7 +70,7 @@ def library_root(user: str, library: str, who: str) -> Path:
 
 
 def create_library(who: str, name: str) -> str:
-    """A new, empty library of the caller's own; its id."""
+    """A new library of the caller's own, its settings empty; its id."""
     if who == "*":
         raise LibraryError(400, "a service has no libraries of its own")
     if not NAME_RE.match(name):
@@ -83,6 +83,9 @@ def create_library(who: str, name: str) -> str:
     if root.exists():
         raise LibraryError(409, "that library already exists")
     root.mkdir(parents=True)
+    from mdc.library import SETTINGS
+    for filename, skeleton in SETTINGS.items():
+        (root / filename).write_text(skeleton, encoding="utf-8")
     return f"{who}/{name}"
 
 

@@ -30,6 +30,7 @@ def _wrap_line(text: str, *, initial_indent: str, subsequent_indent: str) -> str
 MANIFEST_FILENAME = "MANIFEST.md"
 INDEX_FILENAME = "INDEX.md"
 KEYS_FILENAME = "KEYS.md"
+SYSTEM_PROMPT_FILENAME = "SYSTEM_PROMPT.md"
 REFERENCES_FILENAME = "REFERENCES.md"
 RELATED_FILENAME = "RELATED.md"
 REVIEW_FILENAME = "REVIEW.md"
@@ -39,6 +40,12 @@ INTRODUCTION_FILENAME = "INTRODUCTION.md"
 APPENDIX_FILENAME = "APPENDIX.md"
 COMPILED_FILENAME = "COMPILED.md"
 REVIEWS_FILENAME = "REVIEWS.md"
+# The settings a new library starts with, empty: KEYS.md's sections with no
+# terms, and nothing to add to the system prompt.
+SETTINGS = {
+    KEYS_FILENAME: "## Plural\n\n## Alias\n\n## Exclude\n\n## Group\n",
+    SYSTEM_PROMPT_FILENAME: "",
+}
 # Written by index and review, never by hand.
 GENERATED_FILENAMES = frozenset({
     MANIFEST_FILENAME, INDEX_FILENAME, REFERENCES_FILENAME, RELATED_FILENAME,

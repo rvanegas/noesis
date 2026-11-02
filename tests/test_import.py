@@ -87,6 +87,51 @@ def test_anything_else_is_a_document(library):
     assert "Two dogmas, one paragraph." in docs[0].read_text()
 
 
+def test_an_mdc_chat_keeps_its_title_date_and_turns(library):
+    src = library.parent / "2026-05-02-on-names.chat.md"
+    src.write_text("# On Names\n*2026-05-01*\n## Prompt\nWhat is a name?\n\n\n## Claude\nA rigid designator.\n")
+    assert main(["import", str(src)]) == 0
+    chat = library / "2026" / "2026-05-01-on-names.chat.md"
+    assert chat.read_text() == "\n# On Names\n2026-05-01\n\n## Prompt\n\nWhat is a name?\n\n## Claude\n\nA rigid designator.\n"
+    assert check_file(chat) == []
+
+
+def test_speaker_labels_make_a_chat(library):
+    src = library.parent / "talk.txt"
+    src.write_text("Prompt:\nIs it raining?\n\nResponse:\nYes.\n")
+    assert main(["import", str(src)]) == 0
+    chat = next(library.rglob("*-talk.chat.md"))
+    assert "## Prompt\n\nIs it raining?\n\n## GPT\n\nYes.\n" in chat.read_text()
+    assert check_file(chat) == []
+
+
+def test_a_chat_that_cannot_be_fixed_is_a_document(library, capsys):
+    src = library.parent / "cited.chat.md"
+    src.write_text("# Cited\n2026-03-04\n\n## Prompt\n\nWho?\n\n## References\n\nnot a reference\n")
+    assert main(["import", str(src)]) == 0
+    doc = library / "2026" / "2026-03-04-cited.document.md"
+    assert "not a reference" in doc.read_text()
+    assert not list(library.rglob("*.chat.md"))
+    assert "(as a chat, line" in capsys.readouterr().out
+
+
+def test_a_document_is_repaired(library):
+    src = library.parent / "2026-02-03-plain.document.md"
+    src.write_text("# Plain\n\nA\ufffc line, [x]{dir=\"rtl\"} and\nPrompt:\nin it.\n")
+    assert main(["import", str(src)]) == 0
+    doc = library / "2026" / "2026-02-03-plain.document.md"
+    assert doc.read_text() == "\n# Plain\n2026-02-03\n\nA line, x and\n**Prompt:**\nin it.\n"
+
+
+@pytest.mark.parametrize("name, body", [("paper.pdf", b"%PDF-1.4"), ("data.json", b'{"a": 1}')])
+def test_only_text_and_claude_exports_are_imported(library, capsys, name, body):
+    src = library.parent / name
+    src.write_bytes(body)
+    assert main(["import", str(src)]) == 1
+    assert not list(library.rglob("*.md"))
+    assert name in capsys.readouterr().out
+
+
 def test_zip_only_skip_and_replace(library, capsys):
     archive = library.parent / "data-2026-10-27.zip"
     with zipfile.ZipFile(archive, "w") as z:

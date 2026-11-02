@@ -1,4 +1,8 @@
 // mdc's web client: keeps a library on mdc's server without the CLI.
+// Writing is done elsewhere: a chat or document enters by Import, a source
+// only by the CLI's sync, and a reply only from the CLI. Here the user's files
+// are checked, fixed, indexed, downloaded and deleted; only the settings are
+// edited in place.
 //
 // Signs in through mdc's own OAuth server as the built-in public client
 // `mdc-web` (authorization code with PKCE; oauth.py), then calls the same
@@ -20,10 +24,15 @@ const TEXT = /\.(md|txt|toml|json|csv|tex|bib)$/i;
 const DATED = /^(\d{4})-\d\d-\d\d-/;
 
 // What a library holds besides the user's own files. The settings are the
-// user's to edit; the rest mdc writes, and the page only shows them. These
-// names copy mdc/library.py's KEYS_FILENAME, GENERATED_FILENAMES and
-// RECORD_DIRS, and SYSTEM_PROMPT.md in mdc/config.py: change one, change both.
-const SETTINGS = new Set(["KEYS.md", "SYSTEM_PROMPT.md"]);
+// user's to edit, and every library has them; the rest mdc writes, and the
+// page only shows them. These names copy mdc/library.py's SETTINGS,
+// GENERATED_FILENAMES and RECORD_DIRS: change one, change both.
+const SETTINGS = new Map([
+  ["KEYS.md", "How Index names terms. Under ## Plural, a term that is the same as its plural; under " +
+    "## Alias, a term, then - each other name for it; under ## Exclude, terms left out; under ## Group, " +
+    "a term, then - the terms under it."],
+  ["SYSTEM_PROMPT.md", "Added to what Claude is told in every reply in this library."],
+]);
 const GENERATED = new Map([
   ["MANIFEST.md", "index"], ["INDEX.md", "index"], ["REFERENCES.md", "index"], ["RELATED.md", "index"],
   ["INTRODUCTION.md", "review"], ["AFTERWORD.md", "review"], ["FINAL_ASSESSMENT.md", "review"],
@@ -297,15 +306,18 @@ function renderFiles() {
   const paths = Object.keys(files)
     .filter((p) => words.every((w) => p.toLowerCase().includes(w)))
     .sort((a, b) => sortKey(b).localeCompare(sortKey(a)));
-  fill("settings-files", paths.filter((p) => SETTINGS.has(p)).sort());
+  // A library made before it had its settings still lists them, to be written.
+  fill("settings-files", [...SETTINGS.keys()].filter((p) => words.every((w) => p.toLowerCase().includes(w))));
   group("generated", paths.filter((p) => GENERATED.has(p)).sort(), words.length > 0);
   group("records", paths.filter((p) => RECORDS.test(p)), false);
-  fill("files", paths.filter((p) => !SETTINGS.has(p) && !GENERATED.has(p) && !RECORDS.test(p)));
-  const total = Object.keys(files).length;
+  const own = (p) => !SETTINGS.has(p) && !GENERATED.has(p) && !RECORDS.test(p);
+  fill("files", paths.filter(own));
+  const total = Object.keys(files).filter(own).length;
+  const shown = paths.filter(own).length;
   $("filter").hidden = !total;
   $("count").textContent = !total
-    ? "Nothing here yet. Upload a document, or Import a claude.ai export; then Index makes the library searchable."
-    : paths.length === total ? `${total} files` : `${paths.length} of ${total} files`;
+    ? "Nothing here yet. Import a chat or document, or a claude.ai export; then Index makes the library searchable."
+    : shown === total ? `${total} files` : `${shown} of ${total} files`;
 }
 
 // A folded group, hidden when empty; a filter opens the generated files,
@@ -345,25 +357,38 @@ function sortKey(path) {
   return DATED.test(name) ? `1${name}` : `0${path}`;
 }
 
+// A setting not yet written opens empty; saving it writes it.
 async function openFile(path) {
-  const response = await api(filePath(path));
-  if (!response.ok) {
-    say(`${path}: ${await detail(response)}`);
-    return;
+  let blob, sha = null;
+  if (SETTINGS.has(path) && files[path] === undefined) {
+    blob = new Blob([""]);
+  } else {
+    const response = await api(filePath(path));
+    if (!response.ok) {
+      say(`${path}: ${await detail(response)}`);
+      return;
+    }
+    blob = await response.blob();
+    sha = response.headers.get("ETag").replace(/"/g, "");
   }
-  const blob = await response.blob();
-  open = { path, sha: response.headers.get("ETag").replace(/"/g, ""), blob };
+  open = { path, sha, blob };
   $("file-name").textContent = path;
   $("file-text").textContent = TEXT.test(path) ? await blob.text() : `${blob.size.toLocaleString()} bytes`;
+  $("file-text").hidden = false;
+  $("file-editor").hidden = true;
   const markdown = path.endsWith(".md");
+  const setting = SETTINGS.has(path);
   const note = writtenBy(path);
   for (const button of $("file-actions").querySelectorAll("[data-run]")) {
-    button.hidden = !markdown || !!note || (button.dataset.run === "check" && !path.endsWith(".chat.md"));
+    const run = button.dataset.run;
+    button.hidden = setting ? !(run === "validate" && path === "KEYS.md" && sha)
+      : !markdown || !!note || (run === "check" && !path.endsWith(".chat.md"));
   }
-  $("file-note").textContent = note || "";
-  $("file-note").hidden = !note;
-  $("file-replace").parentElement.hidden = !!note;
-  $("file-delete").hidden = !!note;
+  $("file-note").textContent = setting ? SETTINGS.get(path) : note || "";
+  $("file-note").hidden = !setting && !note;
+  $("file-edit").hidden = !setting;
+  $("file-download").hidden = !sha;
+  $("file-delete").hidden = !!note || setting;
   $("file-delete").textContent = "Delete";
   $("file").hidden = false;
   $("file").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -395,56 +420,30 @@ async function remove() {
   await loadFiles();
 }
 
-async function put(path, body, replace) {
-  const headers = {};
-  if (files[path] !== undefined && replace) headers["If-Match"] = `"${files[path]}"`;
-  else headers["If-None-Match"] = "*";
-  const response = await api(filePath(path), { method: "PUT", headers, body });
-  if (response.status === 412 && files[path] === undefined) {
-    return "it already exists; reload and choose Replace";
-  }
-  if (response.status === 412) return replace ? "it changed on the server; reload it first" : "it already exists";
-  return response.ok ? null : await detail(response);
+// A setting, edited as plain text: written over the version opened, or
+// refused if it has changed since.
+async function edit() {
+  $("file-draft").value = await open.blob.text();
+  $("file-text").hidden = true;
+  $("file-editor").hidden = false;
+  $("file-draft").focus();
 }
 
-// A dated name goes in its year's directory, as `mdc new` and import put it.
-function defaultPath(name) {
-  const dated = DATED.exec(name);
-  return dated ? `${dated[1]}/${name}` : name;
+function cancelEdit() {
+  $("file-editor").hidden = true;
+  $("file-text").hidden = false;
 }
 
-let uploading = null;
-
-function pickUpload(file) {
-  uploading = file;
-  $("upload-path").value = defaultPath(file.name);
-  $("upload-replace").checked = false;
-  $("upload").hidden = false;
-  $("upload-path").focus();
-}
-
-async function upload(event) {
+async function save(event) {
   event.preventDefault();
-  const path = $("upload-path").value.trim().replace(/^\/+/, "");
-  const problem = await put(path, uploading, $("upload-replace").checked);
-  if (problem) {
-    say(`${path}: ${problem}.`);
-    return;
-  }
-  say(`Uploaded ${path}.`);
-  closePanel("upload");
-  await loadFiles();
-}
-
-async function replaceOpen(file) {
   const path = open.path;
-  files[path] = open.sha;
-  const problem = await put(path, file, true);
-  if (problem) {
-    say(`${path}: ${problem}.`);
+  const headers = open.sha ? { "If-Match": `"${open.sha}"` } : { "If-None-Match": "*" };
+  const response = await api(filePath(path), { method: "PUT", headers, body: $("file-draft").value });
+  if (!response.ok) {
+    say(`${path}: ${response.status === 412 ? "it changed on the server; close it and open it again" : await detail(response)}.`);
     return;
   }
-  say(`Replaced ${path}.`);
+  say(`Saved ${path}.`);
   await loadFiles();
   await openFile(path);
 }
@@ -471,10 +470,6 @@ async function importFile(event) {
 // ---------------------------------------------------------------------------
 // Runs: server-sent events, read from fetch since EventSource sends no header
 // ---------------------------------------------------------------------------
-
-function split(line) {
-  return (line.match(/"[^"]*"|\S+/g) || []).map((w) => w.replace(/^"(.*)"$/, "$1"));
-}
 
 // fix asks before it applies anything, and a run on the server has nobody to
 // answer, so a plain fix is a preview; Apply runs it again with --yes.
@@ -525,8 +520,8 @@ async function stream(title, path, options) {
     running = false;
     await loadFiles().catch(() => {});
     await loadUsage().catch(() => {});
-    if (open && files[open.path] !== open.sha) {
-      if (files[open.path] === undefined) closePanel("file");
+    if (open && (files[open.path] ?? null) !== open.sha) {
+      if (files[open.path] === undefined && !SETTINGS.has(open.path)) closePanel("file");
       else await openFile(open.path);
     }
   }
@@ -590,27 +585,14 @@ function wire() {
   $("first-library-form").addEventListener("submit", guard(createLibrary));
   $("filter").addEventListener("input", renderFiles);
   $("index").addEventListener("click", guard(() => run(["index"])));
-  $("command").addEventListener("submit", guard(async (event) => {
-    event.preventDefault();
-    const argv = split($("argv").value.trim().replace(/^mdc\s+/, ""));
-    if (argv.length) await run(argv);
-  }));
   for (const button of $("file-actions").querySelectorAll("[data-run]")) {
     button.addEventListener("click", guard(() => run([button.dataset.run, open.path.split("/").pop()])));
   }
+  $("file-edit").addEventListener("click", guard(edit));
+  $("file-cancel").addEventListener("click", cancelEdit);
+  $("file-editor").addEventListener("submit", guard(save));
   $("file-download").addEventListener("click", download);
   $("file-delete").addEventListener("click", guard(remove));
-  $("file-replace").addEventListener("change", guard(async (event) => {
-    const [file] = event.target.files;
-    event.target.value = "";
-    if (file) await replaceOpen(file);
-  }));
-  $("upload-pick").addEventListener("change", (event) => {
-    const [file] = event.target.files;
-    event.target.value = "";
-    if (file) pickUpload(file);
-  });
-  $("upload").addEventListener("submit", guard(upload));
   $("import-pick").addEventListener("change", (event) => {
     const [file] = event.target.files;
     event.target.value = "";

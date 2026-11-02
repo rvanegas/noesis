@@ -155,7 +155,7 @@ def _build_system_prompt(library_path: Path | None) -> str:
     """The base prompt, then the library's own SYSTEM_PROMPT.md."""
     prompt = f"{_BASE_SYSTEM_PROMPT}\n\n{_REFERENCE_INSTRUCTION}"
     if library_path:
-        # mdc/web/app.js copies this name (SETTINGS): change one, change both.
+        # library.SYSTEM_PROMPT_FILENAME, which library.py cannot give here.
         lib_prompt_path = library_path / "SYSTEM_PROMPT.md"
         if lib_prompt_path.exists():
             lib_extra = lib_prompt_path.read_text(encoding="utf-8").strip()

@@ -50,10 +50,9 @@ PLANS = (FREE, UNLIMITED)
 # Sign-in mail: (key prefix, window in seconds, most sends in it).
 SEND_LIMITS = (("email", 60 * 60, 5), ("ip", 60 * 60, 10), ("all", 24 * 60 * 60, 300))
 
-# What a free account may upload: the types mdc reads (assets.py), and the
-# exports `mdc import` takes, through /import only.
+# What a free account may upload: the types mdc reads (assets.py). What
+# /import takes is cmd_import.IMPORTABLE.
 FREE_TYPES = frozenset({".md", ".markdown", ".txt", ".rtf", ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp"})
-IMPORT_TYPES = FREE_TYPES | {".zip", ".json"}
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 # A name is a speaker heading, so any words; MDC_USER_NAMES is comma-separated.

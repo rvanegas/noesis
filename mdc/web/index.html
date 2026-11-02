@@ -39,8 +39,7 @@
 
   <section id="signed-in" hidden>
     <div class="toolbar">
-      <label class="button">Upload<input id="upload-pick" type="file" hidden></label>
-      <label class="button">Import<input id="import-pick" type="file" hidden></label>
+      <label class="button">Import<input id="import-pick" type="file" accept=".md,.markdown,.txt,.zip,.json" hidden></label>
       <button id="index">Index</button>
     </div>
 
@@ -59,26 +58,14 @@
       <div class="actions"><button>Save</button><button type="button" class="quiet" data-close>Cancel</button></div>
     </form>
 
-    <form id="upload" class="panel" hidden>
-      <h2>Upload</h2>
-      <label>Path in the library<input id="upload-path" required spellcheck="false" autocapitalize="off"></label>
-      <label class="check"><input id="upload-replace" type="checkbox"> Replace it if it exists</label>
-      <div class="actions"><button>Upload</button><button type="button" class="quiet" data-close>Cancel</button></div>
-    </form>
-
     <form id="import" class="panel" hidden>
       <h2>Import <span id="import-name"></span></h2>
-      <p class="hint">A claude.ai export (its zip or <code>conversations.json</code>), saveai.net Markdown, or any
-        text, which becomes a document. Each lands in its year’s directory.</p>
+      <p class="hint">A chat or a document in Markdown or text, or a claude.ai export (its zip or
+        <code>conversations.json</code>). It is checked and repaired as Fix would; a chat that cannot be
+        repaired comes in as a document. Each lands in its year’s directory.</p>
       <label>Only this conversation (name or uuid; empty for all)<input id="import-only" spellcheck="false" autocapitalize="off"></label>
       <label class="check"><input id="import-replace" type="checkbox"> Replace a conversation already imported</label>
       <div class="actions"><button>Import</button><button type="button" class="quiet" data-close>Cancel</button></div>
-    </form>
-
-    <form id="command">
-      <label for="argv">mdc</label>
-      <input id="argv" placeholder="check, validate, fix, index, diff, …" spellcheck="false" autocapitalize="off" autocomplete="off">
-      <button>Run</button>
     </form>
 
     <section id="output" class="panel" hidden>
@@ -95,11 +82,15 @@
         <button data-run="check">Check</button>
         <button data-run="validate">Validate</button>
         <button data-run="fix">Fix</button>
+        <button id="file-edit">Edit</button>
         <button id="file-download" class="quiet">Download</button>
-        <label class="button quiet">Replace<input id="file-replace" type="file" hidden></label>
         <button id="file-delete" class="danger">Delete</button>
       </div>
       <pre id="file-text"></pre>
+      <form id="file-editor" hidden>
+        <textarea id="file-draft" rows="16" spellcheck="false" autocapitalize="off" aria-label="Text"></textarea>
+        <div class="actions"><button>Save</button><button type="button" class="quiet" id="file-cancel">Cancel</button></div>
+      </form>
     </section>
 
     <div class="list-head">

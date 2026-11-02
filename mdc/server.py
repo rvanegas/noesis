@@ -8,7 +8,7 @@ own web client (oauth.API_CLIENTS). A user reaches only their own libraries,
 run:
 
 - GET    /libraries                          the caller's library ids
-- POST   /libraries {name}                   a new, empty library of the caller's
+- POST   /libraries {name}                   a new library of the caller's, its settings empty
 - GET    /libraries/{user}/{library}/files   {rel_path: sha256}
 - GET    …/files/{rel_path}                  the bytes, ETag their sha256
 - PUT    …/files/{rel_path}                  If-None-Match: * creates; If-Match: "<sha>" replaces
@@ -29,9 +29,10 @@ per library; while it runs, writes to the library get 409. The run belongs
 to the server, not the request: a client that goes away does not cut it short.
 
 /import is how a conversation from elsewhere enters a library without a
-client's own copy of it (a claude.ai export, saveai.net Markdown, any text):
-the upload is kept outside the library, `mdc import` writes from it into the
-year directories, and it is deleted when the run ends.
+client's own copy of it (a claude.ai export, saveai.net Markdown, any text;
+nothing else, cmd_import.IMPORTABLE): the upload is kept outside the
+library, `mdc import` writes from it into the year directories, and it is
+deleted when the run ends.
 
 Dotfiles, and so the index state in .mdc/, are never listed, read or written.
 
@@ -379,7 +380,9 @@ async def import_file(
     """`mdc import` on an uploaded file, kept outside the library while it runs."""
     if "/" in filename or "\\" in filename or filename.startswith(".") or not filename.strip():
         raise HTTPException(400, f"a file name, not a path: {filename!r}")
-    from mdc import accounts
+    from mdc.cmd_import import IMPORTABLE
+    if Path(filename).suffix.lower() not in IMPORTABLE:
+        raise HTTPException(415, f"import takes Markdown or text, or claude.ai's export ({', '.join(sorted(IMPORTABLE))})")
     lock = lock_for(root)
     if lock.locked():
         raise HTTPException(409, "a run is in progress in this library")
@@ -387,7 +390,7 @@ async def import_file(
     await lock.acquire()
     try:
         data = await request.body()
-        _storable(root, filename, len(data), types=accounts.IMPORT_TYPES)
+        _storable(root, filename, len(data), types=IMPORTABLE)
         staging = Path(tempfile.mkdtemp(prefix="mdc-import-"))
         upload = staging / filename
         upload.write_bytes(data)

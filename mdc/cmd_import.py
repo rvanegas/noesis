@@ -16,14 +16,20 @@
   A file from before the text named its channel and date takes both from
   its download name, `The Floor — <channel> — <yyyy-mm-dd hhmm>`. A paste
   stays its author's, quoted; Claude's is Claude's turn.
+- An mdc chat: a file named `.chat.md`, or one with `## Prompt` sections
+  or speaker labels (`Prompt:`), its title and date as written.
 - A zip that is not claude.ai's: each `.txt` and `.md` inside, as on its own.
-- Anything else, or an export that does not parse: a `.document.md`, its
-  text as it is.
+- Any other text: a `.document.md`, its text as it is.
+
+Nothing else is imported (IMPORTABLE): a source reaches the library by the
+CLI's sync alone.
 
 Files go where their names put them, this year's directory of the library
 (or the current directory outside one). Each is checked before it takes its
-name; an existing one is skipped unless --replace. A title another file of
-the library already has fails: `## Related` names a file by its title.
+name, and repaired as `mdc fix` would; a chat that still fails becomes a
+document of the same text, and only what fails even as a document is
+refused. An existing one is skipped unless --replace. A title another file
+of the library already has fails: `## Related` names a file by its title.
 """
 
 from __future__ import annotations
@@ -37,9 +43,16 @@ from dataclasses import dataclass, replace as with_fields
 from pathlib import Path, PurePath
 
 from mdc.config import ASSISTANT_NAME, PROMPT_HEADING, load_config
-from mdc.form import _parse_exported_chat, check_file, is_exported_chat, slugify
+from mdc.form import (
+    _parse_exported_chat, check_file, fix_object_replacement, fix_rtl_spans, fix_section_spacing,
+    fix_title_section, has_bare_labels, is_exported_chat, slugify,
+)
 from mdc.text_utils import _upgrade_reply_headings
 from mdc.transcript import collect_citations, with_citations
+
+
+# What import reads: text, and claude.ai's export (its zip or json).
+IMPORTABLE = frozenset({".md", ".markdown", ".txt", ".zip", ".json"})
 
 
 @dataclass
@@ -196,14 +209,43 @@ def _quoted(text: str) -> str:
     return "\n".join(f"> {line}" if line.strip() else ">" for line in text.splitlines())
 
 
-def as_document(text: str, name: PurePath, date: str) -> Imported:
+_DATE_LINE_RE = re.compile(r"^\*?(\d{4}-\d{2}-\d{2})\*?$")
+_DATED_STEM_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-(.+)$")
+_PROMPT_SECTION_RE = re.compile(rf"^## {PROMPT_HEADING}\s*$", re.MULTILINE)
+
+
+def _stem(name: PurePath) -> str:
+    """The name without its extension and role: `x.chat.md` is `x`."""
+    stem = name.stem
+    return stem.rsplit(".", 1)[0] if PurePath(stem).suffix in (".chat", ".document") else stem
+
+
+def _headed(text: str, name: PurePath, date: str, role: str) -> Imported:
+    """A file as it is, its title and date taken from its head as mdc writes
+    them (`# Title`, then the date), else from its name."""
     lines = text.strip("\n").splitlines()
+    dated = _DATED_STEM_RE.match(_stem(name))
+    date = dated[1] if dated else date
     title = None
     if lines and lines[0].startswith("# "):
-        title = lines[0][2:].strip()
-        lines = lines[1:]
-    title = title or name.stem.replace("-", " ").replace("_", " ").strip().title() or "Untitled"
-    return Imported(title, date, "document", "\n".join(lines).strip("\n"))
+        title = lines.pop(0)[2:].strip()
+        if lines and (line := _DATE_LINE_RE.match(lines[0].strip())):
+            date = line[1]
+            lines.pop(0)
+    words = dated[2] if dated else _stem(name)
+    title = title or words.replace("-", " ").replace("_", " ").strip().title() or "Untitled"
+    return Imported(title, date, role, "\n".join(lines).strip("\n"))
+
+
+def is_mdc_chat(text: str, name: PurePath) -> bool:
+    """Named a chat, or one by its speakers; a file named a document is one."""
+    if name.name.endswith(".document.md"):
+        return False
+    return name.name.endswith(".chat.md") or bool(_PROMPT_SECTION_RE.search(text)) or has_bare_labels(text)
+
+
+def as_document(text: str, name: PurePath, date: str) -> Imported:
+    return _headed(text, name, date, "document")
 
 
 def _file_date(path: Path) -> str:
@@ -215,6 +257,9 @@ def _file_date(path: Path) -> str:
 
 def read_sources(path: Path, only: str | None) -> list[Imported]:
     """What one input file holds, as library files to be."""
+    if path.suffix.lower() not in IMPORTABLE:
+        raise ValueError(f"{path.name}: import takes Markdown or text, or claude.ai's export "
+                         f"({', '.join(sorted(IMPORTABLE))})")
     if path.suffix.lower() == ".zip":
         with zipfile.ZipFile(path) as archive:
             name = next((n for n in archive.namelist() if n.endswith("conversations.json")), None)
@@ -231,15 +276,18 @@ def read_sources(path: Path, only: str | None) -> list[Imported]:
             conversations = _claude_conversations(json.loads(text))
         except ValueError:
             conversations = None
-        if conversations is not None:
-            return _from_conversations(conversations, only)
+        if conversations is None:
+            raise ValueError(f"{path.name}: not claude.ai's conversations.json")
+        return _from_conversations(conversations, only)
     return [_from_text(text, path, _file_date(path))]
 
 
 def _from_text(text: str, name: PurePath, date: str) -> Imported:
     if is_exported_chat(text) and (chat := from_saveai(text, name, date)):
         return chat
-    return from_the_floor(text, name, date) or as_document(text, name, date)
+    if floor := from_the_floor(text, name, date):
+        return floor
+    return _headed(text, name, date, "chat" if is_mdc_chat(text, name) else "document")
 
 
 def _from_archive(archive: zipfile.ZipFile, path: Path) -> list[Imported]:
@@ -356,7 +404,7 @@ def _imported_before(item: Imported, here: Path) -> Path | None:
 def render(item: Imported) -> str:
     """The file's text, spaced as `reply` saves a transcript."""
     from mdc.form import fix_section_spacing
-    body = f"\n\n{item.body}" if item.body else ""
+    body = f"\n{item.body}" if item.body else ""
     return fix_section_spacing(f"\n# {item.title}\n{item.date}\n{body}\n")[0]
 
 
@@ -365,6 +413,45 @@ def _problems(path: Path, role: str) -> list[str]:
         return check_file(path)
     from mdc.form import check_global_issues
     return check_global_issues(path)
+
+
+_BARE_LABEL_RE = re.compile(r"^(\s*)(Prompt:|ChatGPT:|Response:|References:)\s*$", re.MULTILINE)
+
+
+def repaired(text: str, role: str) -> str:
+    """The text as `mdc fix` would leave it; in a document, a speaker label
+    is set in bold, so that it does not read as a chat."""
+    lines, _ = fix_object_replacement(text.split("\n"))
+    lines, _ = fix_rtl_spans(lines)
+    if role == "chat":
+        lines, _ = fix_title_section(lines)
+        return fix_section_spacing("\n".join(lines))[0]
+    return _BARE_LABEL_RE.sub(r"\1**\2**", "\n".join(lines))
+
+
+def _checked(item: Imported, name: str) -> tuple[str, list[str]]:
+    """Its text, repaired, and what is still wrong with it under that name
+    (the format rules derive the name from the title)."""
+    text = repaired(render(item), item.role)
+    with tempfile.TemporaryDirectory() as scratch:
+        trial = Path(scratch) / name
+        trial.write_text(text, encoding="utf-8")
+        problems = _problems(trial, item.role)
+        if not problems:
+            text = trial.read_text(encoding="utf-8")
+    return text, problems
+
+
+def settle(item: Imported, stem: str) -> tuple[Imported, str, list[str], str | None]:
+    """What is written: the item and its text, repaired, or what is still
+    wrong with it. A chat that still fails is a document of the same text,
+    and the last is why."""
+    text, problems = _checked(item, f"{stem}.{item.role}.md")
+    if not problems or item.role != "chat":
+        return item, text, problems, None
+    document = with_fields(item, role="document")
+    text, still = _checked(document, f"{stem}.document.md")
+    return (item, text, problems, None) if still else (document, text, [], problems[0])
 
 
 def run_import(paths: list[Path], only: str | None = None, replace: bool = False) -> int:
@@ -412,7 +499,12 @@ def run_import(paths: list[Path], only: str | None = None, replace: bool = False
                         continue
                     item = with_fields(item, title=title, untitled=False)
             stem = f"{item.date}-{slugify(item.title)}"
+            item, text, problems, demoted = settle(item, stem)
             target = here / f"{stem}.{item.role}.md"
+            if problems:
+                print(f"failed   {target.name}: {problems[0]}")
+                failed += 1
+                continue
             if stem in taken and not (replace and target.exists()):
                 print(f"skipped  {target.name} (exists{'' if target.exists() else ' under another role'})")
                 skipped += 1
@@ -422,17 +514,6 @@ def run_import(paths: list[Path], only: str | None = None, replace: bool = False
                 print(f"failed   {target.name}: the title \"{item.title}\" is {Path(holder).name}'s")
                 failed += 1
                 continue
-            text = render(item)
-            # Checked under its own name (the format rules derive it from the
-            # title) before anything in the library is touched.
-            with tempfile.TemporaryDirectory() as scratch:
-                trial = Path(scratch) / target.name
-                trial.write_text(text, encoding="utf-8")
-                problems = _problems(trial, item.role)
-            if problems:
-                print(f"failed   {target.name}: {problems[0]}")
-                failed += 1
-                continue
             here.mkdir(parents=True, exist_ok=True)
             tmp = target.with_name(f".{target.name}.import")
             tmp.write_text(text, encoding="utf-8")
@@ -440,7 +521,8 @@ def run_import(paths: list[Path], only: str | None = None, replace: bool = False
             taken.add(stem)
             if in_library:
                 titled[slugify(item.title)] = target.relative_to(library).as_posix()
-            print(f"imported {target.relative_to(library) if in_library else target.name}")
+            print(f"imported {target.relative_to(library) if in_library else target.name}"
+                  + (f" (as a chat, {demoted})" if demoted else ""))
             written += 1
     print(f"{written} imported, {skipped} skipped, {failed} failed.")
     return 1 if failed else 0

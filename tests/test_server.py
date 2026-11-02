@@ -89,7 +89,10 @@ def test_a_user_creates_a_library_of_their_own(client, data):
     assert response.json() == {"library": "ann/drafts"}
     assert (data / "libraries/ann/drafts").is_dir()
     assert client.get("/libraries", headers=ANN).json() == {"libraries": ["ann/drafts", "ann/philosophy"]}
-    assert client.get("/libraries/ann/drafts/files", headers=ANN).json() == {"files": {}}
+    files = client.get("/libraries/ann/drafts/files", headers=ANN).json()["files"]
+    assert sorted(files) == ["KEYS.md", "SYSTEM_PROMPT.md"]
+    assert (data / "libraries/ann/drafts/KEYS.md").read_text().startswith("## Plural\n")
+    assert (data / "libraries/ann/drafts/SYSTEM_PROMPT.md").read_text() == ""
 
 
 def test_a_new_library_needs_a_fresh_valid_name_and_a_user(client):
@@ -217,6 +220,12 @@ def test_import_writes_into_the_library_and_keeps_nothing_else(client, data):
 @pytest.mark.parametrize("filename", ["../x.md", "a/b.md", ".hidden", " "])
 def test_import_takes_a_name_not_a_path(client, filename):
     assert client.post(f"{BASE}/import", headers=ANN, params={"filename": filename}, content=b"x").status_code == 400
+
+
+def test_import_takes_only_text_and_claude_exports(client):
+    for filename in ["paper.pdf", "photo.png", "notes.rtf"]:
+        response = client.post(f"{BASE}/import", headers=ANN, params={"filename": filename}, content=b"x")
+        assert response.status_code == 415
 
 
 def test_import_is_a_run(client, data):

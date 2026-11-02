@@ -95,15 +95,7 @@ label.check { display: inline-flex; align-items: center; gap: .4rem; }
 
 .toolbar, .actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
 
-#command {
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-  margin-bottom: 1rem;
-}
-
-#command label { font-family: ui-monospace, monospace; color: var(--muted); }
-#command input { flex: 1; font-family: ui-monospace, monospace; }
+#file-draft { width: 100%; font-family: ui-monospace, monospace; }
 
 .panel {
   background: var(--surface);

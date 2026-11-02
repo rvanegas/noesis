@@ -707,10 +707,23 @@ page changes.
   those and every `.analysis.md` and `.review.md`, opens view only: no
   Replace, Delete or runs. The page alone holds back; sync and runs write
   them as before.
+- **Simpler, 2026-11-01:** the page is for keeping a library, not writing
+  in it. No Upload, no Replace, no command line, so no `reply`: a chat or
+  document is written in the user's own editor and enters by Import, a source
+  only by the CLI's sync, and a reply comes from the CLI. A new library starts
+  with `KEYS.md` (its four sections, empty) and an empty `SYSTEM_PROMPT.md`
+  (`library.SETTINGS`), the only files edited in place, in a plain textarea,
+  each with a line saying what it does; one a library lacks is listed all the
+  same, and saving writes it. `/import` takes only text and claude.ai's
+  export (`cmd_import.IMPORTABLE`, 415 otherwise, for every account), and
+  import tries hard before refusing: mdc's own chats are known by name,
+  `## Prompt` or speaker labels; every file is repaired as `fix` would; a
+  chat that still fails is written as a document, its labels in bold; only
+  what fails even as a document is refused.
 - **An account with no library** (every new sign-up, since Phase 6) sees only
   *Your first library*: what a library is, and its name, `library`, ready to
   create; no toolbar, command line or lists, which all act on a library
-  (2026-11-01). An empty library says how to start (Upload or Import, then
+  (2026-11-01). An empty library says how to start (Import, then
   Index) in place of "0 files", and hides the filter. Checked headless in
   Chrome at 375 points: sign up, first library, created, empty.
 
