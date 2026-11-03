@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """Rename an account's user name, everywhere noesis keeps it.
 
-An operator task, for a person who must be known by another name: Roxana
-knows people by their noesis user name, and one who signed up here first
-(by The Floor) may already be known there by another.
+An operator task, for a person who must be known by another name. Since
+2026-11-02 a person renames themselves (PUT /me/user, or at The Floor through
+the register), and this is the same rename (names.rename) for the operator:
+with a plan first, and for an account or a reservation alike.
 
 The name lives in the account, its spend and speaker names (accounts.db), its
 OAuth grants (oauth.json: they keep working, now for the new name), and its
 libraries' directory, /data/libraries/<user>/, and so in every library id,
-`<user>/<library>`. An application that saved a library id (The Floor's
-channel selections) holds the old one afterwards: the plan lists them, to
-choose again there.
+`<user>/<library>`. Every application that keeps names (scripts/client_names.py)
+is told, and rewrites the library ids it saved.
 
-Without --apply it prints the plan and changes nothing. Run it when nothing
-runs in the person's libraries: a run in progress holds the old path.
+Without --apply it prints the plan and changes nothing. A run in progress in
+one of the person's libraries refuses it.
 
     docker compose run --rm -T noesis python scripts/rename_user.py freeyourtime rochelle
     docker compose run --rm -T noesis python scripts/rename_user.py freeyourtime rochelle --apply
@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import argparse
 
-from noesis import accounts, service
+from noesis import accounts, names, service
 from noesis.oauth import provider
 
 
@@ -35,47 +35,36 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     old, new = args.old, args.new
     found = accounts.account(old)
-    if found is None:
-        raise SystemExit(f"✗ {old} is not an account")
+    held = accounts.reservation(old)
+    if found is None and held is None:
+        raise SystemExit(f"✗ {old} is not an account or a reservation")
     if old in service.token_users():
         raise SystemExit(f"✗ {old} holds a users.toml token: the operator's, renamed by hand")
-    if not service.NAME_RE.match(new):
+    if not accounts.USER_NAME_RE.match(new):
         raise SystemExit(f"✗ not a user name: {new!r}")
     with accounts.connect() as db:
         if accounts._taken(db, new):
             raise SystemExit(f"✗ {new} is taken")
 
-    libraries = service.data_dir() / "libraries"
     ids = service.library_ids(old)
     data = provider._load()
     grants = [entry for kind in ("access", "refresh") for entry in data[kind].values() if entry["user"] == old]
     clients = sorted({entry["client_id"] for entry in grants})
-    print(f"{old} -> {new}  ({found.email}, {found.plan})")
+    if found is not None:
+        print(f"{old} -> {new}  ({found.email}, {found.plan})")
+    else:
+        print(f"{old} -> {new}  ({held}, reserved)")
     print(f"libraries: {', '.join(ids) or 'none'}")
     print(f"grants: {len(grants)} token(s), of {', '.join(clients) or 'no client'}")
-    if ids and clients:
-        print(f"  an application that saved a library id holds {old}/…: choose again there")
+    print(f"told: {', '.join(provider.name_keepers()) or 'no application'}")
 
     if not args.apply:
         print("\nA plan — pass --apply to rename.")
         return 0
-    with accounts.connect() as db:
-        db.execute("BEGIN IMMEDIATE")
-        try:
-            for table in ("accounts", "spend", "names"):
-                db.execute(f"UPDATE {table} SET user = ? WHERE user = ?", (new, old))
-            db.execute("COMMIT")
-        except BaseException:
-            db.execute("ROLLBACK")
-            raise
-    data = provider._load()
-    for kind in ("access", "refresh"):
-        for entry in data[kind].values():
-            if entry["user"] == old:
-                entry["user"] = new
-    provider._save(data)
-    if (libraries / old).exists():
-        (libraries / old).rename(libraries / new)
+    try:
+        names.rename(old, new)
+    except (names.Taken, names.Busy, names.Invalid) as exc:
+        raise SystemExit(f"✗ {exc}") from None
     print("Renamed.")
     return 0
 

@@ -183,6 +183,30 @@ class NoesisOAuthProvider:
         """A token that was granted the import scope, by a client still marked for it."""
         return IMPORT_SCOPE in (token.scopes or []) and self.imports(token.client_id)
 
+    def name_keepers(self) -> list[str]:
+        """The clients told of every rename (names.py): those the operator marked with a hook."""
+        return sorted(cid for cid, raw in self._load()["clients"].items() if raw.get("names_hook"))
+
+    def name_hook(self, client_id: str) -> tuple[str | None, str | None]:
+        """Where a client is told of renames, and the secret the call is signed with."""
+        raw = self._load()["clients"].get(client_id) or {}
+        return raw.get("names_hook"), raw.get("client_secret")
+
+    def keeps_names(self, client_id: str, secret: str) -> bool:
+        """A client marked as keeping names, whose secret this is."""
+        raw = self._load()["clients"].get(client_id)
+        return bool(raw and raw.get("names_hook") and raw.get("client_secret")
+                    and secrets.compare_digest(raw["client_secret"].encode(), secret.encode()))
+
+    def rename_grants(self, old: str, new: str) -> None:
+        """Every token of `old`'s, for `new`: they keep working under the new name."""
+        data = self._load()
+        for kind in ("access", "refresh"):
+            for entry in data[kind].values():
+                if entry["user"] == old:
+                    entry["user"] = new
+        self._save(data)
+
     def browser_origins(self) -> set[str]:
         """The origins of identity-only clients' redirects: the browser apps that read /me."""
         return {_origin(uri) for raw in self._load()["clients"].values() if raw.get("identity_only")

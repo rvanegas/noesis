@@ -308,7 +308,7 @@ def test_a_new_address_makes_a_free_account(library, live):
         "response_type": "code", "client_id": "noesis-web", "redirect_uri": redirect,
         "code_challenge": challenge, "code_challenge_method": "S256", "state": "n1"})
     request_id = r.headers["location"].split("request=")[1]
-    # "ann" is taken, by the operator's user: the new account is ann-2.
+    # "ann" is taken, by the operator's user: the new account is ann1.
     back = _sign_in(url, request_id, "ann+noesis@elsewhere.example")
     code = parse_qs(urlparse(back.headers["location"]).query)["code"][0]
     tokens = httpx.post(f"{url}/token", data={
@@ -316,7 +316,7 @@ def test_a_new_address_makes_a_free_account(library, live):
         "client_id": "noesis-web", "code_verifier": verifier}).json()
     bearer = {"Authorization": f"Bearer {tokens['access_token']}"}
     me = httpx.get(f"{url}/me", headers=bearer).json()
-    assert me["user"] == "ann-2" and me["plan"] == "free" and me["email"] == "ann+noesis@elsewhere.example"
+    assert me["user"] == "ann1" and me["plan"] == "free" and me["email"] == "ann+noesis@elsewhere.example"
     assert me["spent_usd"] == 0 and me["allowance_usd"] == 1.0
     assert httpx.get(f"{url}/libraries", headers=bearer).json() == {"libraries": []}
     assert httpx.get(f"{url}/libraries/ann/philosophy/files", headers=bearer).status_code == 403

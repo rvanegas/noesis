@@ -50,6 +50,7 @@ let open = null;             // {path, sha, blob, modified}
 let running = false;
 let exitCode = 0;            // the last run's, -1 if it never finished
 let names = [];              // the chat headings, besides Prompt, that are the user
+let userName = "";           // the user's name, here and at The Floor alike
 
 // ---------------------------------------------------------------------------
 // Storage that may be refused (a private window): the page works without it,
@@ -218,6 +219,7 @@ async function loadUsage() {
   if (!response.ok) return;
   const me = await response.json();
   names = me.names;
+  userName = me.user;
   const usage = $("usage");
   usage.hidden = me.plan !== "free";
   if (usage.hidden) return;
@@ -244,12 +246,30 @@ async function loadLibraries() {
 // The chat headings that are the user's own voice, kept with their account.
 function pickNames() {
   $("names-list").value = names.join("\n");
+  $("user-name").value = userName;
   $("names").hidden = false;
   $("names-list").focus();
 }
 
 async function saveNames(event) {
   event.preventDefault();
+  // The user name first: renaming moves every library id, so the list is read again.
+  const wanted = $("user-name").value.trim().replace(/^@/, "").toLowerCase();
+  if (wanted && wanted !== userName) {
+    const renamed = await api("/me/user", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user: wanted }),
+    });
+    if (!renamed.ok) {
+      say(`Your user name: ${await detail(renamed)}`);
+      return;
+    }
+    userName = (await renamed.json()).user;
+    store(localStorage, LIBRARY_KEY, library ? `${userName}/${library.split("/")[1]}` : null);
+    await loadLibraries();
+    if (library) await loadFiles();
+  }
   const response = await api("/me/names", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },

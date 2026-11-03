@@ -21,6 +21,11 @@ headings, besides "Prompt", that are their own voice. Every run in their
 libraries and every MCP read of them labels voices by these; any user has
 them, an operator's as much as an account's.
 
+Each account's user name is also its entry in the register of names
+(names.py): an application with accounts of its own (The Floor) reserves a
+person's name here before they have an account, and their first sign-in makes
+the account under it.
+
 A user with no account here was made by the operator (a users.toml token:
 the Mac's CLI, the nightly service) and is unlimited; so is an account whose
 plan is "unlimited" (scripts/accounts.py). The meter runs for everyone.
@@ -58,6 +63,15 @@ _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 # A name is a speaker heading, so any words; NOESIS_USER_NAMES is comma-separated.
 SPEAKER_NAME_RE = re.compile(r"^[^\s,](?:[^,\n\r]*[^\s,])?$")
 MOST_SPEAKER_NAMES = 20
+
+# A user name chosen or derived from 2026-11-02: what The Floor's usernames are,
+# compared without case, so one name can be a person's at both (names.py).
+# Older names (service.NAME_RE: with -, or shorter) stand until renamed.
+MIN_USER_NAME = 4
+MAX_USER_NAME = 30
+USER_NAME_RE = re.compile(rf"^[a-z0-9_]{{{MIN_USER_NAME},{MAX_USER_NAME}}}$")
+# How many derived names are tried before one is given up on.
+NAME_TRIES = 1000
 
 
 class AllowanceExhausted(RuntimeError):
@@ -117,6 +131,22 @@ CREATE TABLE IF NOT EXISTS spend (
     PRIMARY KEY (user, month)
 );
 CREATE TABLE IF NOT EXISTS names (user TEXT PRIMARY KEY, names TEXT NOT NULL);
+-- A name and an address held for somebody with no account yet, by the
+-- application that signed them up (names.py); their first sign-in takes it.
+CREATE TABLE IF NOT EXISTS reservations (
+    user TEXT PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    client TEXT NOT NULL,
+    created_at REAL NOT NULL
+);
+-- Renames owed to an application that keeps names (names.deliver).
+CREATE TABLE IF NOT EXISTS name_changes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client TEXT NOT NULL,
+    body TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_at REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS sends (key TEXT NOT NULL, at REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS sends_key_at ON sends (key, at);
 """
@@ -173,24 +203,56 @@ def accounts() -> list[Account]:
 
 
 def _taken(db: sqlite3.Connection, user: str) -> bool:
-    """A user name in use: an account's, a users.toml token's, or a libraries directory's."""
+    """A user name in use: an account's, a reservation's, a users.toml token's, or a libraries directory's."""
     if db.execute("SELECT 1 FROM accounts WHERE user = ?", (user,)).fetchone():
+        return True
+    if db.execute("SELECT 1 FROM reservations WHERE user = ?", (user,)).fetchone():
         return True
     if (service.data_dir() / "libraries" / user).exists():
         return True
     return user in service.token_users()
 
 
-def user_stem(email: str) -> str:
-    """A user name's start from an address: its local part, as service.NAME_RE allows."""
-    local = email.split("@", 1)[0].split("+", 1)[0].lower()
-    stem = re.sub(r"[^a-z0-9_-]+", "-", local).strip("-_")[:24].strip("-_")
-    return stem or "user"
+def user_stem(text: str) -> str | None:
+    """A user name's start from an address's local part or a suggested name; None when nothing is left."""
+    local = text.split("@", 1)[0].split("+", 1)[0].lower()
+    stem = re.sub(r"[^a-z0-9_]+", "_", local).strip("_")[:MAX_USER_NAME - 4].strip("_")
+    return stem or None
+
+
+def candidates(stem: str):
+    """The names a stem offers, best first: itself when long enough, then numbered, as The Floor numbers."""
+    for n in range(1, NAME_TRIES + 1):
+        if n == 1 and len(stem) >= MIN_USER_NAME:
+            yield stem
+        elif n > 1 or len(stem) < MIN_USER_NAME:
+            yield f"{stem}{n:0{max(1, MIN_USER_NAME - len(stem))}d}"
+
+
+def free_name(db: sqlite3.Connection, stems) -> str:
+    """The first free name the stems offer, in their order; "user…" when none is left."""
+    for stem in [*stems, "user"]:
+        for name in candidates(stem):
+            if not _taken(db, name):
+                return name
+    raise RuntimeError("no free user name")
+
+
+def reservation_for_email(email: str) -> tuple[str, str] | None:
+    """The name held for an address with no account yet, and the application that holds it."""
+    with connect() as db:
+        return db.execute("SELECT user, client FROM reservations WHERE email = ?", (email,)).fetchone()
+
+
+def reservation(user: str) -> str | None:
+    """The address a reserved name is held for."""
+    with connect() as db:
+        row = db.execute("SELECT email FROM reservations WHERE user = ?", (user,)).fetchone()
+    return row[0] if row else None
 
 
 def create_account(email: str) -> Account:
-    """A free account for an address that has none; its user name made unique."""
-    stem = user_stem(email)
+    """A free account for an address that has none: under its reserved name, or one made unique from it."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         try:
@@ -198,10 +260,12 @@ def create_account(email: str) -> Account:
             if existing:
                 db.execute("COMMIT")
                 return _account(existing)
-            user, n = stem, 1
-            while _taken(db, user):
-                n += 1
-                user = f"{stem}-{n}"
+            held = db.execute("SELECT user FROM reservations WHERE email = ?", (email,)).fetchone()
+            if held:
+                user = held[0]
+                db.execute("DELETE FROM reservations WHERE email = ?", (email,))
+            else:
+                user = free_name(db, [s for s in [user_stem(email)] if s])
             now = time.time()
             db.execute("INSERT INTO accounts (user, email, plan, created_at) VALUES (?, ?, ?, ?)",
                        (user, email, FREE, now))
@@ -219,6 +283,11 @@ def link(email: str, user: str, plan: str) -> Account:
     if plan not in PLANS:
         raise ValueError(f"a plan is one of {', '.join(PLANS)}")
     with connect() as db:
+        held = db.execute("SELECT 1 FROM reservations WHERE (user = ?) != (email = ?) AND (user = ? OR email = ?)",
+                          (user, email, user, email)).fetchone()
+        if held:
+            raise ValueError(f"{user} or {email} is reserved for another")
+        db.execute("DELETE FROM reservations WHERE user = ? AND email = ?", (user, email))
         db.execute("INSERT INTO accounts (user, email, plan, created_at) VALUES (?, ?, ?, ?)",
                    (user, email, plan, time.time()))
     return account(user)

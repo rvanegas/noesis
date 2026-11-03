@@ -23,6 +23,14 @@ run:
                                              client's token, not only the API's; CORS for
                                              the browser apps that sign in here, Roxana)
 - PUT    /me/names {names}                   the headings that are the caller's voice in chats
+- PUT    /me/user {user}                     the caller's user name, renamed everywhere (names.py)
+
+The register of names (names.py) answers an application that keeps names
+(The Floor), by its client id and secret as HTTP Basic, on nobody's behalf:
+
+- POST   /names {email, suggest}             the address's name, reserved now if it has none
+- PUT    /names {email, user}                that name for the address: reserved, or a rename
+- PUT    /names/address {email, new_email}   a reservation moved to another address
 
 /run runs `noesis --lib <library> <argv>` in a subprocess from the library root:
 file arguments are names, which noesis resolves across the library. Its output
@@ -101,10 +109,29 @@ _free_runs: set[asyncio.Task] = set()
 from noesis.mcp_server import mcp_app, mcp_lifespan
 
 
+# Renames owed to applications that keep names (names.py) are sent as they
+# happen; what was not answered is tried again from here.
+NAME_DELIVERY_EVERY = 60
+
+
+async def _deliver_names() -> None:
+    from noesis import names
+    while True:
+        await asyncio.sleep(NAME_DELIVERY_EVERY)
+        try:
+            await asyncio.to_thread(names.deliver)
+        except Exception as exc:  # the loop outlives a bad round
+            print(f"names: delivery failed: {exc}", file=sys.stderr)
+
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
-    async with mcp_lifespan():
-        yield
+    delivery = asyncio.create_task(_deliver_names())
+    try:
+        async with mcp_lifespan():
+            yield
+    finally:
+        delivery.cancel()
 
 
 app = FastAPI(title="noesis", lifespan=_lifespan)
@@ -246,6 +273,86 @@ def put_names(body: SpeakerNames, who: str = Depends(filer)) -> dict:
         return {"names": list(accounts.set_speaker_names(who, body.names))}
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from None
+
+
+class UserName(BaseModel):
+    user: str
+
+
+@app.put("/me/user")
+def put_user(body: UserName, who: str = Depends(caller)) -> dict:
+    """The caller's user name, renamed everywhere noesis keeps it and told to every application."""
+    from noesis import names
+    if who == "*":
+        raise HTTPException(400, "a service has no user name")
+    return {"user": _naming(lambda: names.rename(who, body.user))}
+
+
+def _naming(change):
+    """A change to the register, its refusals as sentences."""
+    from noesis import names
+    try:
+        return change()
+    except names.Taken as exc:
+        raise HTTPException(409, str(exc)) from None
+    except names.Busy as exc:
+        raise HTTPException(423, str(exc)) from None
+    except names.Invalid as exc:
+        raise HTTPException(400, str(exc)) from None
+
+
+async def name_keeper(authorization: str | None = Header(default=None)) -> str:
+    """The application calling the register, by its client id and secret (HTTP Basic)."""
+    import base64
+    import binascii
+    from noesis.oauth import provider
+    if not authorization or not authorization.startswith("Basic "):
+        raise HTTPException(401, "a client id and secret are required")
+    try:
+        client_id, _, secret = base64.b64decode(authorization.removeprefix("Basic ")).decode().partition(":")
+    except (binascii.Error, UnicodeDecodeError):
+        raise HTTPException(401, "a client id and secret are required") from None
+    if not provider.keeps_names(client_id, secret):
+        raise HTTPException(401, "not an application that keeps names")
+    return client_id
+
+
+class NameFor(BaseModel):
+    email: str
+    suggest: list[str] = []
+
+
+class NameChoice(BaseModel):
+    email: str
+    user: str
+
+
+class AddressMove(BaseModel):
+    email: str
+    new_email: str
+
+
+@app.post("/names")
+def post_name(body: NameFor, client: str = Depends(name_keeper)) -> dict:
+    """An address's name, and whether it is a noesis account's; reserved for it now if it had none."""
+    from noesis import names
+    user, account = _naming(lambda: names.name_for(body.email, client, body.suggest[:5]))
+    return {"user": user, "account": account}
+
+
+@app.put("/names")
+def put_name(body: NameChoice, client: str = Depends(name_keeper)) -> dict:
+    """Makes a name the address's: reserved if it has none, renamed everywhere if it has another."""
+    from noesis import names
+    return {"user": _naming(lambda: names.choose(body.email, body.user, client))}
+
+
+@app.put("/names/address")
+def put_name_address(body: AddressMove, client: str = Depends(name_keeper)) -> dict:
+    """A reservation moved to the address its person now signs in with at the application."""
+    from noesis import names
+    _naming(lambda: names.move(body.email, body.new_email))
+    return {"moved": True}
 
 
 class NewLibrary(BaseModel):
