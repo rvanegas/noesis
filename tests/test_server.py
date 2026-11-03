@@ -143,6 +143,12 @@ def test_read_says_when_the_file_was_last_modified(client, data):
     os.utime(path, (1_700_000_000, 1_700_000_000))
     got = client.get(f"{BASE}/files/notes.md", headers=ANN)
     assert got.headers["Last-Modified"] == "Tue, 14 Nov 2023 22:13:20 GMT"
+    assert got.headers["Cache-Control"] == "no-cache"
+    head = client.head(f"{BASE}/files/notes.md", headers=ANN)
+    assert head.status_code == 200 and head.content == b""
+    assert {k: head.headers[k] for k in ("ETag", "Last-Modified", "Content-Length")} == {
+        "ETag": f'"{_sha(b"x")}"', "Last-Modified": got.headers["Last-Modified"], "Content-Length": "1"}
+    assert client.head(f"{BASE}/files/missing.md", headers=ANN).status_code == 404
 
 
 def test_run_streams_and_reports_changes(client, data, monkeypatch, tmp_path):

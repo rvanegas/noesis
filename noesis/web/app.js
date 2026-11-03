@@ -413,6 +413,7 @@ async function openFile(path) {
   $("file-delete").textContent = "Delete";
   $("file").hidden = false;
   $("file").scrollIntoView({ behavior: "smooth", block: "start" });
+  if (!$("file-pdf").hidden) await showPdf();
 }
 
 function download(blob = open.blob, path = open.path) {
@@ -427,8 +428,29 @@ function lastModified(response) {
   return Date.parse(response.headers.get("Last-Modified"));
 }
 
-// The file's PDF, <stem>.pdf beside it: downloaded as it is if it is newer
-// than the file, and otherwise made again by noesis pdf first.
+// The file's PDF is <stem>.pdf beside it: none, or older than the file
+// ("stale"), or newer ("current"). Only its headers are read to tell.
+async function pdfState(path, modified) {
+  const target = path.replace(/\.md$/, ".pdf");
+  if (files[target] === undefined) return { state: "none" };
+  const response = await api(filePath(target), { method: "HEAD" });
+  if (!response.ok) return { state: "none" };
+  const made = lastModified(response);
+  return { state: made > modified ? "current" : "stale", made };
+}
+
+const PDF_LABELS = { none: "Make PDF", stale: "Update PDF", current: "Download PDF" };
+
+async function showPdf() {
+  const path = open.path;
+  const { state, made } = await pdfState(path, open.modified);
+  if (open?.path !== path) return;
+  $("file-pdf").textContent = PDF_LABELS[state];
+  $("file-pdf").title = made ? `Its PDF was made ${new Date(made).toLocaleString()}` : "It has no PDF yet";
+}
+
+// Downloaded as it is if current, and otherwise made by noesis pdf first.
+// The button is off meanwhile, so a second press waits for the first.
 async function pdf() {
   if (running) {
     say("A run is in progress.");
@@ -436,17 +458,22 @@ async function pdf() {
   }
   const { path, modified } = open;
   const target = path.replace(/\.md$/, ".pdf");
-  let response = files[target] === undefined ? null : await api(filePath(target));
-  if (!response?.ok || !(lastModified(response) > modified)) {
-    await run(["pdf", "--quiet", path.split("/").pop()]);
-    if (exitCode) return;
-    response = await api(filePath(target));
+  $("file-pdf").disabled = true;
+  try {
+    if ((await pdfState(path, modified)).state !== "current") {
+      await run(["pdf", "--quiet", path.split("/").pop()]);
+      if (exitCode) return;
+    }
+    const response = await api(filePath(target));
     if (!response.ok) {
       say(`${target}: ${await detail(response)}`);
       return;
     }
+    download(await response.blob(), target);
+  } finally {
+    $("file-pdf").disabled = false;
+    if (open?.path === path) await showPdf();
   }
-  download(await response.blob(), target);
 }
 
 // Two presses, rather than a dialog.

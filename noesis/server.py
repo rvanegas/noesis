@@ -11,6 +11,7 @@ run:
 - POST   /libraries {name}                   a new library of the caller's, its settings empty
 - GET    /libraries/{user}/{library}/files   {rel_path: sha256}
 - GET    …/files/{rel_path}                  the bytes, ETag their sha256, Last-Modified their mtime
+- HEAD   …/files/{rel_path}                  the same headers, without the bytes
 - PUT    …/files/{rel_path}                  If-None-Match: * creates; If-Match: "<sha>" replaces
 - DELETE …/files/{rel_path}                  If-Match: "<sha>"
 - POST   …/run {argv}                        server-sent events: output, then done
@@ -317,15 +318,33 @@ def list_files(root: Path = Depends(library)) -> dict:
     return {"files": tree_hashes(root)}
 
 
-@app.get("/libraries/{user}/{library}/files/{rel_path:path}")
-def read_file(rel_path: str, root: Path = Depends(library)) -> Response:
+def _readable(root: Path, rel_path: str) -> Path:
     path = _file(root, rel_path)
     if not path.is_file():
         raise HTTPException(404, "no such file")
+    return path
+
+
+# no-cache: a browser would otherwise reuse a file it read before, which a run
+# may since have rewritten, for as long as its Last-Modified suggests.
+def _file_headers(path: Path, sha256: str) -> dict:
+    return {"ETag": _etag(sha256), "Last-Modified": formatdate(path.stat().st_mtime, usegmt=True),
+            "Cache-Control": "no-cache"}
+
+
+@app.get("/libraries/{user}/{library}/files/{rel_path:path}")
+def read_file(rel_path: str, root: Path = Depends(library)) -> Response:
+    path = _readable(root, rel_path)
     data = path.read_bytes()
     return Response(data, media_type="application/octet-stream",
-                    headers={"ETag": _etag(hashlib.sha256(data).hexdigest()),
-                             "Last-Modified": formatdate(path.stat().st_mtime, usegmt=True)})
+                    headers=_file_headers(path, hashlib.sha256(data).hexdigest()))
+
+
+@app.head("/libraries/{user}/{library}/files/{rel_path:path}")
+def file_head(rel_path: str, root: Path = Depends(library)) -> Response:
+    path = _readable(root, rel_path)
+    return Response(media_type="application/octet-stream",
+                    headers={**_file_headers(path, _sha256(path)), "Content-Length": str(path.stat().st_size)})
 
 
 @app.put("/libraries/{user}/{library}/files/{rel_path:path}")

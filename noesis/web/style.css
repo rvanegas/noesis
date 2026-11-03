@@ -75,6 +75,11 @@ button.quiet, .button.quiet {
   color: var(--accent);
 }
 
+button:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
 button.danger {
   background: transparent;
   border-color: var(--danger);
