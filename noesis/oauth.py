@@ -48,6 +48,10 @@ the CLI), through `load_access_token`.
   the file and run API. Only the operator's mark lets a client have it:
   registration is open, and what a client says of itself there is not
   consulted, so claude.ai's connector can never be given it.
+- **An application that keeps names** (The Floor: its people's usernames,
+  which noesis decides; names.py) is a confidential client the operator has
+  marked as one (`scripts/client_names.py`). It calls /names with its own id
+  and secret, as HTTP Basic, on nobody's behalf.
 """
 
 from __future__ import annotations
@@ -184,18 +188,13 @@ class NoesisOAuthProvider:
         return IMPORT_SCOPE in (token.scopes or []) and self.imports(token.client_id)
 
     def name_keepers(self) -> list[str]:
-        """The clients told of every rename (names.py): those the operator marked with a hook."""
-        return sorted(cid for cid, raw in self._load()["clients"].items() if raw.get("names_hook"))
-
-    def name_hook(self, client_id: str) -> tuple[str | None, str | None]:
-        """Where a client is told of renames, and the secret the call is signed with."""
-        raw = self._load()["clients"].get(client_id) or {}
-        return raw.get("names_hook"), raw.get("client_secret")
+        """The clients the operator marked as keeping names (names.py, scripts/client_names.py)."""
+        return sorted(cid for cid, raw in self._load()["clients"].items() if raw.get("keeps_names"))
 
     def keeps_names(self, client_id: str, secret: str) -> bool:
         """A client marked as keeping names, whose secret this is."""
         raw = self._load()["clients"].get(client_id)
-        return bool(raw and raw.get("names_hook") and raw.get("client_secret")
+        return bool(raw and raw.get("keeps_names") and raw.get("client_secret")
                     and secrets.compare_digest(raw["client_secret"].encode(), secret.encode()))
 
     def rename_grants(self, old: str, new: str) -> None:

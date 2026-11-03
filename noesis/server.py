@@ -23,14 +23,15 @@ run:
                                              client's token, not only the API's; CORS for
                                              the browser apps that sign in here, Roxana)
 - PUT    /me/names {names}                   the headings that are the caller's voice in chats
-- PUT    /me/user {user}                     the caller's user name, renamed everywhere (names.py)
 
 The register of names (names.py) answers an application that keeps names
 (The Floor), by its client id and secret as HTTP Basic, on nobody's behalf:
 
 - POST   /names {email, suggest}             the address's name, reserved now if it has none
-- PUT    /names {email, user}                that name for the address: reserved, or a rename
+- PUT    /names {email, user}                that name for the address: reserved, or its reservation renamed
 - PUT    /names/address {email, new_email}   a reservation moved to another address
+
+A noesis account's name and address are fixed (names.py): only a reservation changes.
 
 /run runs `noesis --lib <library> <argv>` in a subprocess from the library root:
 file arguments are names, which noesis resolves across the library. Its output
@@ -109,29 +110,10 @@ _free_runs: set[asyncio.Task] = set()
 from noesis.mcp_server import mcp_app, mcp_lifespan
 
 
-# Renames owed to applications that keep names (names.py) are sent as they
-# happen; what was not answered is tried again from here.
-NAME_DELIVERY_EVERY = 60
-
-
-async def _deliver_names() -> None:
-    from noesis import names
-    while True:
-        await asyncio.sleep(NAME_DELIVERY_EVERY)
-        try:
-            await asyncio.to_thread(names.deliver)
-        except Exception as exc:  # the loop outlives a bad round
-            print(f"names: delivery failed: {exc}", file=sys.stderr)
-
-
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
-    delivery = asyncio.create_task(_deliver_names())
-    try:
-        async with mcp_lifespan():
-            yield
-    finally:
-        delivery.cancel()
+    async with mcp_lifespan():
+        yield
 
 
 app = FastAPI(title="noesis", lifespan=_lifespan)
@@ -275,19 +257,6 @@ def put_names(body: SpeakerNames, who: str = Depends(filer)) -> dict:
         raise HTTPException(400, str(exc)) from None
 
 
-class UserName(BaseModel):
-    user: str
-
-
-@app.put("/me/user")
-def put_user(body: UserName, who: str = Depends(caller)) -> dict:
-    """The caller's user name, renamed everywhere noesis keeps it and told to every application."""
-    from noesis import names
-    if who == "*":
-        raise HTTPException(400, "a service has no user name")
-    return {"user": _naming(lambda: names.rename(who, body.user))}
-
-
 def _naming(change):
     """A change to the register, its refusals as sentences."""
     from noesis import names
@@ -295,8 +264,6 @@ def _naming(change):
         return change()
     except names.Taken as exc:
         raise HTTPException(409, str(exc)) from None
-    except names.Busy as exc:
-        raise HTTPException(423, str(exc)) from None
     except names.Invalid as exc:
         raise HTTPException(400, str(exc)) from None
 

@@ -3,10 +3,9 @@
 noesis is the identity for people (rvanegas-site's PROJECTS.md, Shared rules),
 and since 2026-11-02 the source of truth for their names as well: an
 application with accounts of its own (The Floor) asks here for the name of
-each person it signs up, and has a rename made here before it makes it
-itself. So a person is the same name at both ends, and an address is one name
-throughout. The Floor keeps the case its people type; the pair is the same
-name compared without case.
+each person it signs up. So a person is the same name at both ends, and an
+address is one name throughout. The Floor keeps the case its people type; the
+pair is the same name compared without case.
 
 - **A pair is an account's or a reservation's.** Somebody The Floor signed up
   who has never signed in here has a reservation: the address and the name are
@@ -14,41 +13,28 @@ name compared without case.
   first sign-in makes the account under the reserved name
   (accounts.create_account).
 - **A name chosen from now on** is accounts.USER_NAME_RE: lowercase letters,
-  digits and _, four to thirty. Older names (with -, or shorter) stand until
-  renamed.
-- **A rename works from either end** and reaches every other: for an account
-  it is the account, its spend and speaker names, its grants and its
-  libraries' directory, so every library id `<user>/<library>`; it is refused
-  while a run holds one of those libraries. Each application the operator
-  marked as keeping names (scripts/client_names.py) is told, but the one that
-  asked, by a signed call to its hook — retried until it answers, since an
-  application whose person never connected has no grant to notice with.
-- **An address moves** only while it is a reservation's: a noesis account's
-  address is how its owner signs in here, and is not an application's to move.
-
-The hook's call is a POST of `{"email", "old", "new"}`, signed with the
-client's own secret: `X-Noesis-Signature: sha256=<hex HMAC-SHA256 of the body>`.
+  digits and _, four to thirty. Older names (with -, or shorter) stand.
+- **Only a reservation changes.** An application may rename one, or move it to
+  another address, while its person has no account here. **A noesis account's
+  name and address are fixed**: renaming one would have to reach every
+  application that saved its library ids and every one that knows the person
+  by name, and nothing here can make that reliable. Until sign-in itself moves
+  out of both applications, being unable to change them is the simple rule.
+  The operator's scripts/rename_user.py is the exception, done by hand.
 """
 
 from __future__ import annotations
 
-import hashlib
-import hmac
-import json
-import threading
 import time
-import urllib.error
-import urllib.request
 
 from noesis import accounts, service
 
-# How long a hook that did not answer waits before it is asked again, at most.
-RETRY_CAP = 60 * 60
-HOOK_TIMEOUT = 10
+FIXED = ("Your username and address are also your noesis account's, "
+         "and cannot be changed once that account exists.")
 
 
 class Taken(ValueError):
-    """The name, or the address, is somebody else's."""
+    """The name or the address is somebody else's, or is fixed."""
 
 
 class Invalid(ValueError):
@@ -110,71 +96,33 @@ def name_for(email: str, client: str, suggestions: list[str] | tuple[str, ...] =
 
 
 def choose(email: str, user: str, client: str) -> str:
-    """Makes `user` the address's name: reserved if it has none, renamed if it has another."""
+    """Makes `user` the address's name: reserved if it has none, its reservation renamed if it has another."""
     address, name = _address(email), _check(user)
-    current = pair_for(address)
-    if current is None:
-        with accounts.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
-            try:
-                if accounts._taken(db, name):
-                    raise Taken("That user name is taken.")
-                db.execute("INSERT INTO reservations (user, email, client, created_at) VALUES (?, ?, ?, ?)",
-                           (name, address, client, time.time()))
-                db.execute("COMMIT")
-            except BaseException:
-                db.execute("ROLLBACK")
-                raise
-        return name
-    return rename(current[0], name, by=client)
-
-
-def rename(old: str, new: str, *, by: str | None = None) -> str:
-    """Renames a pair everywhere noesis keeps the name, and owes every other application the news."""
-    from noesis.oauth import provider
-    new = _check(new)
-    if new == old:
-        return new
-    if old in service.token_users():
-        raise Invalid(f"{old} holds a users.toml token: the operator's, renamed by hand")
-    base = service.data_dir() / "libraries"
-    if any(lock.locked() and (path == base / old or base / old in path.parents)
-           for path, lock in service.locks.items()):
-        raise Busy("Something is running in one of your libraries; try again when it has finished.")
-    hooks = [c for c in provider.name_keepers() if c != by]
     with accounts.connect() as db:
         db.execute("BEGIN IMMEDIATE")
         try:
-            if accounts._taken(db, new):
+            if db.execute("SELECT 1 FROM accounts WHERE email = ?", (address,)).fetchone():
+                raise Taken(FIXED)
+            held = db.execute("SELECT user FROM reservations WHERE email = ?", (address,)).fetchone()
+            if held and held[0] == name:
+                db.execute("COMMIT")
+                return name
+            if accounts._taken(db, name):
                 raise Taken("That user name is taken.")
-            row = (db.execute("SELECT email FROM accounts WHERE user = ?", (old,)).fetchone()
-                   or db.execute("SELECT email FROM reservations WHERE user = ?", (old,)).fetchone())
-            if row is None:
-                raise Invalid(f"{old} is nobody's name")
-            for table in ("accounts", "reservations", "spend", "names"):
-                db.execute(f"UPDATE {table} SET user = ? WHERE user = ?", (new, old))
-            body = json.dumps({"email": row[0], "old": old, "new": new})
-            db.executemany("INSERT INTO name_changes (client, body, next_at) VALUES (?, ?, ?)",
-                           [(client, body, time.time()) for client in hooks])
+            if held:
+                db.execute("UPDATE reservations SET user = ? WHERE email = ?", (name, address))
+            else:
+                db.execute("INSERT INTO reservations (user, email, client, created_at) VALUES (?, ?, ?, ?)",
+                           (name, address, client, time.time()))
             db.execute("COMMIT")
         except BaseException:
             db.execute("ROLLBACK")
             raise
-    provider.rename_grants(old, new)
-    if (base / old).exists():
-        (base / old).rename(base / new)
-    if hooks:
-        _soon()
-    return new
-
-
-def _soon() -> None:
-    """Delivers what a rename now owes, off the request; the server's loop retries what fails."""
-    threading.Thread(target=deliver, daemon=True).start()
+    return name
 
 
 def move(email: str, new_email: str) -> None:
-    """Moves a reservation to another address; an account's address is not an application's to move."""
+    """Moves a reservation to another address; an account's address is fixed."""
     address, target = _address(email), _address(new_email)
     if address == target:
         return
@@ -182,8 +130,7 @@ def move(email: str, new_email: str) -> None:
         db.execute("BEGIN IMMEDIATE")
         try:
             if db.execute("SELECT 1 FROM accounts WHERE email = ?", (address,)).fetchone():
-                raise Taken("Your address is also how you sign in to noesis, where your username is kept, "
-                            "so it cannot be changed from another application.")
+                raise Taken(FIXED)
             if (db.execute("SELECT 1 FROM accounts WHERE email = ?", (target,)).fetchone()
                     or db.execute("SELECT 1 FROM reservations WHERE email = ?", (target,)).fetchone()):
                 raise Taken("That address already has a username at noesis, somebody else's.")
@@ -194,52 +141,34 @@ def move(email: str, new_email: str) -> None:
             raise
 
 
-def signature(secret: str, body: bytes) -> str:
-    return "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+def rename_account(old: str, new: str) -> str:
+    """The operator's rename of an account (scripts/rename_user.py): the account, grants and libraries.
 
-
-_delivering = threading.Lock()
-
-
-def deliver(now: float | None = None, post=None) -> int:
-    """Sends every rename now due to its application's hook; how many were answered."""
+    Nothing tells the applications: The Floor's username and the library ids it
+    saved are renamed there by hand, as the script's plan says.
+    """
     from noesis.oauth import provider
-    post = post or _post
-    if not _delivering.acquire(blocking=False):
-        return 0
-    try:
-        now = time.time() if now is None else now
-        with accounts.connect() as db:
-            due = db.execute("SELECT id, client, body, attempts FROM name_changes WHERE next_at <= ? ORDER BY id",
-                             (now,)).fetchall()
-        answered = 0
-        for change_id, client, body, attempts in due:
-            hook, secret = provider.name_hook(client)
-            ok = hook is not None and post(hook, body.encode(), signature(secret, body.encode()))
-            with accounts.connect() as db:
-                if ok or hook is None:
-                    db.execute("DELETE FROM name_changes WHERE id = ?", (change_id,))
-                else:
-                    db.execute("UPDATE name_changes SET attempts = ?, next_at = ? WHERE id = ?",
-                               (attempts + 1, now + min(RETRY_CAP, 60 * 2 ** attempts), change_id))
-            answered += bool(ok)
-        return answered
-    finally:
-        _delivering.release()
-
-
-def owed() -> list[tuple[str, dict, int]]:
-    """The renames not yet answered: the application, the change, and how often it was tried."""
+    new = _check(new)
+    if old in service.token_users():
+        raise Invalid(f"{old} holds a users.toml token: the operator's, renamed by hand")
+    base = service.data_dir() / "libraries"
+    if any(lock.locked() and (path == base / old or base / old in path.parents)
+           for path, lock in service.locks.items()):
+        raise Busy("Something is running in one of the libraries; try again when it has finished.")
     with accounts.connect() as db:
-        return [(client, json.loads(body), attempts)
-                for client, body, attempts in db.execute("SELECT client, body, attempts FROM name_changes ORDER BY id")]
-
-
-def _post(url: str, body: bytes, signed: str) -> bool:
-    request = urllib.request.Request(url, data=body, method="POST", headers={
-        "Content-Type": "application/json", "X-Noesis-Signature": signed})
-    try:
-        with urllib.request.urlopen(request, timeout=HOOK_TIMEOUT) as response:
-            return 200 <= response.status < 300
-    except (urllib.error.URLError, OSError):
-        return False
+        db.execute("BEGIN IMMEDIATE")
+        try:
+            if accounts._taken(db, new):
+                raise Taken("That user name is taken.")
+            if not db.execute("SELECT 1 FROM accounts WHERE user = ?", (old,)).fetchone():
+                raise Invalid(f"{old} is not an account")
+            for table in ("accounts", "spend", "names"):
+                db.execute(f"UPDATE {table} SET user = ? WHERE user = ?", (new, old))
+            db.execute("COMMIT")
+        except BaseException:
+            db.execute("ROLLBACK")
+            raise
+    provider.rename_grants(old, new)
+    if (base / old).exists():
+        (base / old).rename(base / new)
+    return new

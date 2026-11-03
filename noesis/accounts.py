@@ -139,14 +139,6 @@ CREATE TABLE IF NOT EXISTS reservations (
     client TEXT NOT NULL,
     created_at REAL NOT NULL
 );
--- Renames owed to an application that keeps names (names.deliver).
-CREATE TABLE IF NOT EXISTS name_changes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    client TEXT NOT NULL,
-    body TEXT NOT NULL,
-    attempts INTEGER NOT NULL DEFAULT 0,
-    next_at REAL NOT NULL
-);
 CREATE TABLE IF NOT EXISTS sends (key TEXT NOT NULL, at REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS sends_key_at ON sends (key, at);
 """
