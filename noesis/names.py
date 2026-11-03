@@ -182,10 +182,11 @@ def move(email: str, new_email: str) -> None:
         db.execute("BEGIN IMMEDIATE")
         try:
             if db.execute("SELECT 1 FROM accounts WHERE email = ?", (address,)).fetchone():
-                raise Taken("This address is a noesis account's; it changes at noesis.")
+                raise Taken("Your address is also how you sign in to noesis, where your username is kept, "
+                            "so it cannot be changed from another application.")
             if (db.execute("SELECT 1 FROM accounts WHERE email = ?", (target,)).fetchone()
                     or db.execute("SELECT 1 FROM reservations WHERE email = ?", (target,)).fetchone()):
-                raise Taken("That address already has a name.")
+                raise Taken("That address already has a username at noesis, somebody else's.")
             db.execute("UPDATE reservations SET email = ? WHERE email = ?", (target, address))
             db.execute("COMMIT")
         except BaseException:

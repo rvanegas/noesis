@@ -194,3 +194,39 @@ def test_the_operators_link_respects_reservations(data):
         accounts.link("other@example.com", "fay_f", accounts.FREE)
     assert accounts.link("fay@example.com", "fay_f", accounts.FREE).user == "fay_f"
     assert accounts.reservation("fay_f") is None
+
+
+def test_the_floors_names_are_reconciled_and_noesis_wins(data, floor):
+    script = _script("reserve_names")
+    accounts.create_account("gus@example.com")              # gus1 here, @Gus there
+    names.name_for("hal@example.com", "thefloor", ["hal_h"])
+    (data / "libraries" / "irene").mkdir()                  # irene is a libraries directory's
+    pairs = "\n".join([
+        "# The Floor's names",
+        "Gus@example.com\tGus",
+        "hal@example.com\tHal_H",
+        "ida@example.com\tIdaB",
+        "irene@example.com\tirene",
+        "jo@example.com\t",
+        "ida@example.com\tIdaC",
+        "",
+    ])
+    path = data / "pairs.tsv"
+    path.write_text(pairs, encoding="utf-8")
+    out = io.StringIO()
+    with redirect_stdout(out):
+        script.main([str(path)])
+    assert names.pair_for("ida@example.com") is None and names.owed() == []  # a plan changes nothing
+    verdicts = [line.split()[0:2] for line in out.getvalue().splitlines()[:6]]
+    assert verdicts == [["takes", "gus1"], ["same", "Hal_H"], ["reserve", "IdaB"], ["takes", "(a"],
+                        ["takes", "(a"], ["address", "named"]]
+
+    posted = []
+    names._post = lambda *call: posted.append(call) or True
+    with redirect_stdout(io.StringIO()):
+        script.main([str(path), "--apply"])
+    assert names.pair_for("ida@example.com") == ("idab", False)
+    assert names.pair_for("irene@example.com") == ("irene2", False)
+    assert sorted(json.loads(body)["new"] for _, body, _ in posted) == ["gus1", "irene2", "jo01"]
+    assert {json.loads(body)["old"] for _, body, _ in posted} == {"Gus", "irene", ""}
+    assert names.owed() == []
