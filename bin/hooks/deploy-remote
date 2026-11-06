@@ -1,0 +1,11 @@
+#!/bin/bash
+# After `ts deploy` syncs: rebuild and restart the container. The stamp is
+# baked into the image with the code it describes (the Dockerfile copies
+# noesis/). The libraries in /srv/noesis are data, not code: never touched
+# here (seeding one is an operator task, SERVER.md Phase 1).
+set -euo pipefail
+ssh -o BatchMode=yes "$HOST" 'set -euo pipefail
+  cd ~/noesis
+  [ -f .env ] || { echo "✗ no ~/noesis/.env on the box (PROJECTS.md names what it holds)" >&2; exit 1; }
+  [ -d /srv/noesis ] || { echo "✗ no /srv/noesis on the box (bin/provision-commons makes it)" >&2; exit 1; }
+  docker compose up --build -d --remove-orphans 2>&1 | tail -3'

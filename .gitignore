@@ -16,7 +16,7 @@ venv/
 env/
 .env*
 
-# Stamped by bin/deploy, removed once sent
+# Stamped by ts deploy, removed once sent
 noesis/deployed.json
 
 # pytest

@@ -81,7 +81,7 @@ from pydantic import BaseModel
 from noesis import service
 from noesis.service import LibraryError, create_library, library_ids, library_root, lock_for
 
-# Written by bin/deploy into the package before the image is built, so it is
+# Written by ts deploy into the package before the image is built, so it is
 # baked in with the code it describes. Absent in a checkout, where the answer
 # is "dev".
 _DEPLOYED = Path(__file__).resolve().parent / "deployed.json"

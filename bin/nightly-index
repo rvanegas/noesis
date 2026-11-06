@@ -7,7 +7,7 @@
 #
 # It goes through the API, with a service token ("*" in users.toml), like
 # any other client, never `docker exec`. The token lives outside ~/noesis, which
-# bin/deploy mirrors with --delete. A library busy with a run (409) is left
+# ts deploy mirrors with --delete. A library busy with a run (409) is left
 # for the next night.
 set -euo pipefail
 
