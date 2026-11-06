@@ -1,7 +1,7 @@
 # Planning
 
 Everything about noesis that is not code and not the agent instructions
-(`AGENTS.md`), laid out as technosophia's `PLANNING.md` says. Each directory
+(`CLAUDE.md`), laid out as technosophia's `PLANNING.md` says. Each directory
 holds items, one file each; its `README.md` is its convention.
 
 - **`task/`**: the roadmap. Features, audits, open questions.
