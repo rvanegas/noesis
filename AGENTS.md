@@ -10,6 +10,10 @@ The practices this project shares with others are technosophia's (`~/src/technos
 
 Scripts run as `ts <name>` from anywhere in the checkout: this project's `bin/` first (`cap`, `libraries`, `nightly-index`), then technosophia's shared ones (`deploy`, `deploys`, `health`, …). The shared ones read `bin/ts.env`, never ship what `bin/ts.rsync` excludes, and run this project's own steps from `bin/hooks/`.
 
+## `planning/`
+
+Laid out as technosophia's `PLANNING.md` says: `task/`, `backlog/` and `decision/`, one file per item; a verb and a quoted title is a reference to a file, resolved with `ts note find`. Read it before filing or resolving one. **`SERVER.md`, cited throughout the code and below, is `planning/decision/archive/SERVER.md`**, the frozen record of the move to `commons`.
+
 ## Development Setup
 
 ```bash
