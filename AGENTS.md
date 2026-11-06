@@ -1,5 +1,7 @@
 # Working on noesis
 
+**This file is capped at 20,000 bytes, and is 19,416 bytes.** Read technosophia's `INSTRUCTIONS.md` before adding to it, and correct the figure in the same commit.
+
 ## What This Is
 
 **NOESIS** is a CLI tool for managing hand-edited markdown conversation files — structured transcripts of AI conversations (Claude; older ones also GPT). It validates, fixes, and extends these files by appending AI replies.
@@ -25,10 +27,10 @@ noesis --help                # Run via installed command
 ## Commands
 
 ```bash
-pytest tests/             # Run tests (suite is planned but not yet implemented)
+pytest tests/             # The suite; ts deploy runs it first
 ```
 
-No linter is configured. Tests use pytest (`testpaths = ["tests"]` in pyproject.toml).
+No linter is configured.
 
 ## Architecture
 
@@ -44,16 +46,12 @@ The tool has two main pipelines: **CLI → Transcript parsing → Format validat
 - **`config.py`** — Loads `config.toml` from `NOESIS_CONFIG_DIR` (default `~/.config/noesis`); env fallbacks for keys and service URLs; resolves the run's library (`NOESIS_LIBRARY`) and user names (`NOESIS_USER_NAMES`); builds the system prompt from a base plus the library's `SYSTEM_PROMPT.md`
 - **`library.py`** — Library indexing: scans a directory of markdown documents, generates AI summaries and index terms, writes `MANIFEST.md` and `INDEX.md`, reads `KEYS.md` for term canonicalization
 - **`accounts.py`**, **`oauth.py`**, **`mail.py`** — the server's identity: open sign-up by emailed code, noesis as the OAuth authorization server for every client (claude.ai, the web client, later The Floor), and what a free account may spend and store; a run's model calls charge `NOESIS_ACCOUNT` (SERVER.md, Phase 6)
-- **`names.py`** — the register of people's names across applications, since 2026-11-02: one user name per address, an account's or a reservation's (somebody The Floor signed up who has not signed in here; their first sign-in takes it), chosen from now on as `accounts.USER_NAME_RE` (no `-`, four to thirty). The Floor (marked by `scripts/client_names.py`) asks `/names` for each person's name, and may rename or move a reservation; **a noesis account's name and address are fixed**, renamed only by the operator's `scripts/rename_user.py`, which tells no application. `scripts/reserve_names.py` reconciled The Floor's existing names, noesis winning
-- **`anthropic_client.py`** — the streaming model client; noesis uses Anthropic alone (OpenAI and Ollama retired 2026-10-26; `## GPT` headings are still read as LLM voice)
+- **`names.py`** — the register of people's names across applications, since 2026-11-02: one user name per address, an account's or a reservation's (somebody The Floor signed up who has not signed in here; their first sign-in takes it), chosen from now on as `accounts.USER_NAME_RE` (no `-`, four to thirty). The Floor (marked by `scripts/client_names.py`) asks `/names` for each person's name, and may rename or move a reservation; **a noesis account's name and address are fixed**, renamed only by the operator's `scripts/rename_user.py`, which tells no application.
+- **`anthropic_client.py`** — the streaming model client; noesis uses Anthropic alone (`## GPT` headings are still read as LLM voice)
 
 ### Data flow for `noesis reply`
 
-1. `cli.py` reads config + transcript file
-2. `transcript.py` parses the file and finds the pending human turn
-3. `assets.py` collects any local asset references from that turn
-4. The appropriate client streams the reply (with token cost output)
-5. `transcript.py` appends the reply and writes the file back
+`cli.py` reads config and transcript; `transcript.py` finds the pending human turn; `assets.py` collects its local assets; the client streams the reply (with token cost); `transcript.py` appends it and writes the file back.
 
 ### Key design patterns
 
@@ -78,23 +76,7 @@ Files must satisfy 12 rules enforced by `form.py`:
 
 ## Distribution
 
-To build a wheel for distribution:
-
-```bash
-pip install build
-python -m build
-# produces dist/noesis-0.1.0-py3-none-any.whl
-```
-
-Recipients install it with:
-
-```bash
-pip install noesis-0.1.0-py3-none-any.whl
-# or, recommended for CLI tools:
-pipx install noesis-0.1.0-py3-none-any.whl
-```
-
-Bump `version` in `pyproject.toml` before each build. The wheel filename reflects that version.
+A wheel (`python -m build`, installed with `pipx`): `noesis/README.md`, *Installation*. Bump `version` in `pyproject.toml` before each build.
 
 ## Library Index
 
@@ -102,28 +84,19 @@ Bump `version` in `pyproject.toml` before each build. The wheel filename reflect
 - **`MANIFEST.md`** — human-readable document listing with title, word count, terms, and summary per document
 - **`INDEX.md`** — inverted term index for use as `reply` context (`-i` flag)
 
-State lives in the library itself, in `.noesis/` (`manifest.json`, `index.json`, `relations.json`), so each library carries its own; only changed documents are re-indexed. `scripts/migrate_library.py` moved it there from `~/.local/state/noesis`.
+State lives in the library itself, in `.noesis/` (`manifest.json`, `index.json`, `relations.json`), so each library carries its own; only changed documents are re-indexed.
 
 ### KEYS.md
 
-An optional `KEYS.md` in the library directory controls term canonicalization with four sections:
-
-- **`## Plural`** — each line is a canonical term; its plural (`term + "s"`) is auto-aliased to it
-- **`## Alias`** — groups of aliases mapping to a canonical: the canonical is a bare line, aliases are `- alias` bullets beneath it
-- **`## Exclude`** — terms to suppress from the index entirely
-- **`## Group`** — hierarchical grouping: a parent term followed by `- subterm` bullets; subterms appear nested under the parent in `INDEX.md`
+An optional `KEYS.md` in the library canonicalizes terms: `## Plural`, `## Alias`, `## Exclude`, `## Group`, as `noesis/README.md` (*noesis index*) describes.
 
 ### Semantic relations
 
-`noesis relate` builds a relations map between index terms, used by `lookup_term` to suggest adjacent terms during `noesis reply -l`. Several tactics combine to produce it:
-
-- **AI semantic pass** — the model is shown all terms and asked to identify related ones per batch; inclusion criteria cover same-concept-different-angle, broader/narrower forms, frequent co-occurrence in the literature, and morphological variants of the same root
-- **Co-occurrence supplementation** — after the AI pass, term pairs that co-occur as document tags in at least 2 documents are automatically added as related; this catches corpus-specific clustering the model might miss by reasoning from general knowledge rather than the actual library
-- **KEYS.md Alias** — terms aliased to a canonical are resolved before lookup, so a query for an alias navigates to the canonical's relations transparently
+`noesis relate` builds a relations map between index terms, which `lookup_term` uses to suggest adjacent terms (`noesis reply -l`). The model proposes related terms per batch (same concept, broader or narrower, co-occurring in the literature, same root); pairs that co-occur as tags in at least two documents are added, catching the library's own clustering; and a `KEYS.md` alias resolves to its canonical before lookup.
 
 ## Roles and Companion Files
 
-Every dated file names its role in a secondary suffix: `YYYY-MM-DD-slug.{role}.{ext}` (`library.role_of`). There are no bare dated files: `check` rejects one, and `index` refuses a library that has any (`scripts/migrate_layout.py` named the roles of `rodvandur/philosophy` from noesis's old guess by headings). Files sharing a stem are companions:
+Every dated file names its role in a secondary suffix: `YYYY-MM-DD-slug.{role}.{ext}` (`library.role_of`). There are no bare dated files: `check` rejects one, and `index` refuses a library that has any. Files sharing a stem are companions:
 
 | Role | What it is |
 |---|---|
@@ -155,28 +128,7 @@ Proposition numbers are a strict integer succession starting at 1 with no gaps, 
 
 ## Writing Assistant
 
-NOESIS supports a document-editing workflow where the AI reads and rewrites the user's own files rather than just appending replies to the transcript.
-
-### Setup
-
-1. Create a writing session with `noesis new "My Essay" -e`. This produces two files:
-   - `YYYY-MM-DD-my-essay.document.md` — the document being written/edited
-   - `YYYY-MM-DD-my-essay.chat.md` — the transcript file that drives `noesis reply`
-
-2. When `noesis reply` runs against a `.chat.md` file, it automatically discovers any sibling `.document.md` and `.argument.md` files with the same stem, loads them into the system prompt, and gives the model an `edit_file` tool.
-
-### How it works
-
-- `resolve_edit_targets` (`edit_tools.py`) discovers companion `.document.md` and `.argument.md` files by stripping the `.chat.md` suffix and checking for siblings with those extensions.
-- `build_edit_context` injects the target files into the system prompt between `--- filename ---` fences, preceded by editing instructions.
-- `make_edit_executor` returns a tool executor for the `edit_file` tool. The tool takes `path`, `old_str`, and `new_str`; the executor does an exact-string replacement and rewrites the file.
-- Before the first edit to a file, a numbered backup is saved automatically (`stem--1.ext`, `stem--2.ext`, …).
-- After each edit the tool returns a unified diff, which the model uses to confirm what changed.
-- `noesis diff <chat-file>` shows the diff between the current document and its most recent backup.
-
-### Paragraph wrapping
-
-Edited content is reflowed via `wrap_paragraphs` at `config.wrap_width` (default 80). Code blocks and lines beginning with `|` (tables/references) are passed through unchanged.
+The AI rewrites the user's own files rather than only appending replies. `noesis new "My Essay" -e` makes `YYYY-MM-DD-my-essay.document.md` and the `.chat.md` that drives it. `noesis reply` on a `.chat.md` finds the `.document.md` and `.argument.md` of its stem (`resolve_edit_targets`, `edit_tools.py`), puts them in the system prompt between `--- filename ---` fences (`build_edit_context`), and gives the model an `edit_file` tool (`path`, `old_str`, `new_str`; exact-string replacement, answered with a unified diff). Before the first edit to a file a numbered backup is saved (`stem--1.ext`, …); `noesis diff <chat-file>` compares with the latest. Edited text is reflowed by `wrap_paragraphs` at `config.wrap_width`, passing code blocks and `|` lines through.
 
 ### VOICE labels
 
@@ -191,26 +143,19 @@ These labels are stripped before sending to the model during `reply` but are pre
 
 ## Server
 
-noesis is moving onto the `commons` box behind `noesis.rvanegas.co` (`SERVER.md`, phase by phase).
+noesis runs on the `commons` box behind `noesis.rvanegas.co`.
 
 - **Where things live.** System-wide: keys (env), the config (`NOESIS_CONFIG_DIR`, `etc/config.toml` in the image) and the asset cache (`NOESIS_CACHE_DIR`, since file IDs belong to the API key). Per user: their names as chat headings (`accounts.speaker_names`, set by `PUT /me/names` or `scripts/accounts.py names`; `Prompt` is always a user heading), given to every run in their libraries as `NOESIS_USER_NAMES` and used by the MCP tools to say whose voice each heading is. Per run: the library (`--lib`, which sets `NOESIS_LIBRARY` for every `load_config()`). Per library, in its tree: `SYSTEM_PROMPT.md`, `KEYS.md`, and index state in `.noesis/`. There is no per-user config on the server; a library's id is `<user>/<library>`, its path `/data/libraries/<user>/<library>`.
 - **`noesis serve`** (`server.py`) runs the FastAPI app: `GET /healthz` (open; the commit from `noesis/deployed.json`, stamped by `ts deploy`), and, behind bearer tokens (minted ones hashed in `$NOESIS_DATA_DIR/users.toml` by `scripts/add_token.py`, or OAuth access tokens issued to the web client, `oauth.API_CLIENTS`; a connector's stay on `/mcp`; an application the operator marked with `scripts/client_imports.py` — The Floor — may be granted the `import` scope, which reaches `POST …/import` and `PUT /me/names` and nothing else of this API, and which a self-registered client is never given), `GET /libraries` and `POST /libraries` (a new, empty library of the caller's), file sync under `/libraries/{user}/{library}/files` with HTTP preconditions (`If-None-Match: *`, `If-Match: "<sha>"`; dotfiles hidden, symlinks and escapes refused), `GET /me` and `PUT /me/names`, and `POST …/run`, which runs `noesis --lib <library> <argv>` as a subprocess from the library root and streams its output as server-sent events, ending with the files it changed; and `POST …/import?filename=`, which stages the uploaded body outside the library and runs `noesis import` on it the same way. One run per library at a time (`_locks`); the run outlives its request. `noesis fix --yes` answers fix's questions in advance, since a run has no stdin. `ts nightly-index` indexes every library through it. `main()` dispatches `serve` before writing a default config.
 - **`Dockerfile` / `docker-compose.yml`**: `python:3.13-slim` with pandoc and XeTeX, on `127.0.0.1:8001`, as uid 1000, with `/srv/noesis` mounted at `/data`.
 - **`mcp_server.py`** — the MCP server at `/mcp` in `noesis serve` (SERVER.md, Phase 5): `guide` (the instructions as a tool: claude.ai ignores server instructions, so essential rules also live in the tool descriptions), `list_documents`, `lookup_term`, `read_document`, `read_file` — reading only, files returned as they are but for a chat of more speakers than `Prompt` and a model, which comes after one `Voices:` line naming whose each heading is, by the owner's names (`_voiced`; `guide` names the caller's headings too): not `edit_file`, which is `noesis reply`'s alone, and no `append_turn` — claude.ai edits with its own documents, and a conversation reaches the library by its export and `noesis import`, which gathers each turn's `## Related`/`## References` at the end (`transcript.collect_citations`/`with_citations`); bearer tokens checked by the OAuth provider (`oauth.py`): its own access tokens, or a minted noesis token sent as it is; a fresh `MCPServer` per app lifespan behind `_Mount`. `ToolError` for failures the model should read.
 - **`web/`** — noesis's web client at `/web/` (SERVER.md, *The web client*): static HTML, JS and CSS, no build step, served under a CSP admitting only its own files. It signs in as the built-in public client `noesis-web` (PKCE; its only redirect is `/web/`) and then uses the files, run and import routes: create a library (with empty `KEYS.md` and `SYSTEM_PROMPT.md`, `library.SETTINGS`), browse, view, download, delete, import, check/validate/fix (fix previews, then applies with `--yes`), index, and a Markdown file's PDF (not listed but fetched from its file's view, its button saying whether there is one and whether it is current, made again by `noesis pdf` unless newer than the file, by `Last-Modified` from a `HEAD`; file reads are `Cache-Control: no-cache`); no upload, no command line, no reply. Only the settings are edited in place (a plain textarea); writing is done in the user's own editor and arrives by import, and sources by the CLI's sync alone. Files noesis writes (the generated uppercase files, records, `.analysis.md`, `.review.md`) open view only.
-- **`oauth.py`** — noesis's own OAuth authorization server for claude.ai's connector (Phase 5b) and the web client: the SDK's provider interface, dynamic registration limited to claude.ai/claude.com/localhost redirects, sign-in at `/oauth/login` (in `server.py`) by pasting the person's noesis token, hashed tokens in `$NOESIS_DATA_DIR/oauth.json`, each tied to the noesis token that signed in. Applications with servers of their own (The Floor) are registered by `scripts/add_client.py`; one that only signs people in (Roxana, a browser app) with `--public`, as an identity-only client whose tokens answer `/me` alone (`load_any_access_token`; `/mcp` and the API refuse them), its redirects' origins the only ones `/me` answers by CORS (`browser_origins`). `/me` names the token's client, which dianoia checks before accepting a Roxana caller. `scripts/link_accounts.py` linked Roxana's Cognito users to accounts under their Cognito usernames.
+- **`oauth.py`** — noesis's own OAuth authorization server for claude.ai's connector (Phase 5b) and the web client: the SDK's provider interface, dynamic registration limited to claude.ai/claude.com/localhost redirects, sign-in at `/oauth/login` (in `server.py`) by pasting the person's noesis token, hashed tokens in `$NOESIS_DATA_DIR/oauth.json`, each tied to the noesis token that signed in. Applications with servers of their own (The Floor) are registered by `scripts/add_client.py`; one that only signs people in (Roxana, a browser app) with `--public`, as an identity-only client whose tokens answer `/me` alone (`load_any_access_token`; `/mcp` and the API refuse them), its redirects' origins the only ones `/me` answers by CORS (`browser_origins`). `/me` names the token's client, which dianoia checks before accepting a Roxana caller.
 - **`service.py`** — what `/run` and `/mcp` share: `user_for_token`, `library_root`, `library_ids`, the per-library `locks`.
 - **`remote.py`** — the CLI as the API's client (Phase 3): in a library mirrored by `[libraries."<id>"] local_root` with `server_url`/`server_token`, `main()` hands `REMOTE_COMMANDS` and `sync` to it. Three-way sync per file against `.noesis/sync.json` (push, pull, or a conflict saved as `<name>.server`, never merged; editor scratch and `.bak` files never synced, either way; a conflict stops a run; a first sync into an empty copy pulls; deleting from the server is asked first, and never done without a terminal), then the run's SSE stream printed as it comes, then a sync back. `NOESIS_RUN_LOCAL` (set by the server's runs) keeps it off.
 - **`ts deploy`** (`bin/ts.env`, `bin/hooks/`): tests, rsync to `~/noesis` on the box, `docker compose up --build`, then `/healthz` on the box and at the public name; `ts deploys` is what each deploy was. Never touches `.env` or `/srv/noesis`.
 - **Library layout** (`SERVER.md`, *Library layout*): names are unique across a library; a dated file lives in its year directory (`library.misplaced`; `check` reports, `fix` moves it with its stem-mates via `library.move_documents`, which carries index state); links name assets bare and resolve library-wide (`assets._AssetScope`); assets are dated by their earliest linking document; the asset cache (`asset_cache.py`, shared by both clients) is keyed by content sha256.
-- **`scripts/migrate_library.py`** (the data migration into `.noesis/` and `SYSTEM_PROMPT.md`) and **`scripts/migrate_layout.py`** (the data migration into the year layout; prints its plan unless `--apply`).
 
 ## Configuration
 
-Users create `~/.config/noesis/config.toml`:
-```toml
-model = "claude-sonnet-4-6"
-anthropic_api_key = "sk-ant-..."
-library_path = "~/notes"
-index_model = "claude-haiku-4-5"
-```
+`~/.config/noesis/config.toml` (`model`, `anthropic_api_key`, `library_path`, `index_model`, …): `noesis/README.md`, *Configuration*, is every key.
