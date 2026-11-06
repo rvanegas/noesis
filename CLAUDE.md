@@ -2,7 +2,7 @@
 
 # Working on noesis
 
-**This file is capped at 20,000 bytes, and is 19,378 bytes.** Read technosophia's `INSTRUCTIONS.md` before adding to it, and correct the figure in the same commit.
+**This file is 19,383 bytes, under technosophia's cap of 20,000.** Read technosophia's `INSTRUCTIONS.md` before adding to it, and correct the figure in the same commit.
 
 ## What This Is
 
