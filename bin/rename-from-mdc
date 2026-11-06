@@ -3,10 +3,10 @@
 # Moves what is on disk from mdc's names to noesis's, once (2026-11-02,
 # rvanegas-site TODO.md). Run from the Mac, in this checkout.
 #
-#   bin/rename-from-mdc box   on commons: stops the mdc container, moves
+#   ts rename-from-mdc box   on commons: stops the mdc container, moves
 #                             /srv/mdc, each library's .mdc/, ~/mdc, its .env
 #                             keys, ~/.config/mdc and the nightly crontab line
-#   bin/rename-from-mdc mac   here: ~/.config/mdc and its server_url, each
+#   ts rename-from-mdc mac   here: ~/.config/mdc and its server_url, each
 #                             mirrored library's .mdc/, the pipx install
 #
 # Each part refuses if it finds noesis's names already there, and stops at the

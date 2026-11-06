@@ -2,7 +2,7 @@
 """Every user's libraries, with how many documents each holds.
 
 An operator task (SERVER.md), run in the container — from the Mac,
-bin/libraries:
+ts libraries:
 
     docker compose run --rm -T noesis python scripts/libraries.py
 

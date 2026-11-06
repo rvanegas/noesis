@@ -2,10 +2,10 @@
 #
 # Free accounts' monthly allowances on the commons box, from the Mac.
 #
-#   bin/cap status            the default, the all-free cap, and every account
+#   ts cap status            the default, the all-free cap, and every account
 #                             whose allowance is raised above the default
-#   bin/cap raise ann 5       adds $5 a month to ann's allowance
-#   bin/cap raise ann -2      takes $2 back, never below the default
+#   ts cap raise ann 5       adds $5 a month to ann's allowance
+#   ts cap raise ann -2      takes $2 back, never below the default
 #
 # Each runs scripts/accounts.py in a one-off noesis container on the box
 # (SERVER.md, Phase 6), so the deployed image must carry the script, and an
@@ -30,11 +30,11 @@ accounts() {
 
 case "${1:-}" in
   status)
-    [ $# -eq 1 ] || { echo "usage: bin/cap status" >&2; exit 2; }
+    [ $# -eq 1 ] || { echo "usage: ts cap status" >&2; exit 2; }
     accounts raised
     ;;
   raise)
-    [ $# -eq 3 ] || { echo "usage: bin/cap raise <user> <usd>" >&2; exit 2; }
+    [ $# -eq 3 ] || { echo "usage: ts cap raise <user> <usd>" >&2; exit 2; }
     user=$2 usd=$3
     # Checked here, since both go into a command line on the box.
     [[ $user =~ ^[a-z0-9][a-z0-9_-]*$ ]] || { echo "✗ not a user name: $user" >&2; exit 2; }

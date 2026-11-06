@@ -16,7 +16,7 @@ already on the server) the address they sign in with, so signing in reaches
 those libraries rather than making a new account. `raise` adds dollars to a
 free account's monthly allowance, kept every month until changed; a negative
 amount takes back, never below the default; `raised` lists the accounts
-whose allowance is not the default (bin/cap, from the Mac). `names` sets
+whose allowance is not the default (ts cap, from the Mac). `names` sets
 the chat headings, besides Prompt, that are a user's own voice, for any
 user, with an account or not (the user alone prints them; --clear clears
 them). Disabling ends every OAuth grant the account has; its libraries stay.
