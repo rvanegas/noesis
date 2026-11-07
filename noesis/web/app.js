@@ -19,6 +19,7 @@ const CLIENT_ID = "noesis-web";
 const REDIRECT = `${location.origin}/web/`;
 const REFRESH_KEY = "noesis.refresh";
 const LIBRARY_KEY = "noesis.library";
+const FILE_KEY = "noesis.file";
 const SIGN_IN_KEY = "noesis.sign-in";
 const TEXT = /\.(md|txt|toml|json|csv|tex|bib)$/i;
 const DATED = /^(\d{4})-\d\d-\d\d-/;
@@ -753,6 +754,9 @@ async function start() {
   // one this person does not reach is passed over like any remembered one.
   if (query.has("library")) {
     store(localStorage, LIBRARY_KEY, query.get("library"));
+    // &file=<path> — a segment's *Open in noesis* — is the document to open
+    // there, kept for this tab alone, through a sign-in, as the library is.
+    store(sessionStorage, FILE_KEY, query.get("file"));
     history.replaceState(null, "", REDIRECT);
   }
   if (query.has("code") || query.has("error")) await finishSignIn(query);
@@ -765,6 +769,10 @@ async function start() {
   show(true);
   if (hasLibrary) await loadFiles();
   else $("first-library-name").focus();
+  const file = recall(sessionStorage, FILE_KEY);
+  store(sessionStorage, FILE_KEY, null);
+  // Only one this library holds: a document deleted since is passed over.
+  if (hasLibrary && file && files[file] !== undefined) await openFile(file);
 }
 
 guard(start)();
