@@ -35,6 +35,15 @@ does not answer admits nobody (503) and lists nothing.
   the group's current name, since the handle is only an id and survives the
   channel's renames; the web client shows the name.
 
+## Claude consults one library, by a token confined to it
+
+The Floor's *Ask Claude* consults a channel's library through `/mcp`, with a
+token Anthropic's servers carry. `POST /applications/token` (the
+application's pair) issues one for an hour, scoped `library:<owner>/<name>`,
+no refresh: `/mcp` opens that one library and no other of the owner's, and
+the file and run API refuses it. The owner has no account, so its tokens last
+while the mark does.
+
 ## Who pays
 
 The Floor's *Pro*, divided among a channel's Pro members — and noesis has no

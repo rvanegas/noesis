@@ -146,6 +146,13 @@ def _open_to(ctx: Context | None) -> list[str]:
     A claude.ai connector names none, and its person names them in the
     conversation instead (guide)."""
     ids = library_ids(_caller())
+    # A token confined to one library (oauth.confined_token, an application's
+    # for Claude) reaches that one whatever the address says.
+    from noesis.oauth import LIBRARY_SCOPE
+    token = get_access_token()
+    confined = {s.removeprefix(LIBRARY_SCOPE) for s in (token.scopes or []) if s.startswith(LIBRARY_SCOPE)}
+    if confined:
+        ids = [i for i in ids if i in confined]
     request = getattr(ctx.request_context, "request", None) if ctx is not None else None
     raw = request.query_params.get("libraries") if request is not None else None
     if raw is None:
@@ -259,7 +266,11 @@ def guide(ctx: Context) -> str:
                  "have named none, ask which before searching.")
     else:
         which = f"This user's library: {open_ids[0]}." if open_ids else "This user has no library yet."
-    names = ", ".join(f"## {n}" for n in (PROMPT_HEADING, *accounts.speaker_names(who)))
+    # One library's voice where only one is open — a group's every member's
+    # (members.voices) — else the caller's own names.
+    voices = (members.voices(*open_ids[0].split("/", 1)) if len(open_ids) == 1
+              else accounts.speaker_names(who))
+    names = ", ".join(f"## {n}" for n in (PROMPT_HEADING, *voices))
     return (f"{INSTRUCTIONS}\n\n{which}\n\nIn this user's chats, the sections headed {names} are the "
             "user's own words. A section under any other name is someone else's, the "
             "model's or another person's, even where it sounds like the user.")

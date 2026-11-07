@@ -82,6 +82,8 @@ from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from noesis import service
 
 ACCESS_TTL = 60 * 60
+# A token confined to one library: `library:<owner>/<name>` (confined_token).
+LIBRARY_SCOPE = "library:"
 REFRESH_TTL = 90 * 24 * 60 * 60
 CODE_TTL = 5 * 60
 SIGN_IN_TTL = 10 * 60
@@ -386,8 +388,22 @@ class NoesisOAuthProvider:
 
     @staticmethod
     def _still_signed_in(entry: dict) -> bool:
-        from noesis import accounts
-        return accounts.is_active(entry["user"])
+        from noesis import accounts, members
+        # An application that keeps libraries has no account; its tokens last
+        # while it is still marked (members.py).
+        return accounts.is_active(entry["user"]) or members.keeper(entry["user"]) is not None
+
+    def confined_token(self, owner: str, library_id: str) -> tuple[str, int]:
+        """An access token of an application's own, for /mcp alone and one of
+        its libraries alone (`LIBRARY_SCOPE`): what it hands Anthropic's
+        servers when Claude consults that library. No refresh: it asks again."""
+        data = self._load()
+        access = secrets.token_urlsafe(32)
+        data["access"][_sha(access)] = {"client_id": owner, "user": owner, "resource": None,
+                                        "scopes": [LIBRARY_SCOPE + library_id],
+                                        "expires_at": int(time.time()) + ACCESS_TTL}
+        self._save(data)
+        return access, ACCESS_TTL
 
 
 provider = NoesisOAuthProvider()

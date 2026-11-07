@@ -208,6 +208,27 @@ def libraries(who: str = Depends(caller)) -> dict:
     return {"libraries": library_ids(who), "names": service.library_names(who)}
 
 
+class ConsultedLibrary(BaseModel):
+    library: str
+
+
+@app.post("/applications/token")
+def consult_token(body: ConsultedLibrary, who: str = Depends(caller)) -> dict:
+    """A token for /mcp that reaches one of an application's libraries and
+    nothing else, for Claude to consult it with (members.py): The Floor hands
+    it to Anthropic's servers at a press of *Ask Claude*."""
+    from noesis import members
+    from noesis.oauth import provider
+    if members.keeper(who) is None:
+        raise HTTPException(403, "only an application that keeps libraries")
+    try:
+        library_root(who, body.library, who)
+    except LibraryError as exc:
+        raise HTTPException(exc.status, str(exc)) from None
+    token, ttl = provider.confined_token(who, f"{who}/{body.library}")
+    return {"access_token": token, "expires_in": ttl}
+
+
 @app.get("/applications/spending")
 def spending(month: str | None = None, who: str = Depends(caller)) -> dict:
     """What each of an application's libraries spent in a month, for it to

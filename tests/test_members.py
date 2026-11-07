@@ -193,3 +193,24 @@ def test_the_application_is_asked_with_its_own_pair(data, monkeypatch):
     assert seen == {"url": f"https://floor.example/noesis/libraries/{LIB}", "auth": FLOOR["Authorization"]}
     assert found.admits("ann") and found.funded and found.name == "Book Club"
     assert members.group("thefloor", "nothing") is None
+
+
+def test_claude_is_handed_a_token_for_one_library_and_nothing_else(client, floor, data, monkeypatch):
+    _made(client)
+    assert client.post("/libraries", json={"name": "other-x2y3"}, headers=FLOOR).status_code == 201
+    answer = client.post("/applications/token", json={"library": LIB}, headers=FLOOR)
+    assert answer.status_code == 200 and answer.json()["expires_in"] == 3600
+    token = answer.json()["access_token"]
+    assert client.post("/applications/token", json={"library": "nothing"}, headers=FLOOR).status_code == 404
+    assert client.post("/applications/token", json={"library": LIB}, headers=ANN).status_code == 403
+
+    import asyncio
+    from noesis import mcp_server
+    from noesis.oauth import provider
+    loaded = asyncio.run(provider.load_access_token(token))
+    assert loaded is not None and loaded.subject == "thefloor"
+    monkeypatch.setattr(mcp_server, "get_access_token", lambda: loaded)
+    assert mcp_server._open_to(None) == [f"thefloor/{LIB}"]
+    # Not the file and run API, which takes the web client's tokens alone.
+    assert client.get(f"/libraries/thefloor/{LIB}/files",
+                      headers={"Authorization": f"Bearer {token}"}).status_code == 401
