@@ -551,6 +551,19 @@ def delete_file(
     return Response(status_code=204)
 
 
+@app.delete("/libraries/{user}/{library}")
+def delete_library(root: Path = Depends(library), who: str = Depends(caller)) -> Response:
+    """An application's library, deleted whole by the application (members.py):
+    The Floor's, a week after its channel was deleted. Nobody else deletes a
+    library here — a person's goes by the operator's hand."""
+    from noesis import members
+    if members.keeper(who) is None or _owner(root) != who:
+        raise HTTPException(403, "only the application whose library it is")
+    _writable(root)
+    shutil.rmtree(root)
+    return Response(status_code=204)
+
+
 # ---------------------------------------------------------------------------
 # Runs
 # ---------------------------------------------------------------------------

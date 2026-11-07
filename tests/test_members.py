@@ -214,3 +214,12 @@ def test_claude_is_handed_a_token_for_one_library_and_nothing_else(client, floor
     # Not the file and run API, which takes the web client's tokens alone.
     assert client.get(f"/libraries/thefloor/{LIB}/files",
                       headers={"Authorization": f"Bearer {token}"}).status_code == 401
+
+
+def test_the_application_deletes_its_library_and_nobody_else_does(client, floor, data):
+    _made(client)
+    assert client.delete(f"/libraries/thefloor/{LIB}", headers=ANN).status_code == 403
+    assert client.delete("/libraries/ann/notes", headers=ANN).status_code == 403
+    assert client.delete(f"/libraries/thefloor/{LIB}", headers=FLOOR).status_code == 204
+    assert not (data / "libraries" / "thefloor" / LIB).exists()
+    assert client.delete(f"/libraries/thefloor/{LIB}", headers=FLOOR).status_code == 404
