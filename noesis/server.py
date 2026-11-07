@@ -408,6 +408,15 @@ def tree_hashes(root: Path) -> dict[str, str]:
     return hashes
 
 
+def _titles(root: Path, rels) -> dict[str, str]:
+    """{rel_path: title} of the chats and documents among rels, as their heads
+    say: what an import named what it wrote, which a caller cannot tell from
+    the file name, a chat's title being a model's."""
+    from noesis.library import _extract_title, role_of
+    return {rel: _extract_title((root / rel).read_text(encoding="utf-8", errors="replace"), PurePosixPath(rel).stem)
+            for rel in rels if role_of(PurePosixPath(rel).name) in ("chat", "document")}
+
+
 def _file(root: Path, rel_path: str) -> Path:
     """A path within the library, refusing escapes, dotfiles and symlinks."""
     rel = PurePosixPath(rel_path)
@@ -688,11 +697,11 @@ async def _execute(root: Path, argv: list[str], events: asyncio.Queue,
             await events.put(("output", {"text": text}))
         exit_code = await process.wait()
         after = await asyncio.to_thread(tree_hashes, root)
-        await events.put(("done", {
-            "exit_code": exit_code,
-            "changed": {rel: sha for rel, sha in after.items() if before.get(rel) != sha},
-            "deleted": sorted(before.keys() - after.keys()),
-        }))
+        changed = {rel: sha for rel, sha in after.items() if before.get(rel) != sha}
+        done = {"exit_code": exit_code, "changed": changed, "deleted": sorted(before.keys() - after.keys())}
+        if argv[0] == "import":
+            done["titles"] = await asyncio.to_thread(_titles, root, changed)
+        await events.put(("done", done))
     except Exception as exc:  # the stream must end, whatever happened
         await events.put(("error", {"message": str(exc)}))
     finally:

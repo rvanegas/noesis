@@ -236,6 +236,7 @@ def test_import_writes_into_the_library_and_keeps_nothing_else(client, data):
     assert events[-1][0] == "done" and events[-1][1]["exit_code"] == 0
     changed = list(events[-1][1]["changed"])
     assert len(changed) == 1 and changed[0].endswith("-notes-on-quine.document.md")
+    assert events[-1][1]["titles"] == {changed[0]: "Notes on Quine"}
     assert "Two dogmas" in (data / "libraries/ann/philosophy" / changed[0]).read_text()
     assert set(Path(tempfile.gettempdir()).glob("noesis-import-*")) == staged
 
