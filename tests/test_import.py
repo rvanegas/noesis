@@ -204,7 +204,7 @@ def test_the_floor_becomes_a_chat_by_its_speakers(library, titles):
     assert main(["import", str(src)]) == 0
     chat = library / "2026" / "2026-10-30-bach-reads-kant.chat.md"
     text = chat.read_text()
-    assert text.startswith("\n# Bach Reads Kant\n2026-10-30\n\n## Rodrigo (A)\n\nAfternoon.\nI was there.\n")
+    assert text.startswith("\n# Bach Reads Kant\n2026-10-30\n\n*2:21\u202fPM–4:09\u202fPM*\n\n## Rodrigo (A)\n\nAfternoon.\nI was there.\n")
     assert "## Someone\n\nWho said that?" in text
     assert "## Golf\n\n> A paragraph of Bach.\n\n> And another." in text
     assert "## Claude\n\nBach reads Kant through computation." in text
@@ -217,7 +217,8 @@ def test_an_older_floor_text_is_dated_by_its_download(library, titles):
     src = library.parent / "The Floor — Reading Group — 2026-10-30 1609.txt"
     src.write_text(FLOOR.split("\n", 1)[1].replace("2026-10-30 ·", "Fri, Oct 30 ·"))
     assert main(["import", str(src)]) == 0
-    assert (library / "2026" / "2026-10-30-bach-reads-kant.chat.md").exists()
+    chat = library / "2026" / "2026-10-30-bach-reads-kant.chat.md"
+    assert "\n2026-10-30\n\n*2:21\u202fPM–4:09\u202fPM*\n\n## " in chat.read_text()
 
 
 def test_a_zip_imports_each_text_inside(library, titles):

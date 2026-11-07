@@ -2,8 +2,10 @@
 
 Tokens are minted by scripts/add_token.py; users.toml keeps their SHA-256,
 each with the user it belongs to, or "*" for a service (the nightly index).
-People who sign up by email are accounts.py's. A user reaches only their own libraries, $NOESIS_DATA_DIR/libraries/<user>/
-<library>; one write at a time per library, whoever writes.
+People who sign up by email are accounts.py's. A user reaches their own
+libraries, $NOESIS_DATA_DIR/libraries/<user>/<library>, and those an
+application keeps for a group they belong to (members.py); one write at a
+time per library, whoever writes.
 """
 
 from __future__ import annotations
@@ -59,10 +61,17 @@ def token_users() -> set[str]:
 
 
 def library_root(user: str, library: str, who: str) -> Path:
-    if who not in (user, "*"):
+    """A library's directory, for whoever may reach it: its owner, a service, or
+    — for an application's library (members.py) — a member of its group."""
+    from noesis import members
+    if who not in (user, "*") and members.keeper(user) is None:
         raise LibraryError(403, "not your library")
     if not (NAME_RE.match(user) and NAME_RE.match(library)):
         raise LibraryError(404, "no such library")
+    if who not in (user, "*"):
+        found = members.group(user, library)
+        if found is None or not found.admits(who):
+            raise LibraryError(403, "not your library")
     root = data_dir() / "libraries" / user / library
     if not root.is_dir():
         raise LibraryError(404, "no such library")
@@ -90,16 +99,26 @@ def create_library(who: str, name: str) -> str:
 
 
 def library_ids(who: str) -> list[str]:
-    """The ids of the libraries a caller reaches."""
+    """The ids of the libraries a caller reaches: their own, then their groups'."""
     base = data_dir() / "libraries"
     if not base.is_dir():
         return []
     users = [base / who] if who != "*" else sorted(p for p in base.iterdir() if p.is_dir())
-    return [
+    own = [
         f"{u.name}/{lib.name}"
         for u in users if u.is_dir()
         for lib in sorted(u.iterdir()) if lib.is_dir() and NAME_RE.match(lib.name)
     ]
+    return own + [i for i in library_names(who) if i not in own]
+
+
+def library_names(who: str) -> dict[str, str | None]:
+    """The groups' libraries a person reaches (members.py), id → the group's
+    name, which is what to show: the id's second half is only an id."""
+    from noesis import members
+    if who == "*" or members.keeper(who) is not None:
+        return {}
+    return {i: name for i, name in members.libraries_of(who).items() if (data_dir() / "libraries" / i).is_dir()}
 
 
 def lock_for(root: Path) -> asyncio.Lock:

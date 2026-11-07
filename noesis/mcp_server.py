@@ -40,6 +40,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 
 from noesis import library as lib
+from noesis import members
 from noesis.oauth import provider
 from noesis.service import LibraryError, library_ids, library_root
 
@@ -205,7 +206,7 @@ def _voiced(root: Path, name: str, text: str) -> str:
     llm = set(load_config().llm_names)
     if set(speakers) <= {PROMPT_HEADING} | llm:
         return text
-    mine = {PROMPT_HEADING, *accounts.speaker_names(root.parent.name)}
+    mine = {PROMPT_HEADING, *members.voices(root.parent.name, root.name)}
 
     def headings(group: list[str], one: str, many: str) -> str:
         return f"{', '.join(f'## {s}' for s in group)} {one if len(group) == 1 else many}"

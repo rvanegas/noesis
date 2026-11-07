@@ -48,6 +48,11 @@ the CLI), through `load_access_token`.
   the file and run API. Only the operator's mark lets a client have it:
   registration is open, and what a client says of itself there is not
   consulted, so claude.ai's connector can never be given it.
+- **An application that keeps libraries** (The Floor: a library per channel,
+  `thefloor/<handle>`; members.py) is a confidential client the operator has
+  marked with the URL it answers at (`scripts/client_libraries.py`). noesis
+  asks it who belongs, and it signs in as its libraries' owner, both with
+  its own id and secret as HTTP Basic.
 - **An application that keeps names** (The Floor: its people's usernames,
   which noesis decides; names.py) is a confidential client the operator has
   marked as one (`scripts/client_names.py`). It calls /names with its own id
@@ -196,6 +201,13 @@ class NoesisOAuthProvider:
         raw = self._load()["clients"].get(client_id)
         return bool(raw and raw.get("keeps_names") and raw.get("client_secret")
                     and secrets.compare_digest(raw["client_secret"].encode(), secret.encode()))
+
+    def library_keepers(self) -> dict[str, tuple[str, str]]:
+        """The clients marked as keeping libraries for their groups (members.py,
+        scripts/client_libraries.py): id → (the URL it answers at, its secret)."""
+        return {cid: (raw["keeps_libraries"], raw["client_secret"])
+                for cid, raw in self._load()["clients"].items()
+                if raw.get("keeps_libraries") and raw.get("client_secret")}
 
     def rename_grants(self, old: str, new: str) -> None:
         """Every token of `old`'s, for `new`: they keep working under the new name."""

@@ -202,7 +202,10 @@ def from_the_floor(text: str, name: PurePath, date: str) -> Imported | None:
             turns.append(("Someone" if who == "null" else who, rest))
     if not turns:
         return None
-    return Imported(channel, date, "chat", _turns_text(turns), untitled=True)
+    # The segment's hours, under the date: two segments of one day are told
+    # apart by nothing else, and the title is a model's.
+    hours = head[0].split(" · ", 1)[1].strip()
+    return Imported(channel, date, "chat", f"*{hours}*\n\n{_turns_text(turns)}", untitled=True)
 
 
 def _quoted(text: str) -> str:

@@ -77,9 +77,9 @@ def test_a_token_is_required(client):
 
 
 def test_each_user_sees_their_own_libraries(client):
-    assert client.get("/libraries", headers=ANN).json() == {"libraries": ["ann/philosophy"]}
+    assert client.get("/libraries", headers=ANN).json() == {"libraries": ["ann/philosophy"], "names": {}}
     service = {"Authorization": "Bearer service-token"}
-    assert client.get("/libraries", headers=service).json() == {"libraries": ["ann/philosophy", "bob/notes"]}
+    assert client.get("/libraries", headers=service).json() == {"libraries": ["ann/philosophy", "bob/notes"], "names": {}}
     assert client.get(f"{BASE}/files", headers={"Authorization": "Bearer bob-token"}).status_code == 403
     assert client.get(f"{BASE}/files", headers=service).status_code == 200
 
@@ -89,7 +89,7 @@ def test_a_user_creates_a_library_of_their_own(client, data):
     assert response.status_code == 201
     assert response.json() == {"library": "ann/drafts"}
     assert (data / "libraries/ann/drafts").is_dir()
-    assert client.get("/libraries", headers=ANN).json() == {"libraries": ["ann/drafts", "ann/philosophy"]}
+    assert client.get("/libraries", headers=ANN).json() == {"libraries": ["ann/drafts", "ann/philosophy"], "names": {}}
     files = client.get("/libraries/ann/drafts/files", headers=ANN).json()["files"]
     assert sorted(files) == ["KEYS.md", "SYSTEM_PROMPT.md"]
     assert (data / "libraries/ann/drafts/KEYS.md").read_text().startswith("## Plural\n")

@@ -431,6 +431,14 @@ def refusal(user: str) -> str | None:
     return None
 
 
+def spending_under(owner: str, month_: str) -> dict[str, float]:
+    """What each of an application's libraries spent in a month, by id (members.metered)."""
+    with connect() as db:
+        rows = db.execute("SELECT user, usd FROM spend WHERE month = ? AND user LIKE ? ESCAPE '\\'",
+                          (month_, owner.replace("_", "\\_") + "/%")).fetchall()
+    return {user: usd for user, usd in rows}
+
+
 def charge(user: str, usd: float) -> None:
     if usd <= 0:
         return

@@ -228,9 +228,10 @@ async function loadUsage() {
 
 async function loadLibraries() {
   const response = await api("/libraries");
-  const ids = (await response.json()).libraries;
+  const { libraries: ids, names = {} } = await response.json();
   const select = $("library");
-  select.replaceChildren(...ids.map((id) => new Option(id, id)));
+  // A group's library (The Floor's channel) by its group's name: its id says nothing.
+  select.replaceChildren(...ids.map((id) => new Option(names[id] ? `${names[id]} — ${id}` : id, id)));
   if (!ids.length) {
     library = null;
     return false;

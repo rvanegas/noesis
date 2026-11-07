@@ -318,7 +318,7 @@ def test_a_new_address_makes_a_free_account(library, live):
     me = httpx.get(f"{url}/me", headers=bearer).json()
     assert me["user"] == "ann1" and me["plan"] == "free" and me["email"] == "ann+noesis@elsewhere.example"
     assert me["spent_usd"] == 0 and me["allowance_usd"] == 1.0
-    assert httpx.get(f"{url}/libraries", headers=bearer).json() == {"libraries": []}
+    assert httpx.get(f"{url}/libraries", headers=bearer).json() == {"libraries": [], "names": {}}
     assert httpx.get(f"{url}/libraries/ann/philosophy/files", headers=bearer).status_code == 403
 
 
@@ -351,7 +351,7 @@ def test_the_web_client_signs_in_and_reaches_the_api(library, live):
         "grant_type": "authorization_code", "code": code, "redirect_uri": redirect,
         "client_id": "noesis-web", "code_verifier": verifier}).json()
     bearer = {"Authorization": f"Bearer {tokens['access_token']}"}
-    assert httpx.get(f"{url}/libraries", headers=bearer).json() == {"libraries": ["ann/philosophy"]}
+    assert httpx.get(f"{url}/libraries", headers=bearer).json() == {"libraries": ["ann/philosophy"], "names": {}}
     assert "2026/2026-10-27-essay.document.md" in httpx.get(
         f"{url}/libraries/ann/philosophy/files", headers=bearer).json()["files"]
     assert httpx.get(f"{url}/libraries/bob/notes/files", headers=bearer).status_code == 403

@@ -136,9 +136,24 @@ def healthz() -> dict:
 # Callers and libraries
 # ---------------------------------------------------------------------------
 
+def _keeping(authorization: str | None) -> str | None:
+    """An application that keeps libraries, signed in by its id and secret as
+    HTTP Basic: their owner (members.py). None for any other header."""
+    if not authorization or not authorization.startswith("Basic "):
+        return None
+    from noesis import members
+    owner = members.keeper_for_basic(authorization)
+    if owner is None:
+        raise HTTPException(401, "unknown application")
+    return owner
+
+
 async def caller(authorization: str | None = Header(default=None)) -> str:
-    """The user a bearer token belongs to, or "*" for a service."""
+    """The user a bearer token belongs to, "*" for a service, or the owner an
+    application that keeps libraries signs in as."""
     from noesis.oauth import API_CLIENTS, provider
+    if owner := _keeping(authorization):
+        return owner
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "a bearer token is required")
     token = await provider.load_access_token(authorization.removeprefix("Bearer "))
@@ -168,6 +183,8 @@ def library(user: str, library: str, who: str = Depends(caller)) -> Path:
 async def filer(authorization: str | None = Header(default=None)) -> str:
     """As caller, and also an application granted the import scope (oauth.IMPORT_SCOPE)."""
     from noesis.oauth import API_CLIENTS, provider
+    if owner := _keeping(authorization):
+        return owner
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "a bearer token is required")
     token = await provider.load_access_token(authorization.removeprefix("Bearer "))
@@ -187,7 +204,19 @@ def filed_library(user: str, library: str, who: str = Depends(filer)) -> Path:
 
 @app.get("/libraries")
 def libraries(who: str = Depends(caller)) -> dict:
-    return {"libraries": library_ids(who)}
+    # names: what to show for a group's library, whose id says nothing (members.py).
+    return {"libraries": library_ids(who), "names": service.library_names(who)}
+
+
+@app.get("/applications/spending")
+def spending(month: str | None = None, who: str = Depends(caller)) -> dict:
+    """What each of an application's libraries spent in a month, for it to
+    divide among whoever pays in each group (members.py)."""
+    from noesis import accounts, members
+    if members.keeper(who) is None:
+        raise HTTPException(403, "only an application that keeps libraries")
+    month = month or accounts.month()
+    return {"month": month, "libraries": accounts.spending_under(who, month)}
 
 
 # Any client's token: an application a person connected (The Floor, a
@@ -212,6 +241,7 @@ def me(token: AccessToken = Depends(anyone)) -> dict:
         # Which libraries are theirs, so an application can offer a choice of
         # them (The Floor's per-channel toggles); ids as /libraries gives them.
         "libraries": library_ids(who),
+        "library_names": service.library_names(who),
         "storage_bytes": limits.storage_bytes if free else None,
         "names": list(accounts.speaker_names(who)),
         "client": token.client_id,
@@ -383,18 +413,30 @@ def _owner(root: Path) -> str:
     return root.parent.name
 
 
+def _metered(root: Path) -> str:
+    """Whose meter and limits a library's runs and files count against: its
+    owner's, or for an application's group, the library's own (members.py)."""
+    from noesis import members
+    return members.metered(_owner(root), root.name)
+
+
 def _storable(root: Path, name: str, size: int, replacing: int = 0, types=None) -> None:
     from noesis import accounts
-    why = accounts.storage_refusal(_owner(root), name, size, replacing,
+    why = accounts.storage_refusal(_metered(root), name, size, replacing,
                                    types=types or accounts.FREE_TYPES)
     if why:
         raise HTTPException(413, why)
 
 
 def _may_run(root: Path, command: str) -> None:
-    """A free account's run needs a free slot, and allowance left if it can spend."""
-    from noesis import accounts
-    owner = _owner(root)
+    """A free account's run needs a free slot, and allowance left if it can spend;
+    a group's, somebody in it who pays."""
+    from noesis import accounts, members
+    if command in SPENDING and members.keeper(_owner(root)) is not None:
+        found = members.group(_owner(root), root.name)
+        if found is None or not found.funded:
+            raise HTTPException(402, "nobody in this library's group pays for model use")
+    owner = _metered(root)
     if not accounts.is_free(owner):
         return
     if command in SPENDING and (why := accounts.refusal(owner)):
@@ -568,7 +610,7 @@ def _stream(root: Path, argv: list[str], lock: asyncio.Lock, cleanup=None) -> St
     _runs.add(task)
     task.add_done_callback(_runs.discard)
     from noesis import accounts
-    if accounts.is_free(_owner(root)):
+    if accounts.is_free(_metered(root)):
         _free_runs.add(task)
         task.add_done_callback(_free_runs.discard)
 
@@ -593,9 +635,10 @@ async def _execute(root: Path, argv: list[str], events: asyncio.Queue,
         # NOESIS_RUN_LOCAL: this noesis is the server's, never a client of it.
         # NOESIS_ACCOUNT: whose allowance the run's model calls spend (accounts.py).
         # NOESIS_USER_NAMES: whose voice is whose in the owner's chats.
-        owner = _owner(root)
-        env.update(NOESIS_USER_NAMES=",".join(accounts.speaker_names(owner)), PYTHONUNBUFFERED="1", NOESIS_RUN_LOCAL="1",
-                   NOESIS_ACCOUNT=owner)
+        from noesis import members
+        voices = await asyncio.to_thread(members.voices, _owner(root), root.name)
+        env.update(NOESIS_USER_NAMES=",".join(voices), PYTHONUNBUFFERED="1", NOESIS_RUN_LOCAL="1",
+                   NOESIS_ACCOUNT=_metered(root))
         process = await asyncio.create_subprocess_exec(
             sys.executable, "-m", "noesis", "--lib", str(root), *argv,
             cwd=root, env=env,
