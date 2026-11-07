@@ -542,7 +542,7 @@ function draftPrompt(path) {
     `Using noesis, read the chat \`${path.split("/").pop()}\` in my library \`${library}\` (read_file).`,
     "Help me write its document: the position this conversation came to, in my voice, as I would hold it now.",
     "Where it is unclear what I hold, ask me rather than settling it yourself.",
-    "When we are done, give the whole document as Markdown starting with `# <title>`,",
+    "When we are done, give the whole document as a Markdown file starting with `# <title>`,",
     "so that I can import it into noesis as this chat's document.",
   ].join(" ");
 }
