@@ -748,6 +748,13 @@ function wire() {
 async function start() {
   wire();
   const query = new URLSearchParams(location.search);
+  // ?library=<id> — The Floor's *Open in noesis* on a channel's settings — is
+  // remembered as the library to show, so it outlasts a sign-in on the way;
+  // one this person does not reach is passed over like any remembered one.
+  if (query.has("library")) {
+    store(localStorage, LIBRARY_KEY, query.get("library"));
+    history.replaceState(null, "", REDIRECT);
+  }
   if (query.has("code") || query.has("error")) await finishSignIn(query);
   if (!(await accessToken())) {
     show(false);
