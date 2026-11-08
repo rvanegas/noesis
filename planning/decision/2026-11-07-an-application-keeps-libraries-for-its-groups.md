@@ -33,7 +33,8 @@ does not answer admits nobody (503) and lists nothing.
   out of its answer.
 - **Listed by the group's name.** `/libraries` and `/me` carry `names`, id →
   the group's current name, since the handle is only an id and survives the
-  channel's renames; the web client shows the name.
+  channel's renames; the web client lists the id, and heads a chosen
+  library with its group's name.
 
 ## Claude consults one library, by a token confined to it
 

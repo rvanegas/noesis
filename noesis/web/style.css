@@ -54,6 +54,7 @@ body {
 main { max-width: 56rem; margin: 0 auto; padding: 1rem; }
 
 h2 { font-size: 1rem; margin: 0; overflow-wrap: anywhere; }
+#group { margin-bottom: .75rem; }
 
 button, .button, select, input, textarea {
   font: inherit;

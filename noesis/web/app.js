@@ -51,6 +51,7 @@ let open = null;             // {path, sha, blob, modified}
 let running = false;
 let exitCode = 0;            // the last run's, -1 if it never finished
 let names = [];              // the chat headings, besides Prompt, that are the user
+let groups = {};             // library id → its group's name, for an application's library
 
 // ---------------------------------------------------------------------------
 // Storage that may be refused (a private window): the page works without it,
@@ -230,9 +231,9 @@ async function loadUsage() {
 async function loadLibraries() {
   const response = await api("/libraries");
   const { libraries: ids, names = {} } = await response.json();
+  groups = names;
   const select = $("library");
-  // A group's library (The Floor's channel) by its group's name: its id says nothing.
-  select.replaceChildren(...ids.map((id) => new Option(names[id] ? `${names[id]} — ${id}` : id, id)));
+  select.replaceChildren(...ids.map((id) => new Option(id, id)));
   if (!ids.length) {
     library = null;
     return false;
@@ -240,7 +241,15 @@ async function loadLibraries() {
   const remembered = recall(localStorage, LIBRARY_KEY);
   library = ids.includes(remembered) ? remembered : ids[0];
   select.value = library;
+  showGroup();
   return true;
+}
+
+// A group's library (The Floor's channel) is named by its group, which its id
+// only slugs: the name is shown once the library is chosen.
+function showGroup() {
+  $("group").textContent = groups[library] ?? "";
+  $("group").hidden = !groups[library];
 }
 
 // The chat headings that are the user's own voice, kept with their account.
@@ -713,6 +722,7 @@ function wire() {
   $("library").addEventListener("change", guard(async () => {
     library = $("library").value;
     store(localStorage, LIBRARY_KEY, library);
+    showGroup();
     closePanel("file");
     await loadFiles();
   }));
