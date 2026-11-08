@@ -876,27 +876,132 @@ def _get_summary(library_path: Path, rel_path: str, exclude: str | None = None) 
             elif rp is None:
                 related_lines.append(f"    {title}")
         if related_lines:
-            lines.append("  Related documents (call read_document on any of these to follow the reference chain):")
+            lines.append("  Related documents (call read_file on any of these to follow the reference chain):")
             lines.extend(related_lines)
     return "\n".join(lines)
 
 
-def read_document(library_path: Path, rel_path: str, exclude: str | None = None) -> str:
-    if exclude and rel_path == exclude:
-        return f"'{rel_path}' is the document currently being replied to and is not available."
-    target = (library_path / rel_path).resolve()
-    if not target.is_relative_to(library_path.resolve()):
-        return f"Error: path '{rel_path}' is outside the library."
-    if not target.exists():
-        resolved = resolve_title(library_path, rel_path)
-        if resolved is None:
-            return f"Error: document '{rel_path}' not found in library."
-        if exclude and resolved == exclude:
-            return f"'{resolved}' is the document currently being replied to and is not available."
-        target = (library_path / resolved).resolve()
-        if not target.is_relative_to(library_path.resolve()):
-            return f"Error: resolved path is outside the library."
-    return target.read_text(encoding="utf-8", errors="replace")
+# ---------------------------------------------------------------------------
+# Reading a file by what names it (read_file)
+# ---------------------------------------------------------------------------
+
+# Which of a stem's files its stem, slug or title reads: the user's writing
+# first, then what it rests on, then what noesis wrote of it.
+READ_ORDER = ("document", "chat", "source", "argument", "analysis", "review")
+
+
+def slug_of(name: str) -> str | None:
+    """A dated name's slug: the-eleatic-critique of 2026-06-29-the-eleatic-critique.chat.md."""
+    return name.split(".")[0][11:] if _DATED_NAME_RE.match(name) else None
+
+
+def _readable_files(library_path: Path) -> list[Path]:
+    """Every file of the library but its backups, state and dotfiles."""
+    found = []
+    for p in library_path.rglob("*"):
+        rel = p.relative_to(library_path)
+        if p.is_file() and not any(part.startswith(".") for part in rel.parts) and "REVISIONS" not in rel.parts[:-1]:
+            found.append(p)
+    return sorted(found)
+
+
+def _dated_files(library_path: Path) -> list[Path]:
+    return [p for p in _readable_files(library_path)
+            if slug_of(p.name) and not _UNSORTED_DIRS.intersection(p.relative_to(library_path).parts[:-1])]
+
+
+def slug_stems(library_path: Path) -> dict[str, set[str]]:
+    """Each slug of the library's dated files, with the stems that have it.
+
+    A slug names one stem, its companions sharing it: `check` and `index`
+    refuse a library where two dates have one, and `new` and `import` a file
+    that would make it so. read_file finds a file by its slug alone.
+    """
+    stems: dict[str, set[str]] = {}
+    for p in _dated_files(library_path):
+        stems.setdefault(slug_of(p.name), set()).add(p.name.split(".")[0])
+    return stems
+
+
+def slug_conflicts(library_path: Path) -> dict[str, list[str]]:
+    """The slugs more than one stem has, with those stems."""
+    return {slug: sorted(stems) for slug, stems in slug_stems(library_path).items() if len(stems) > 1}
+
+
+class NotFound(LookupError):
+    """No file of the library is what a query names."""
+
+
+_RELATED_LINE_RE = re.compile(r"^\|?\s*\*(.+)\*\s*$")
+
+
+def find_file(library_path: Path, query: str, exclude: str | None = None) -> tuple[Path, list[Path]]:
+    """The file a query names, and its companions: the other files of its stem.
+
+    A query is a file's name, its stem, its slug or its title (a `## Related`
+    line too), any directory before it ignored. A name is the file; a stem,
+    slug or title is its stem's first file in READ_ORDER. `exclude`, the
+    library path of the chat `reply` is answering, is never found.
+    """
+    from noesis.form import slugify
+    excluded = Path(exclude).name if exclude else None
+    files = _readable_files(library_path)
+    text = query.strip()
+    related = _RELATED_LINE_RE.match(text)
+    if related:
+        text = related.group(1).strip()
+    name = text.rsplit("/", 1)[-1]
+    if name == excluded:
+        raise NotFound(f"{name} is the chat being replied to")
+    exact = [p for p in files if p.name == name]
+    if exact:
+        group = [exact[0]]
+    else:
+        group = [p for p in files if p.name.split(".")[0] == name]
+    if not group:
+        slugs = {slugify(text), _normalize_to_slug(name)} - {""}
+        group = [p for p in _dated_files(library_path) if slug_of(p.name) in slugs]
+    if not group:
+        slug = slugify(text)
+        stems = {p.name.split(".")[0] for p in _dated_files(library_path) if p.suffix == ".md"
+                 and slugify(_extract_title(p.read_text(encoding="utf-8", errors="replace"), "")) == slug}
+        group = [p for p in _dated_files(library_path) if p.name.split(".")[0] in stems]
+    group = [p for p in group if p.name != excluded]
+    if not group:
+        raise NotFound(f"no file of the library is named or titled {query!r}")
+    stems = sorted({p.name.split(".")[0] for p in group})
+    if len(stems) > 1:
+        raise NotFound(f"{query!r} names {' and '.join(stems)}; a slug is one stem's (noesis check)")
+
+    def rank(p: Path) -> tuple[int, bool, str]:
+        role = role_of(p.name)
+        return (READ_ORDER.index(role) if role in READ_ORDER else len(READ_ORDER), p.suffix != ".md", p.name)
+
+    found = min(group, key=rank)
+    stem = found.name.split(".")[0]
+    companions = sorted((p for p in _dated_files(library_path)
+                         if p.name.split(".")[0] == stem and p != found and p.name != excluded),
+                        key=rank) if slug_of(found.name) else []
+    return found, companions
+
+
+def read_file(library_path: Path, query: str, exclude: str | None = None,
+              voiced: Callable[[str, str], str] = lambda name, text: text) -> str:
+    """A file as find_file finds it, after a line naming it and one naming its
+    companions; `voiced` (the MCP server's) may add to a chat's text."""
+    found, companions = find_file(library_path, query, exclude)
+    role = role_of(found.name)
+    head = [f"{found.name}" + (f", the {role}" if role else "")
+            + (": third-party material, not the user's writing; cite it under '## References'"
+               if role == "source" else "") + "."]
+    if companions:
+        head.append("Its companions, each read by its name: "
+                    + ", ".join(f"{p.name} ({role_of(p.name) or 'file'})" for p in companions) + ".")
+    try:
+        text = found.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return "\n".join([*head, f"It is not text (a {found.suffix} file); it can be linked from a chat, not read here."])
+    return "\n".join(head) + "\n\n" + voiced(found.name, text)
 
 
 def search_library(index: list[DocEntry], query: str) -> list[DocEntry]:
@@ -919,12 +1024,12 @@ LIBRARY_TOOLS_PROMPT = (
     "You have access to the Personal Library — a collection of the user's own writings. "
     "To find relevant material:\n"
     "1. Call lookup_term with a relevant index term. It returns matching Personal Library documents with summaries and related terms.\n"
-    "2. Call read_document when you need the full text of a specific Personal Library document.\n"
+    "2. Call read_file when you need the full text of a Personal Library document, or of any other file of the library: a document's source, argument or analysis. It takes a file's name, stem, slug or title, and says what else shares its stem.\n"
     "Follow the Related terms from each lookup to discover adjacent material, and look up all "
     "plausibly relevant terms before composing your reply. "
     "Documents have dates and views may evolve or be superseded; prefer more recent documents "
     "when there is tension between them, and flag apparent contradictions to the user.\n"
-    "Only include a Personal Library document in your reply if you have called read_document on it. "
+    "Only include a Personal Library document in your reply if you have called read_file on it. "
     "List any newly cited works under '## References' — additions only; do not repeat works already in the accumulated references. "
     "Do not insert a horizontal rule before these sections.\n\n"
     "List Personal Library documents under '## Related', one per line, formatted exactly as follows "
@@ -937,7 +1042,7 @@ LIBRARY_TOOLS_PROMPT = (
 LIBRARY_TOOLS = [
     {
         "name": "lookup_term",
-        "description": "Look up an index term and get the matching documents with their summaries, plus related terms to follow up on. Use this to discover relevant prior writing; use read_document when you need the full text of a specific piece.",
+        "description": "Look up an index term and get the matching documents with their summaries, plus related terms to follow up on. Use this to discover relevant prior writing; use read_file when you need the full text of a specific piece.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -950,17 +1055,17 @@ LIBRARY_TOOLS = [
         },
     },
     {
-        "name": "read_document",
-        "description": "Read the full content of a library document.",
+        "name": "read_file",
+        "description": "Read a file of the library in full, with the names of its companions (the files sharing its stem). A stem, slug or title reads its document, else its chat, source, argument, analysis or review, in that order.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "path": {
+                "name": {
                     "type": "string",
-                    "description": "Relative path or exact title of the document.",
+                    "description": "The file's name, its stem (2026-06-29-the-eleatic-critique), its slug (the-eleatic-critique) or its title; a directory before it is ignored.",
                 }
             },
-            "required": ["path"],
+            "required": ["name"],
         },
     },
 ]

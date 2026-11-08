@@ -49,8 +49,8 @@ INSTRUCTIONS = "\n\n".join([
     "These tools reach the user's noesis library: their own writing (chats, documents, "
     "argument files) and the sources they keep. Files are named "
     "<date>-<slug>.<role>.<ext>, the role one of chat, document, source, argument, "
-    "analysis, review; a name is unique across the library. Use list_documents to find "
-    "names and read_file to read one. Nothing in the library is written from here.",
+    "analysis, review; a name is unique across the library, and so is a slug. Use "
+    "list_documents to find names and read_file to read one. Nothing in the library is written from here.",
     lib.LIBRARY_TOOLS_PROMPT,
     "A chat's ## headings name its speakers. A chat with more speakers than Prompt and "
     "a model is read after a 'Voices:' line saying which headings are the user; any "
@@ -229,16 +229,6 @@ def _voiced(root: Path, name: str, text: str) -> str:
     return f"Voices: {'; '.join(parts)}.\n" + text
 
 
-def _find(root: Path, name: str) -> Path:
-    from noesis.cli import _library_files
-    if "/" in name or name.startswith("."):
-        raise ToolError(f"a file is named, not pathed: {name!r}")
-    found = [p for p in _library_files(root) if p.name == name]
-    if not found:
-        raise ToolError(f"no file named {name!r} in the library")
-    return found[0]
-
-
 # ---------------------------------------------------------------------------
 # Tools
 # ---------------------------------------------------------------------------
@@ -258,7 +248,7 @@ def guide(ctx: Context) -> str:
     if _restricted(ctx):
         which = (f"This conversation may read these libraries: {', '.join(open_ids)}. "
                  "list_documents and lookup_term search all of them and say which each "
-                 "result is in; read_document and read_file take that library."
+                 "result is in; read_file takes that library."
                  if open_ids else "No library is open to this conversation.")
     elif len(open_ids) > 1:
         which = (f"This user keeps several libraries: {', '.join(open_ids)}. Use only the ones "
@@ -307,32 +297,20 @@ def lookup_term(ctx: Context, term: str, library: str | None = None) -> str:
 
 
 @_tool
-def read_document(ctx: Context, path: str, library: str | None = None) -> str:
-    """Read an indexed document in full, by the path lookup_term gives (e.g.
-    2026/<name>). A chat of several people comes after a 'Voices:' line
-    saying which headings are the user. Cite a library document only after
-    reading it, under a '## Related' section, one per line as '| *Exact Title*'."""
-    root = _root(library, ctx)
-    text = lib.read_document(root, path)
-    target = (root / path).resolve()
-    if not (target.is_relative_to(root.resolve()) and target.is_file()):
-        found = lib.resolve_title(root, path)
-        if found is None:
-            return text
-        target = root / found
-    return _voiced(root, target.name, text)
-
-
-@_tool
 def read_file(ctx: Context, name: str, library: str | None = None) -> str:
-    """Read any text file of the library by its name. Files are named <date>-<slug>.<role>.<ext> (role: chat, document, source, argument, analysis or review; e.g. 2026-06-29-the-eleatic-critique.chat.md), kept in a folder per year, and a name is unique across the library. A source is
-    third-party material, not the user's writing, and is not indexed: it is
-    reached by name from the documents that cite it. An analysis or review is
-    written by noesis. A chat of several people comes after a 'Voices:' line
-    saying which headings are the user."""
+    """Read any file of the library in full: by its name (e.g.
+    2026-06-29-the-eleatic-critique.chat.md), its stem
+    (2026-06-29-the-eleatic-critique), its slug (the-eleatic-critique) or its
+    title, any directory before it ignored. A stem, slug or title reads its
+    document, else its chat, source, argument, analysis or review, in that
+    order; the result names the companions, the other files of its stem, each
+    read by its name. A source is third-party material, not the user's
+    writing. An analysis or review is written by noesis. A chat of several
+    people comes after a 'Voices:' line saying which headings are the user.
+    Cite a chat or document only after reading it, under a '## Related'
+    section, one per line as '| *Exact Title*'."""
     root = _root(library, ctx)
-    path = _find(root, name)
     try:
-        return _voiced(root, name, path.read_text(encoding="utf-8"))
-    except UnicodeDecodeError:
-        return f"{name} is not text (a {path.suffix} file); it can be linked from a chat, not read here."
+        return lib.read_file(root, name, voiced=lambda found, text: _voiced(root, found, text))
+    except lib.NotFound as exc:
+        raise ToolError(str(exc)) from None

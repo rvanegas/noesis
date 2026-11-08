@@ -791,17 +791,25 @@ def _collect_existing_slugs(extra_root: Path | None) -> set[str]:
 
 
 def run_new(title: str | None, edit: bool = False, library_path: Path | None = None) -> int:
+    from noesis.library import slug_of, slug_stems
     today = datetime.date.today().isoformat()
     existing = _collect_existing_slugs(library_path)
+    # A slug is one stem's, whatever its date (library.slug_stems).
+    held = {slug_of(stem): stem for stem in existing if slug_of(stem)}
+    if library_path and library_path.is_dir():
+        held.update({slug: min(stems) for slug, stems in slug_stems(library_path).items()})
     if title is None:
         base = "Untitled"
         candidate = base
         n = 2
-        while f"{today}-{slugify(candidate)}" in existing:
+        while slugify(candidate) in held:
             candidate = f"{base} {n}"
             n += 1
         title = candidate
     slug = slugify(title)
+    if slug in held and held[slug] != f"{today}-{slug}":
+        print(f"Error: the slug '{slug}' is {held[slug]}'s.")
+        return 1
     # In a library a new file goes where its name puts it: this year's directory.
     here = Path.cwd()
     if library_path and _is_within(here.resolve(), library_path.resolve()):
@@ -852,6 +860,10 @@ def run_check(path: Path) -> int:
     if misplaced_at:
         print(f"Error: '{path.name}' belongs in {misplaced_at.parent.name}/. Run: noesis fix {path.name}")
         return 1
+    others = _slug_holders(path)
+    if others:
+        print(f"Error: '{path.name}' has the slug of {', '.join(others)}; a slug is one stem's. Rename one.")
+        return 1
     transcript = parse_transcript(_read_file(path))
     assets_by_turn = collect_local_assets(transcript, path)
     asset_count = sum(len(assets) for assets in assets_by_turn.values())
@@ -870,6 +882,16 @@ def _misplaced(path: Path) -> Path | None:
     from noesis.library import misplaced
     library = load_config().library_path
     return misplaced(library, path) if library else None
+
+
+def _slug_holders(path: Path) -> list[str]:
+    """The other stems of the library with this file's slug."""
+    from noesis.library import slug_of, slug_stems
+    library = load_config().library_path
+    if not library or not slug_of(path.name) or not _is_within(path.resolve(), library.resolve()):
+        return []
+    stem = path.name.split(".")[0]
+    return sorted(slug_stems(library).get(slug_of(path.name), set()) - {stem})
 
 
 def _ask(question: str, yes: bool) -> bool:

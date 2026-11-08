@@ -187,3 +187,33 @@ def test_new_goes_into_the_year_directory(library, monkeypatch):
     made = list((library / year).glob("*-fresh-start.chat.md"))
     assert len(made) == 1
     assert main(["new", "Fresh", "Start"]) == 1  # taken
+
+
+# A slug is one stem's, whatever its date (library.slug_stems).
+
+def _two_dates_of_one_slug(library):
+    (library / "2025").mkdir()
+    (library / "2025" / "2025-04-25-old-roman.chat.md").write_text(DOC)
+    (library / "2025" / "2025-05-01-old-roman.source.pdf").write_bytes(b"%PDF")
+
+
+def test_check_refuses_a_slug_another_date_has(library, monkeypatch, capsys):
+    _two_dates_of_one_slug(library)
+    monkeypatch.chdir(library / "2025")
+    assert main(["check", "2025-04-25-old-roman.chat.md"]) == 1
+    assert "has the slug of 2025-05-01-old-roman" in capsys.readouterr().out
+
+
+def test_index_refuses_a_slug_on_two_dates(library, capsys):
+    _two_dates_of_one_slug(library)
+    assert main(["index", "--refs-only-all"]) == 1
+    assert "old-roman: 2025-04-25-old-roman, 2025-05-01-old-roman" in capsys.readouterr().out
+
+
+def test_new_refuses_a_slug_another_date_has(library, monkeypatch, capsys):
+    _two_dates_of_one_slug(library)
+    monkeypatch.chdir(library)
+    monkeypatch.delenv("EDITOR", raising=False)
+    monkeypatch.delenv("NOESIS_EDITOR", raising=False)
+    assert main(["new", "Old", "Roman"]) == 1
+    assert "the slug 'old-roman' is 2025-04-25-old-roman's" in capsys.readouterr().out

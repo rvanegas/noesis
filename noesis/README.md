@@ -115,7 +115,7 @@ noesis reply -v -l -t "sorting algorithms" conversation.md
 | `-v`, `--verbose` | Print progress messages and token usage / cost. |
 | `-W`, `--watch` | Poll the transcript once per second and reply whenever a pending turn appears. Useful when editing in another window. |
 | `-w`, `--web` | Enable Anthropic server-side web search and fetch. |
-| `-l`, `--library` | Give the model access to the library index tools (`lookup_term`, `read_document`). Requires `library_path` in config. |
+| `-l`, `--library` | Give the model access to the library index tools (`lookup_term`, `read_file`). Requires `library_path` in config. |
 | `-t`, `--term TERM` | Pre-look up a library index term and inject the results into context before the model runs. Requires `-l`. May be repeated. |
 | `--strict` | Abort if any `-t` term is not found in the index (default: warn and proceed). |
 
@@ -140,7 +140,7 @@ noesis check conversation.md
 
 Exits 0 on success, 1 on any error.
 
-In a library, names are unique, so a link names an asset bare (`[Parfit](2026-10-19-parfit2011.pdf)`) and finds it wherever the library keeps it, beside the transcript first; nothing outside the library is read. A dated file belongs in the year directory its name gives (`2026/2026-06-29-the-eleatic-critique.md`): `check` reports one that is elsewhere, and `noesis fix` moves it there with its companions.
+In a library, names are unique, and so are slugs (`check`, `index`, `new` and `import` refuse a slug another date has), so a link names an asset bare (`[Parfit](2026-10-19-parfit2011.pdf)`) and finds it wherever the library keeps it, beside the transcript first; nothing outside the library is read. A dated file belongs in the year directory its name gives (`2026/2026-06-29-the-eleatic-critique.md`): `check` reports one that is elsewhere, and `noesis fix` moves it there with its companions.
 
 ---
 
@@ -421,7 +421,7 @@ curl -N -H "Authorization: Bearer $T" -H "Content-Type: application/json" \
   https://noesis.rvanegas.co/libraries/rodvandur/philosophy/run
 ```
 
-**Claude as a client (MCP).** `/mcp` serves `reply`'s reading tools (`list_documents`, `lookup_term`, `read_document`, `read_file`) to MCP clients, and writes nothing: `edit_file` stays with `reply`. In claude.ai, edit with its own documents, and bring a conversation into the library with its export and `noesis import`. Claude Code sends the token as a header: `claude mcp add --transport http noesis https://noesis.rvanegas.co/mcp --header "Authorization: Bearer <token>"`. claude.ai's custom connector (Settings → Connectors → Add custom connector) needs only the URL, `https://noesis.rvanegas.co/mcp`: claude.ai registers itself with noesis's OAuth server and opens noesis's sign-in page, where you paste your noesis token once; claude.ai then holds short-lived OAuth tokens, never the noesis token. A second person gets a token of their own (`scripts/add_token.py <user>` on the server) and a library of their own.
+**Claude as a client (MCP).** `/mcp` serves `reply`'s reading tools (`list_documents`, `lookup_term`, `read_file`) to MCP clients, and writes nothing: `edit_file` stays with `reply`. In claude.ai, edit with its own documents, and bring a conversation into the library with its export and `noesis import`. Claude Code sends the token as a header: `claude mcp add --transport http noesis https://noesis.rvanegas.co/mcp --header "Authorization: Bearer <token>"`. claude.ai's custom connector (Settings → Connectors → Add custom connector) needs only the URL, `https://noesis.rvanegas.co/mcp`: claude.ai registers itself with noesis's OAuth server and opens noesis's sign-in page, where you paste your noesis token once; claude.ai then holds short-lived OAuth tokens, never the noesis token. A second person gets a token of their own (`scripts/add_token.py <user>` on the server) and a library of their own.
 
 `PUT …/files/{path}` creates a file with `If-None-Match: *` and replaces one with `If-Match: "<sha256>"`; `DELETE` takes `If-Match`. `run` streams `output` events and ends with `done`: the exit code and the files the run changed or deleted — and, for an import, `titles`, each chat or document it wrote by the title it was given, a chat from The Floor's being a model's.
 

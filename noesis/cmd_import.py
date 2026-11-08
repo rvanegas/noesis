@@ -30,6 +30,7 @@ name, and repaired as `noesis fix` would; a chat that still fails becomes a
 document of the same text, and only what fails even as a document is
 refused. An existing one is skipped unless --replace. A title another file
 of the library already has fails: `## Related` names a file by its title.
+So does a slug another date has: a slug is one stem's.
 """
 
 from __future__ import annotations
@@ -460,7 +461,7 @@ def settle(item: Imported, stem: str) -> tuple[Imported, str, list[str], str | N
 def run_import(paths: list[Path], only: str | None = None, replace: bool = False,
                document_of: str | None = None) -> int:
     from noesis.cli import _collect_existing_slugs, _is_within
-    from noesis.library import library_titles
+    from noesis.library import library_titles, slug_stems
     if document_of is not None:
         return _import_document_of(paths, document_of, replace)
     library = load_config().library_path
@@ -468,12 +469,14 @@ def run_import(paths: list[Path], only: str | None = None, replace: bool = False
     taken = _collect_existing_slugs(library if in_library else None)
     # By slug, as `## Related` resolves a title.
     titled = {slugify(title): rel for rel, title in library_titles(library).items()} if in_library else {}
+    # And by slug alone, whatever the date: a slug is one stem's (library.slug_stems).
+    slugged = {slug: min(stems) for slug, stems in slug_stems(library).items()} if in_library else {}
 
     ask = None
 
     def free(date: str, title: str) -> bool:
         slug = slugify(title)
-        return bool(slug) and slug not in titled and f"{date}-{slug}" not in taken
+        return bool(slug) and slug not in titled and slug not in slugged and f"{date}-{slug}" not in taken
 
     written = skipped = failed = 0
     for source in paths:
@@ -520,6 +523,10 @@ def run_import(paths: list[Path], only: str | None = None, replace: bool = False
                 print(f"failed   {target.name}: the title \"{item.title}\" is {Path(holder).name}'s")
                 failed += 1
                 continue
+            if slugged.get(slugify(item.title), stem) != stem:
+                print(f"failed   {target.name}: the slug {slugify(item.title)} is {slugged[slugify(item.title)]}'s")
+                failed += 1
+                continue
             here.mkdir(parents=True, exist_ok=True)
             tmp = target.with_name(f".{target.name}.import")
             tmp.write_text(text, encoding="utf-8")
@@ -527,6 +534,7 @@ def run_import(paths: list[Path], only: str | None = None, replace: bool = False
             taken.add(stem)
             if in_library:
                 titled[slugify(item.title)] = target.relative_to(library).as_posix()
+                slugged[slugify(item.title)] = stem
             print(f"imported {target.relative_to(library) if in_library else target.name}"
                   + (f" (as a chat, {demoted})" if demoted else ""))
             written += 1

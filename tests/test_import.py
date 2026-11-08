@@ -355,3 +355,24 @@ def test_document_of_takes_one_text(library, capsys):
     src.write_text("[]")
     assert main(["import", str(src), "--document-of", "2026/2026-05-01-on-names.chat.md"]) == 1
     assert "one Markdown or text file" in capsys.readouterr().out
+
+
+def test_a_slug_another_date_has_fails(library, capsys):
+    (library / "2026").mkdir()
+    (library / "2026" / "2026-01-01-on-names.source.pdf").write_bytes(b"%PDF")
+    src = library.parent / "2026-05-02-on-names.chat.md"
+    src.write_text("# On Names\n*2026-05-01*\n## Prompt\nWhat is a name?\n")
+    assert main(["import", str(src)]) == 1
+    assert "the slug on-names is 2026-01-01-on-names's" in capsys.readouterr().out
+    assert not (library / "2026" / "2026-05-01-on-names.chat.md").exists()
+
+
+def test_a_slug_another_date_has_is_asked_for_again(library, titles):
+    script, sent = titles
+    script.extend(["Bach Reads Kant", "Kant Reads Bach"])
+    (library / "2026").mkdir()
+    (library / "2026" / "2026-01-01-bach-reads-kant.source.pdf").write_bytes(b"%PDF")
+    src = library.parent / "anything.txt"
+    src.write_text(FLOOR)
+    assert main(["import", str(src)]) == 0
+    assert (library / "2026" / "2026-10-30-kant-reads-bach.chat.md").exists()

@@ -153,7 +153,7 @@ def _reply_anthropic(
     edit: bool = False,
 ) -> str:
     from noesis.anthropic_client import AnthropicChatClient
-    from noesis.library import LIBRARY_TOOLS, _get_summary, lookup_term, read_document, resolve_title
+    from noesis.library import LIBRARY_TOOLS, NotFound, _get_summary, lookup_term, read_file, resolve_title
 
     tools = None
     tool_executor = None
@@ -207,7 +207,7 @@ def _reply_anthropic(
         if preloaded:
             library_context += "\n\nPre-looked-up Personal Library terms:\n\n" + "\n\n".join(preloaded)
         if related_summaries:
-            library_context += "\n\nThe following Personal Library documents are already known to be relevant to this transcript. If the conversation asks you to read them, call read_document on each before composing your reply. Each summary lists the document's own Related documents — these reflect the author's own judgment of relevance and are a reliable starting point for following a reference chain; call read_document on any that seem pertinent. Use lookup_term to cast a wider net via semantic indexing, which is more thorough but less targeted:\n\n" + "\n\n".join(related_summaries)
+            library_context += "\n\nThe following Personal Library documents are already known to be relevant to this transcript. If the conversation asks you to read them, call read_file on each before composing your reply. Each summary lists the document's own Related documents — these reflect the author's own judgment of relevance and are a reliable starting point for following a reference chain; call read_file on any that seem pertinent. Use lookup_term to cast a wider net via semantic indexing, which is more thorough but less targeted:\n\n" + "\n\n".join(related_summaries)
 
         missing_terms: list[str] = []
 
@@ -221,10 +221,13 @@ def _reply_anthropic(
                 else:
                     status(f"lookup_term: {term}")
                 return result
-            if tool_name == "read_document":
-                path = str(tool_input.get("path", ""))
-                result = read_document(lib, path, exclude=exclude)
-                status(f"read_document: {Path(path).name}")
+            if tool_name == "read_file":
+                name = str(tool_input.get("name", ""))
+                try:
+                    result = read_file(lib, name, exclude=exclude)
+                except NotFound as exc:
+                    return f"Error: {exc}."
+                status(f"read_file: {name}")
                 return result
             return f"Unknown tool: {tool_name}"
 
@@ -267,10 +270,9 @@ def _reply_anthropic(
         lib_titles = {e.rel_path: e.title for e in _load_entries(config.library_path)}
 
     def _format_tool_annotation(tool_name: str, tool_input: dict[str, object]) -> str:
-        if tool_name == "read_document":
-            rel_path = str(tool_input.get("path", ""))
-            title = lib_titles.get(rel_path, Path(rel_path).stem)
-            return f"[read_document: {title}]"
+        if tool_name == "read_file":
+            name = str(tool_input.get("name", ""))
+            return f"[read_file: {lib_titles.get(name, name)}]"
         if tool_name == "lookup_term":
             return f"[lookup_term: {tool_input.get('term', '')}]"
         if tool_name == "edit_file":

@@ -11,7 +11,10 @@ from noesis.library import (
     DocEntry,
     build_index,
     parse_keys_md,
-    read_document,
+    NotFound,
+    find_file,
+    read_file,
+    slug_conflicts,
     render_manifest,
     search_library,
     write_index,
@@ -121,23 +124,90 @@ def test_parse_keys_md_group(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# read_document
+# read_file / find_file
 # ---------------------------------------------------------------------------
 
-def test_read_document_happy_path(tmp_path):
-    (tmp_path / "doc.md").write_text("hello world")
-    result = read_document(tmp_path, "doc.md")
-    assert result == "hello world"
+def _stem_files(root, stem="2026-06-29-the-eleatic-critique", roles=("chat", "document", "source", "argument")):
+    (root / "2026").mkdir(exist_ok=True)
+    for role in roles:
+        (root / "2026" / f"{stem}.{role}.md").write_text(f"\n# The Eleatic Critique\n2026-06-29\n\n{role} text\n")
 
 
-def test_read_document_path_traversal_rejected(tmp_path):
-    result = read_document(tmp_path, "../../etc/passwd")
-    assert result.startswith("Error:")
+@pytest.mark.parametrize("query", [
+    "2026-06-29-the-eleatic-critique", "the-eleatic-critique", "The Eleatic Critique",
+    "| *The Eleatic Critique*", "2026/the-eleatic-critique", "elsewhere/2026-06-29-the-eleatic-critique",
+])
+def test_read_file_a_stem_slug_or_title_reads_the_document(tmp_path, query):
+    _stem_files(tmp_path)
+    found, companions = find_file(tmp_path, query)
+    assert found.name == "2026-06-29-the-eleatic-critique.document.md"
+    assert [p.name.split(".")[1] for p in companions] == ["chat", "source", "argument"]
 
 
-def test_read_document_missing_file(tmp_path):
-    result = read_document(tmp_path, "nonexistent.md")
-    assert result.startswith("Error:")
+def test_read_file_follows_the_order_without_a_document(tmp_path):
+    _stem_files(tmp_path, roles=("argument", "source", "chat", "review"))
+    assert find_file(tmp_path, "the-eleatic-critique")[0].name.endswith(".chat.md")
+    _stem_files(tmp_path, "2026-07-01-zeno", roles=("argument", "source"))
+    assert find_file(tmp_path, "zeno")[0].name.endswith(".source.md")
+
+
+def test_read_file_by_name_reads_that_file_and_names_its_companions(tmp_path):
+    _stem_files(tmp_path)
+    text = read_file(tmp_path, "2026-06-29-the-eleatic-critique.argument.md")
+    head, body = text.split("\n\n", 1)
+    assert head.startswith("2026-06-29-the-eleatic-critique.argument.md, the argument.")
+    assert "2026-06-29-the-eleatic-critique.document.md (document)" in head
+    assert "argument text" in body
+
+
+def test_read_file_says_a_source_is_someone_elses(tmp_path):
+    _stem_files(tmp_path, roles=("source",))
+    assert "third-party material" in read_file(tmp_path, "the-eleatic-critique").split("\n", 1)[0]
+
+
+def test_read_file_finds_a_title_its_slug_has_left(tmp_path):
+    _stem_files(tmp_path, roles=("document",))
+    path = tmp_path / "2026" / "2026-06-29-the-eleatic-critique.document.md"
+    path.write_text("\n# Parmenides Answered\n2026-06-29\n\nprose\n")
+    assert find_file(tmp_path, "Parmenides Answered")[0] == path
+
+
+def test_read_file_undated_files_by_name(tmp_path):
+    (tmp_path / "KEYS.md").write_text("## Alias\n")
+    assert read_file(tmp_path, "KEYS.md").endswith("## Alias\n")
+
+
+def test_read_file_not_text(tmp_path):
+    _stem_files(tmp_path, roles=("document",))
+    (tmp_path / "2026" / "2026-06-29-the-eleatic-critique.source.pdf").write_bytes(b"%PDF\xff\xfe")
+    assert "not text" in read_file(tmp_path, "2026-06-29-the-eleatic-critique.source.pdf")
+
+
+def test_read_file_excludes_the_chat_being_replied_to(tmp_path):
+    _stem_files(tmp_path, roles=("chat", "argument"))
+    chat = "2026/2026-06-29-the-eleatic-critique.chat.md"
+    found, companions = find_file(tmp_path, "the-eleatic-critique", exclude=chat)
+    assert found.name.endswith(".argument.md") and companions == []
+    with pytest.raises(NotFound):
+        find_file(tmp_path, "2026-06-29-the-eleatic-critique.chat.md", exclude=chat)
+
+
+@pytest.mark.parametrize("query", ["../../etc/passwd", "nonexistent.md", ".noesis/manifest.json"])
+def test_read_file_finds_nothing_outside_the_library_or_hidden(tmp_path, query):
+    (tmp_path / ".noesis").mkdir()
+    (tmp_path / ".noesis" / "manifest.json").write_text("{}")
+    with pytest.raises(NotFound):
+        find_file(tmp_path, query)
+
+
+def test_a_slug_on_two_dates_is_a_conflict_read_file_refuses(tmp_path):
+    _stem_files(tmp_path, roles=("chat",))
+    _stem_files(tmp_path, "2026-07-01-the-eleatic-critique", roles=("document",))
+    assert slug_conflicts(tmp_path) == {
+        "the-eleatic-critique": ["2026-06-29-the-eleatic-critique", "2026-07-01-the-eleatic-critique"]}
+    with pytest.raises(NotFound, match="names"):
+        find_file(tmp_path, "the-eleatic-critique")
+    assert find_file(tmp_path, "2026-07-01-the-eleatic-critique")[0].name.endswith(".document.md")
 
 
 # ---------------------------------------------------------------------------

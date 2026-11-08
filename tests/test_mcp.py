@@ -99,14 +99,12 @@ def text(result) -> str:
 def test_tools_and_auth(library):
     root, url = library
     tools = {t.name: t.description for t in call(url, "ann", None, None).tools}
-    assert list(tools) == ["guide", "list_documents", "lookup_term", "read_document",
-                           "read_file"]
+    assert list(tools) == ["guide", "list_documents", "lookup_term", "read_file"]
     # claude.ai shows the model tool descriptions, not server instructions:
     # the guidance travels in guide, and the essentials in the descriptions.
     assert "<date>-<slug>.<role>.<ext>" in text(call(url, "ann", "guide", {}))
     assert "<date>-<slug>.<role>.<ext>" in tools["list_documents"]
-    assert "| *Exact Title*" in tools["read_document"]
-    assert "'Voices:'" in tools["read_document"] and "'Voices:'" in tools["read_file"]
+    assert "| *Exact Title*" in tools["read_file"] and "'Voices:'" in tools["read_file"]
     assert httpx.post(f"{url}/mcp", json={}).status_code == 401
     assert httpx.post(f"{url}/mcp", json={}, headers={"Authorization": "Bearer nope"}).status_code == 401
     meta = httpx.get(f"{url}/.well-known/oauth-protected-resource/mcp").json()
@@ -119,7 +117,8 @@ def test_reading(library):
     assert "Essay" in text(call(url, "ann", "list_documents", {"query": "prose"}))
     assert "Essay" in text(call(url, "ann", "lookup_term", {"term": "prose"}))
     assert "Prose here." in text(call(url, "ann", "read_file", {"name": "2026-10-27-essay.document.md"}))
-    assert "Prose here." in text(call(url, "ann", "read_document", {"path": "2026/2026-10-27-essay.document.md"}))
+    assert "Prose here." in text(call(url, "ann", "read_file", {"name": "2026/2026-10-27-essay.document.md"}))
+    assert "Prose here." in text(call(url, "ann", "read_file", {"name": "Essay"}))
     bad = call(url, "ann", "read_file", {"name": "../users.toml"})
     assert bad.is_error
 
@@ -552,15 +551,20 @@ def test_a_chat_of_several_people_says_whose_voice_each_heading_is(library):
     accounts.set_speaker_names("ann", ["Ann"])
     try:
         voices = "Voices: ## Ann is the user; ## Claude is a model; ## Bea is someone else.\n"
-        assert text(call(url, "ann", "read_file", {"name": "2026-10-30-lunch.chat.md"})) == voices + FLOOR
-        assert text(call(url, "ann", "read_document", {"path": "2026/2026-10-30-lunch.chat.md"})) == voices + FLOOR
+
+        def read(name):  # the file, after the lines naming it and its companions
+            head, body = text(call(url, "ann", "read_file", {"name": name})).split("\n\n", 1)
+            assert head.startswith(name.rsplit("/", 1)[-1].split(".")[0])
+            return body
+        assert read("2026-10-30-lunch.chat.md") == voices + FLOOR
+        assert read("2026/2026-10-30-lunch.chat.md") == voices + FLOOR
         assert "the sections headed ## Prompt, ## Ann are the user's own words" in text(call(url, "ann", "guide", {}))
         # Prompt and a model need no saying; nor does anything but a chat.
-        assert text(call(url, "ann", "read_file", {"name": "2025-04-25-old-roman.chat.md"})) == CHAT
-        assert text(call(url, "ann", "read_file", {"name": "2026-10-27-essay.document.md"})) == DOC
+        assert read("2025-04-25-old-roman.chat.md") == CHAT
+        assert read("2026-10-27-essay.document.md") == DOC
         accounts.set_speaker_names("ann", [])
-        assert text(call(url, "ann", "read_file", {"name": "2026-10-30-lunch.chat.md"})).startswith(
+        assert read("2026-10-30-lunch.chat.md").startswith(
             "Voices: no heading is the user; ## Claude is a model; ## Ann, ## Bea are other people.\n")
-        assert "Error" in text(call(url, "ann", "read_document", {"path": "../../bob/x.chat.md"}))
+        assert call(url, "ann", "read_file", {"name": "../../bob/x.chat.md"}).is_error
     finally:
         accounts.set_speaker_names("ann", [])

@@ -143,6 +143,14 @@ def run_index(refs_only: bool = False, reprocess_all: bool = False, verbose: boo
         print(f"Error: {len(unnamed)} dated file(s) without a role (.chat, .document, .source, …), e.g. {unnamed[0]}.")
         print("Name their roles first (scripts/migrate_layout.py does a whole library).")
         return 1
+    # A slug names one stem (library.slug_stems): read_file finds a file by it.
+    from noesis.library import slug_conflicts
+    clashes = slug_conflicts(lib_path)
+    if clashes:
+        slug, stems = sorted(clashes.items())[0]
+        print(f"Error: {len(clashes)} slug(s) on more than one date, e.g. {slug}: {', '.join(stems)}.")
+        print("Rename one of each; a slug is one stem's.")
+        return 1
 
     summarize = None
     total_cost = 0.0
