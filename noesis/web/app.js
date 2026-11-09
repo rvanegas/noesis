@@ -17,6 +17,9 @@
 
 const CLIENT_ID = "noesis-web";
 const AUTH = document.querySelector('meta[name="auth"]').content;
+// Roxana's web app, for an argument's own discussion (`roxana_web_url`; empty
+// where the server names none).
+const ROXANA = document.querySelector('meta[name="roxana"]').content.replace(/\/$/, "");
 const REDIRECT = `${location.origin}/web/`;
 const REFRESH_KEY = "noesis.refresh";
 const LIBRARY_KEY = "noesis.library";
@@ -424,6 +427,12 @@ async function openFile(path) {
   $("file-document").hidden = !path.endsWith(".chat.md")
     || files[path.replace(/\.chat\.md$/, ".document.md")] !== undefined;
   $("file-claude").hidden = $("file-document").hidden;
+  // An argument already sent says where, under its date (argue.Sent), and
+  // opens that discussion; sending it again is refused unless it changed.
+  const sent = path.endsWith(".argument.md") && ROXANA
+    ? $("file-text").textContent.match(/^Sent to Roxana: (\w+),/m) : null;
+  $("file-roxana").href = sent ? `${ROXANA}/discussions/${sent[1]}` : "";
+  $("file-roxana").hidden = !sent;
   $("file-note").textContent = setting ? SETTINGS.get(path) : note || "";
   $("file-note").hidden = !setting && !note;
   $("file-edit").hidden = !setting;

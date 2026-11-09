@@ -310,6 +310,8 @@ def test_the_web_client_is_served_with_its_policy(client):
     # It signs in at auth: the page names it, and the policy lets it call auth alone besides noesis.
     from noesis.bearer import auth_url
     assert f'<meta name="auth" content="{auth_url()}">' in page.text and "{{auth}}" not in page.text
+    # And names Roxana, where an argument already sent opens its discussion.
+    assert '<meta name="roxana" content="' in page.text and "{{roxana}}" not in page.text
     assert f"connect-src 'self' {auth_url()}" in page.headers["content-security-policy"]
     assert client.get("/web/app.js").headers["content-type"].startswith("text/javascript")
     assert client.get("/web/style.css").status_code == 200
@@ -332,3 +334,11 @@ def test_add_token(tmp_path):
     entry = tomllib.loads(users.read_text())["tokens"][0]
     assert entry == {"user": "ann", "sha256": _sha(token.encode()), "note": "Mac CLI"}
     assert users.stat().st_mode & 0o777 == 0o600
+
+
+def test_the_web_client_names_the_roxana_the_server_is_configured_with(client, monkeypatch, tmp_path):
+    import noesis.config
+    config = tmp_path / "roxana.toml"
+    config.write_text('roxana_web_url = "https://roxana.example"\n')
+    monkeypatch.setattr(noesis.config, "DEFAULT_CONFIG_PATH", config)
+    assert '<meta name="roxana" content="https://roxana.example">' in client.get("/web/").text

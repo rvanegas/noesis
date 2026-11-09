@@ -684,6 +684,8 @@ def run_serve(host: str, port: int) -> int:
 
 _WEB = Path(__file__).resolve().parent / "web"
 AUTH_PLACEHOLDER = "{{auth}}"
+# And Roxana's web app, where an argument already sent opens its discussion.
+ROXANA_PLACEHOLDER = "{{roxana}}"
 _WEB_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
               ".css": "text/css; charset=utf-8"}
 # The page holds a refresh token, so nothing but this origin's own files may
@@ -722,7 +724,9 @@ def web_file(name: str = "index.html") -> Response:
     from noesis.bearer import auth_url
     body = path.read_bytes()
     if path.suffix == ".html":
+        from noesis.config import load_config
         body = body.replace(AUTH_PLACEHOLDER.encode(), auth_url().encode())
+        body = body.replace(ROXANA_PLACEHOLDER.encode(), (load_config().roxana_web_url or "").encode())
     headers = {**_WEB_HEADERS, "Content-Security-Policy": _WEB_HEADERS["Content-Security-Policy"].format(auth=auth_url())}
     return Response(body, media_type=_WEB_TYPES[path.suffix], headers=headers)
 
