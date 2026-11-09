@@ -139,6 +139,10 @@ async function accessToken() {
   return null;
 }
 
+// Revokes this client's grant, then ends the browser's session at auth (its
+// /logout, which comes back here): otherwise the next sign-in would finish at
+// once on that session, as if nobody had signed out. Other applications
+// signed in through auth stay signed in.
 async function signOut() {
   const refresh = recall(localStorage, REFRESH_KEY);
   if (refresh) {
@@ -152,6 +156,8 @@ async function signOut() {
   store(localStorage, REFRESH_KEY, null);
   access = null;
   show(false);
+  const query = new URLSearchParams({ client_id: CLIENT_ID, post_logout_redirect_uri: REDIRECT });
+  location.assign(`${AUTH}/logout?${query}`);
 }
 
 // ---------------------------------------------------------------------------
