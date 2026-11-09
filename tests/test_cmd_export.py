@@ -274,15 +274,46 @@ def test_missing_config(argument_file, configured, capsys):
     assert "roxana_api_url" in capsys.readouterr().out
 
 
-def _exports(library: Path) -> dict:
-    return json.loads((library / ".noesis" / "exports.json").read_text(encoding="utf-8"))
+class NextRoxana(FakeRoxana):
+    def generate_discussion_id(self):
+        return "m7qp"
 
 
-def test_export_is_recorded(argument_file, configured):
+def _sent(argument_file: Path):
+    from noesis.argue import sent_of
+    return sent_of(argument_file.read_text(encoding="utf-8"))
+
+
+def _edit(argument_file: Path, old: str, new: str) -> None:
+    """A person's edit, leaving the rest of the file, the record among it, as it was."""
+    argument_file.write_text(argument_file.read_text(encoding="utf-8").replace(old, new), encoding="utf-8")
+
+
+def test_export_is_recorded_in_the_argument_file_under_its_date(argument_file, configured):
+    from noesis.argue import check_argument, markdown_to_argument
     assert _run_with(FakeRoxana(), argument_file) == 0
-    record = _exports(configured.library_path)[argument_file.name]
-    assert record["discussion_id"] == "k2rw"
-    assert "earlier" not in record
+    record = _sent(argument_file)
+    assert record.discussion_id == "k2rw" and record.earlier == ()
+    text = argument_file.read_text(encoding="utf-8")
+    assert text.startswith(f"\n# Sample Argument\n2026-07-08\n\n{record.line()}\n\n## Argument\n")
+    # Still an argument file, and still the same argument.
+    assert check_argument(text) == [] and len(markdown_to_argument(text)["argument"]) == 4
+    assert not (configured.library_path / ".noesis" / "exports.json").exists()
+
+
+def test_an_argument_extracted_again_is_sent_afresh(argument_file, configured):
+    assert _run_with(FakeRoxana(), argument_file) == 0
+    # Deleted and extracted again: a new file, with no record, whatever its path.
+    argument_file.write_text(ARGUMENT_TEXT.replace("Socrates will die.", "Socrates dies."), encoding="utf-8")
+    again = NextRoxana()
+    assert _run_with(again, argument_file) == 0
+    assert again.calls and _sent(argument_file).discussion_id == "m7qp" and _sent(argument_file).earlier == ()
+
+
+def test_a_record_that_cannot_be_read_is_named_by_check():
+    from noesis.argue import check_argument
+    assert "cannot read where it was sent" in check_argument(
+        "\n# T\n2026-07-08\n\nSent to Roxana: k2rw sometime\n\n## Argument\n- 1: P\n")[0]
 
 
 def test_unchanged_argument_names_its_discussion(argument_file, configured, capsys):
@@ -298,8 +329,7 @@ def test_unchanged_argument_names_its_discussion(argument_file, configured, caps
 
 def test_changed_argument_is_not_sent_without_new(argument_file, configured, capsys):
     assert _run_with(FakeRoxana(), argument_file) == 0
-    argument_file.write_text(ARGUMENT_TEXT.replace("Socrates will die.", "Socrates will die one day."),
-                             encoding="utf-8")
+    _edit(argument_file, "Socrates will die.", "Socrates will die one day.")
     capsys.readouterr()
     again = FakeRoxana()
     assert _run_with(again, argument_file) == 1
@@ -309,19 +339,14 @@ def test_changed_argument_is_not_sent_without_new(argument_file, configured, cap
     assert "https://roxana.example/discussions/k2rw" in out
 
 
-class NextRoxana(FakeRoxana):
-    def generate_discussion_id(self):
-        return "m7qp"
-
-
 def test_new_starts_another_discussion_and_keeps_the_first(argument_file, configured, capsys):
     assert _run_with(FakeRoxana(), argument_file) == 0
-    argument_file.write_text(ARGUMENT_TEXT.replace("Socrates will die.", "Socrates will die one day."),
-                             encoding="utf-8")
+    _edit(argument_file, "Socrates will die.", "Socrates will die one day.")
     assert _run_with(NextRoxana(), argument_file, new=True) == 0
-    record = _exports(configured.library_path)[argument_file.name]
-    assert record["discussion_id"] == "m7qp"
-    assert record["earlier"] == ["k2rw"]
+    record = _sent(argument_file)
+    assert record.discussion_id == "m7qp"
+    assert record.earlier == ("k2rw",)
+    assert argument_file.read_text(encoding="utf-8").count("Sent to Roxana:") == 1
     assert "https://roxana.example/discussions/m7qp" in capsys.readouterr().out
 
 
@@ -390,3 +415,27 @@ def test_in_a_person_s_library_the_owner_s_stances_and_goal_go(tmp_path, configu
     # Her goal is what she justifies, not the last proposition, which Claude may have drawn.
     assert [e["goal"] for e in layout["propositions"]] == [[], [], ["ann"], []]
     assert [e["accepted"] for e in layout["arguments"]] == [["ann"], []]
+
+
+def test_the_old_records_move_into_the_argument_files(tmp_path, capsys):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("migrate_exports", Path(__file__).parent.parent / "scripts" / "migrate_exports.py")
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    (tmp_path / "2026").mkdir()
+    argument = tmp_path / "2026" / "2026-07-08-sample-argument.argument.md"
+    argument.write_text(ARGUMENT_TEXT, encoding="utf-8")
+    (tmp_path / ".noesis").mkdir()
+    exports = tmp_path / ".noesis" / "exports.json"
+    exports.write_text(json.dumps({
+        "2026/2026-07-08-sample-argument.argument.md": {
+            "discussion_id": "d4r4", "exported_at": "2026-11-09", "digest": "4214a2e2465d2e6a", "earlier": ["5e48"]},
+        "2026/gone.argument.md": {"discussion_id": "x1y2", "exported_at": "2026-11-01", "digest": "ab"},
+    }), encoding="utf-8")
+    script.main([str(tmp_path)])
+    assert exports.exists() and argument.read_text(encoding="utf-8") == ARGUMENT_TEXT    # a dry run
+    script.main([str(tmp_path), "--apply"])
+    assert not exports.exists()
+    assert _sent(argument).line() == "Sent to Roxana: d4r4, 2026-11-09, digest 4214a2e2465d2e6a; earlier: 5e48"
+    assert "gone.argument.md is gone" in capsys.readouterr().out
+    script.main([str(tmp_path), "--apply"])                                               # nothing left

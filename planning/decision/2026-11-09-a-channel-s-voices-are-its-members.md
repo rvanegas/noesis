@@ -102,3 +102,16 @@ vanished. dianoia's prompt now forbids naming a participant in a proposition
 practice are written instead), the editing prompt says the same, and
 `argue` and `export` warn of any proposition that still names one
 (`argue.naming`), sending it all the same, since the person may mean it.
+
+## Where an argument was sent is in the argument file
+
+Changed later on 2026-11-09, at the prompt. Export kept what it sent in
+`.noesis/exports.json`, by the argument file's path, which the web client
+hides and sync never carries. Re-extracting an argument after the fixes above
+meant deleting the file and extracting it again at the same path, and export
+then refused it as "changed since", with nothing on screen saying why. The
+record is now a line in the argument file under its date (`argue.Sent`), seen
+where the argument is read, going with the file: an argument extracted again
+starts with none, and one edited after sending still keeps it and is still
+refused without `--new`. `scripts/migrate_exports.py` moved each library's
+entries into their files and deleted `exports.json`.

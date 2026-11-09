@@ -259,7 +259,7 @@ noesis export essay.md --new       # changed since it was sent: start another di
 noesis export essay.md -n          # show what would be sent, sending nothing
 ```
 
-A discussion in Roxana belongs to no one: anyone in it may accept or reject any proposition or argument. So noesis never replaces one. What it sent is recorded in the library's `.noesis/exports.json`; sending an unchanged argument again names the discussion it already has, and sending a changed one is refused until `--new`, which starts another discussion and keeps the earlier one's id.
+A discussion in Roxana belongs to no one: anyone in it may accept or reject any proposition or argument. So noesis never replaces one. What it sent is recorded in the argument file itself, a line under its date: `Sent to Roxana: d4r4, 2026-11-09, digest 4214a2e2465d2e6a; earlier: 5e48`. Sending an unchanged argument again names the discussion it already has; sending one edited since is refused until `--new`, which starts another discussion and keeps the earlier one's id on the same line. An argument deleted and extracted again starts with no line, and is sent as a new discussion without asking.
 
 ---
 

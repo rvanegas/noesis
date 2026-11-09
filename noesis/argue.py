@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -42,6 +43,50 @@ def _read_title_date(text: str) -> tuple[str, str]:
     if not date_str:
         raise ValueError("could not find date line in preamble")
     return title, date_str
+
+
+# Where an argument went, kept in the argument file under its date (export):
+# `Sent to Roxana: d4r4, 2026-11-09, digest 4214a2e2465d2e6a; earlier: 5e48`.
+# In the file rather than beside it so it is seen, travels with it and goes
+# with it: an argument extracted again starts with none.
+SENT_PREFIX = "Sent to Roxana:"
+_SENT_RE = re.compile(rf"^{re.escape(SENT_PREFIX)} (\w+), (\d{{4}}-\d{{2}}-\d{{2}}), digest ([0-9a-f]+)"
+                      r"(?:; earlier: (\w+(?:, \w+)*))?$")
+
+
+@dataclass(frozen=True)
+class Sent:
+    discussion_id: str
+    sent_at: str
+    digest: str
+    earlier: tuple[str, ...] = ()
+
+    def line(self) -> str:
+        earlier = f"; earlier: {', '.join(self.earlier)}" if self.earlier else ""
+        return f"{SENT_PREFIX} {self.discussion_id}, {self.sent_at}, digest {self.digest}{earlier}"
+
+
+def sent_of(text: str) -> Sent | None:
+    """Where the argument was sent, if its file says."""
+    for line in text.splitlines():
+        m = _SENT_RE.match(line.strip())
+        if m:
+            return Sent(m.group(1), m.group(2), m.group(3), tuple(m.group(4).split(", ")) if m.group(4) else ())
+    return None
+
+
+def with_sent(text: str, sent: Sent) -> str:
+    """The argument file saying where it was sent: its line replaced, or put under the date."""
+    lines = text.splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        if line.strip().startswith(SENT_PREFIX):
+            lines[i] = sent.line() + "\n"
+            return "".join(lines)
+    for i, line in enumerate(lines[:6]):
+        if re.match(r"^\d{4}-\d{2}-\d{2}$", line.strip()):
+            lines[i + 1:i + 1] = ["\n", sent.line() + "\n"]
+            return "".join(lines)
+    raise ValueError("could not find the date line to put the record under")
 
 
 def source_of(companion: Path) -> Path:
@@ -287,7 +332,10 @@ def check_argument(text: str) -> list[str]:
     if sections != ["## Argument"]:
         return [f"expected exactly one section, '## Argument'; found {sections or 'none'}"]
     numbers, decorated = _prop_numbers_in_sections(text)
-    errors = []
+    errors = [f"cannot read where it was sent: '{line.strip()}' "
+              f"(expected '{SENT_PREFIX} <id>, <yyyy-mm-dd>, digest <hex>[; earlier: <id>, …]')"
+              for line in text.splitlines()
+              if line.strip().startswith(SENT_PREFIX) and not _SENT_RE.match(line.strip())]
     for lineno, line in enumerate(text.splitlines(), 1):
         m = _ARGUMENT_RE.match(line.strip())
         if m:
