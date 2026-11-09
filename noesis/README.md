@@ -411,7 +411,7 @@ noesis serve                          # 127.0.0.1:8001
 noesis serve --host 0.0.0.0 --port 8001
 ```
 
-`GET /healthz` is open. Everything else needs `Authorization: Bearer <token>` (minted by `scripts/add_token.py`) and works on the caller's libraries, `$NOESIS_DATA_DIR/libraries/<user>/<library>`:
+`GET /healthz` is open. Everything else needs `Authorization: Bearer <token>`, either an OAuth access token from the web client, which signs in by an emailed code, or one minted by `scripts/add_token.py` for the CLI and scripts, and works on the caller's libraries, `$NOESIS_DATA_DIR/libraries/<user>/<library>`:
 
 ```bash
 curl -H "Authorization: Bearer $T" https://noesis.rvanegas.co/libraries
