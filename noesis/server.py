@@ -1,10 +1,12 @@
 """noesis's HTTP API, run by `noesis serve` (SERVER.md, Phase 2).
 
-Every route but /healthz and the web client's pages needs a bearer token:
-a minted one, which /data/users.toml maps by its SHA-256 to a user, or to "*"
-for a service (the nightly index); or an OAuth access token issued to noesis's
-own web client (oauth.API_CLIENTS). An application granted the import scope
-(The Floor; oauth.IMPORT_SCOPE) reaches /import and PUT /me/names alone.
+Every route but /healthz and the web client's pages needs a bearer token
+(bearer.py): a minted one, which /data/users.toml maps by its SHA-256 to a
+user, or to "*" for a service (the nightly index); or an access token from
+auth (`auth.rvanegas.co`, where people sign in) carrying `noesis:api` (the
+web client's). One carrying `noesis:import` (The Floor) reaches /import and
+PUT /me/names alone; an application's own token carrying `noesis:keep` makes
+it the owner of the libraries it keeps (members.py).
 A user reaches only their own libraries,
 /data/libraries/<user>/<library>. A library is files to sync and commands to
 run:
@@ -18,20 +20,11 @@ run:
 - DELETE …/files/{rel_path}                  If-Match: "<sha>"
 - POST   …/run {argv}                        server-sent events: output, then done
 - POST   …/import?filename=…[&only=…&replace=true&document_of=…]   the body is the file; as /run
-- GET    /me                                 the caller's account: plan, spend, storage, names,
-                                             and the client the token was issued to (any
-                                             client's token, not only the API's; CORS for
-                                             the browser apps that sign in here, Roxana)
+- GET    /me                                 the caller's account here: plan, spend, storage,
+                                             libraries, names, and the client the token was
+                                             issued to (any of auth's tokens for a person;
+                                             who they are is auth's own /me)
 - PUT    /me/names {names}                   the headings that are the caller's voice in chats
-
-The register of names (names.py) answers an application that keeps names
-(The Floor), by its client id and secret as HTTP Basic, on nobody's behalf:
-
-- POST   /names {email, suggest}             the address's name, reserved now if it has none
-- PUT    /names {email, user}                that name for the address: reserved, or its reservation renamed
-- PUT    /names/address {email, new_email}   a reservation moved to another address
-
-A noesis account's name and address are fixed (names.py): only a reservation changes.
 
 /run runs `noesis --lib <library> <argv>` in a subprocess from the library root:
 file arguments are names, which noesis resolves across the library. Its output
@@ -55,8 +48,8 @@ how many libraries, and a run that can spend (SPENDING) is refused once
 its allowance is spent (402); any run while free runs fill their slots (503). Every run spends for the
 library's owner, named to noesis in NOESIS_ACCOUNT, whose model clients charge it.
 
-/web/ serves noesis's web client (noesis/web/): static files, which sign in through
-noesis's OAuth server and then call this API like any other client.
+/web/ serves noesis's web client (noesis/web/): static files, which sign in at
+auth and then call this API like any other client.
 """
 
 from __future__ import annotations
@@ -74,7 +67,7 @@ from email.utils import formatdate
 from pathlib import Path, PurePosixPath
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from mcp.server.auth.provider import AccessToken
 from pydantic import BaseModel
 
@@ -136,40 +129,46 @@ def healthz() -> dict:
 # Callers and libraries
 # ---------------------------------------------------------------------------
 
-def _keeping(authorization: str | None) -> str | None:
-    """An application that keeps libraries, signed in by its id and secret as
-    HTTP Basic: their owner (members.py). None for any other header."""
-    if not authorization or not authorization.startswith("Basic "):
+def _token(authorization: str | None) -> AccessToken:
+    """The bearer token's meaning (bearer.py), or 401."""
+    from noesis import bearer
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "a bearer token is required")
+    token = bearer.access_token(authorization.removeprefix("Bearer "))
+    if token is None or not token.subject:
+        raise HTTPException(401, "unknown token")
+    return token
+
+
+def _keeping(token: AccessToken) -> str | None:
+    """An application that keeps libraries, signed in by its own token: their owner (members.py)."""
+    from noesis import bearer, members
+    if bearer.KEEP not in (token.scopes or []):
         return None
-    from noesis import members
-    owner = members.keeper_for_basic(authorization)
+    owner = members.keeper_for(token)
     if owner is None:
-        raise HTTPException(401, "unknown application")
+        raise HTTPException(401, "not an application that keeps libraries here")
     return owner
 
 
 async def caller(authorization: str | None = Header(default=None)) -> str:
     """The user a bearer token belongs to, "*" for a service, or the owner an
     application that keeps libraries signs in as."""
-    from noesis.oauth import API_CLIENTS, provider
-    if owner := _keeping(authorization):
+    from noesis import bearer
+    token = _token(authorization)
+    if owner := _keeping(token):
         return owner
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(401, "a bearer token is required")
-    token = await provider.load_access_token(authorization.removeprefix("Bearer "))
-    if token is None or token.client_id not in API_CLIENTS or not token.subject:
-        raise HTTPException(401, "unknown token")
+    if bearer.API not in (token.scopes or []):
+        raise HTTPException(401, "this token does not reach noesis's API")
     return token.subject
 
 
 async def anyone(authorization: str | None = Header(default=None)) -> AccessToken:
-    """As caller, but any client's token, identity-only ones too: for what a person may read about themselves."""
-    from noesis.oauth import provider
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(401, "a bearer token is required")
-    token = await provider.load_any_access_token(authorization.removeprefix("Bearer "))
-    if token is None or not token.subject:
-        raise HTTPException(401, "unknown token")
+    """As caller, but any token of a person's: for what they may read about themselves here."""
+    from noesis import bearer
+    token = _token(authorization)
+    if bearer.KEEP in (token.scopes or []):
+        raise HTTPException(401, "an application's own token is nobody's")
     return token
 
 
@@ -181,16 +180,13 @@ def library(user: str, library: str, who: str = Depends(caller)) -> Path:
 
 
 async def filer(authorization: str | None = Header(default=None)) -> str:
-    """As caller, and also an application granted the import scope (oauth.IMPORT_SCOPE)."""
-    from noesis.oauth import API_CLIENTS, provider
-    if owner := _keeping(authorization):
+    """As caller, and also a token granted the import scope (bearer.IMPORT)."""
+    from noesis import bearer
+    token = _token(authorization)
+    if owner := _keeping(token):
         return owner
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(401, "a bearer token is required")
-    token = await provider.load_access_token(authorization.removeprefix("Bearer "))
-    if token is None or not token.subject or not (
-            token.client_id in API_CLIENTS or provider.may_import(token)):
-        raise HTTPException(401, "unknown token")
+    if not {bearer.API, bearer.IMPORT} & set(token.scopes or []):
+        raise HTTPException(401, "this token does not reach noesis's API")
     return token.subject
 
 
@@ -217,15 +213,14 @@ def consult_token(body: ConsultedLibrary, who: str = Depends(caller)) -> dict:
     """A token for /mcp that reaches one of an application's libraries and
     nothing else, for Claude to consult it with (members.py): The Floor hands
     it to Anthropic's servers at a press of *Ask Claude*."""
-    from noesis import members
-    from noesis.oauth import provider
+    from noesis import bearer, members
     if members.keeper(who) is None:
         raise HTTPException(403, "only an application that keeps libraries")
     try:
         library_root(who, body.library, who)
     except LibraryError as exc:
         raise HTTPException(exc.status, str(exc)) from None
-    token, ttl = provider.confined_token(who, f"{who}/{body.library}")
+    token, ttl = bearer.confined_token(who, f"{who}/{body.library}")
     return {"access_token": token, "expires_in": ttl}
 
 
@@ -240,20 +235,17 @@ def spending(month: str | None = None, who: str = Depends(caller)) -> dict:
     return {"month": month, "libraries": accounts.spending_under(who, month)}
 
 
-# Any client's token: an application a person connected (The Floor, a
-# connector) may say whose library it reaches, which writes nothing; an
-# application that signs people in here (Roxana) learns who they are, and
-# dianoia, handed that token, which client holds it.
+# Any token of a person's: an application a person connected (The Floor, a
+# connector) may say whose library it reaches, which writes nothing. Who they
+# are, their address among it, is auth's /me.
 @app.get("/me")
 def me(token: AccessToken = Depends(anyone)) -> dict:
     from noesis import accounts
     who = token.subject
-    found = accounts.account(who)
     free = accounts.is_free(who)
     limits = accounts.limits()
     return {
         "user": who,
-        "email": found.email if found else None,
         "plan": accounts.plan_of(who),
         "month": accounts.month(),
         "spent_usd": round(accounts.spent(who), 4),
@@ -267,29 +259,6 @@ def me(token: AccessToken = Depends(anyone)) -> dict:
         "names": list(accounts.speaker_names(who)),
         "client": token.client_id,
     }
-
-
-# /me from the browser: only the origins of the apps that sign in here
-# (oauth.browser_origins), which the operator registers. The SDK's OAuth
-# routes (/token, /revoke) answer any origin themselves.
-_ME_CORS = {"Access-Control-Allow-Methods": "GET, OPTIONS",
-            "Access-Control-Allow-Headers": "authorization", "Access-Control-Max-Age": "600", "Vary": "Origin"}
-
-
-@app.middleware("http")
-async def me_cors(request: Request, call_next) -> Response:
-    origin = request.headers.get("origin")
-    if request.url.path != "/me" or not origin:
-        return await call_next(request)
-    from noesis.oauth import provider
-    allowed = origin in provider.browser_origins()
-    if request.method == "OPTIONS":
-        return Response(status_code=204, headers={**_ME_CORS, "Access-Control-Allow-Origin": origin} if allowed else {})
-    response = await call_next(request)
-    if allowed:
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Vary"] = "Origin"
-    return response
 
 
 class SpeakerNames(BaseModel):
@@ -306,71 +275,6 @@ def put_names(body: SpeakerNames, who: str = Depends(filer)) -> dict:
         return {"names": list(accounts.set_speaker_names(who, body.names))}
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from None
-
-
-def _naming(change):
-    """A change to the register, its refusals as sentences."""
-    from noesis import names
-    try:
-        return change()
-    except names.Taken as exc:
-        raise HTTPException(409, str(exc)) from None
-    except names.Invalid as exc:
-        raise HTTPException(400, str(exc)) from None
-
-
-async def name_keeper(authorization: str | None = Header(default=None)) -> str:
-    """The application calling the register, by its client id and secret (HTTP Basic)."""
-    import base64
-    import binascii
-    from noesis.oauth import provider
-    if not authorization or not authorization.startswith("Basic "):
-        raise HTTPException(401, "a client id and secret are required")
-    try:
-        client_id, _, secret = base64.b64decode(authorization.removeprefix("Basic ")).decode().partition(":")
-    except (binascii.Error, UnicodeDecodeError):
-        raise HTTPException(401, "a client id and secret are required") from None
-    if not provider.keeps_names(client_id, secret):
-        raise HTTPException(401, "not an application that keeps names")
-    return client_id
-
-
-class NameFor(BaseModel):
-    email: str
-    suggest: list[str] = []
-
-
-class NameChoice(BaseModel):
-    email: str
-    user: str
-
-
-class AddressMove(BaseModel):
-    email: str
-    new_email: str
-
-
-@app.post("/names")
-def post_name(body: NameFor, client: str = Depends(name_keeper)) -> dict:
-    """An address's name, and whether it is a noesis account's; reserved for it now if it had none."""
-    from noesis import names
-    user, account = _naming(lambda: names.name_for(body.email, client, body.suggest[:5]))
-    return {"user": user, "account": account}
-
-
-@app.put("/names")
-def put_name(body: NameChoice, client: str = Depends(name_keeper)) -> dict:
-    """Makes a name the address's: reserved if it has none, renamed everywhere if it has another."""
-    from noesis import names
-    return {"user": _naming(lambda: names.choose(body.email, body.user, client))}
-
-
-@app.put("/names/address")
-def put_name_address(body: AddressMove, client: str = Depends(name_keeper)) -> dict:
-    """A reservation moved to the address its person now signs in with at the application."""
-    from noesis import names
-    _naming(lambda: names.move(body.email, body.new_email))
-    return {"moved": True}
 
 
 class NewLibrary(BaseModel):
@@ -724,139 +628,21 @@ def run_serve(host: str, port: int) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Sign-in for noesis's OAuth server (oauth.py): an address, then the code mailed to it
-# ---------------------------------------------------------------------------
-
-TURNSTILE_VERIFY = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
-
-
-def _client_ip(request: Request) -> str:
-    """The person's address: Caddy's X-Forwarded-For, since only Caddy reaches the port."""
-    forwarded = request.headers.get("x-forwarded-for", "")
-    return forwarded.rsplit(",", 1)[-1].strip() or (request.client.host if request.client else "")
-
-
-def _human(form: dict, ip: str) -> bool:
-    """Cloudflare Turnstile's verdict on the page's challenge; no check without its keys."""
-    secret = os.environ.get("NOESIS_TURNSTILE_SECRET")
-    if not secret:
-        return True
-    from urllib.parse import urlencode
-    from urllib.request import urlopen
-    body = urlencode({"secret": secret, "response": form.get("cf-turnstile-response", ""),
-                      "remoteip": ip}).encode()
-    try:
-        with urlopen(TURNSTILE_VERIFY, data=body, timeout=10) as response:
-            return bool(json.loads(response.read()).get("success"))
-    except (OSError, ValueError):
-        return False
-
-
-def _login_page(request_id: str, sign_in, error: str = "") -> HTMLResponse:
-    from html import escape
-    from urllib.parse import urlparse
-    from noesis.oauth import IMPORT_SCOPE, WEB_CLIENT_ID, provider
-    client_name = escape(sign_in.client.client_name or "An application")
-    redirect_host = escape(urlparse(str(sign_in.params.redirect_uri)).hostname or "")
-    if sign_in.client.client_id == WEB_CLIENT_ID:
-        asks = "to keep your libraries: to read and change them, and to run noesis's commands on them"
-    elif provider.identity_only(sign_in.client.client_id):
-        asks = "to know who you are: your noesis user name and email address, not your libraries"
-    elif IMPORT_SCOPE in (sign_in.params.scopes or []) and provider.imports(sign_in.client.client_id):
-        asks = ("to read your noesis libraries, and to add conversations to them when you send one "
-                "— with the name you speak under there kept as yours")
-    else:
-        asks = "to read your noesis libraries"
-    note = f'<p class="error">{escape(error)}</p>' if error else ""
-    site_key = os.environ.get("NOESIS_TURNSTILE_SITE_KEY", "")
-    request_field = f'<input type="hidden" name="request" value="{escape(request_id)}">'
-    deny = '<button name="action" value="deny" formnovalidate class="quiet">Deny</button>'
-    if sign_in.code_sha:
-        form = f"""<p>A code is on its way to <b>{escape(sign_in.email)}</b>. It works for ten minutes.</p>
-<form method="post" action="/oauth/login">{request_field}
-<label>Code<br><input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{{6}}" maxlength="6" required autofocus></label>
-<button name="action" value="verify">Sign in</button><button name="action" value="restart" formnovalidate class="quiet">Use another address</button>{deny}
-</form>"""
-        script = ""
-    else:
-        challenge = f'<div class="cf-turnstile" data-sitekey="{escape(site_key)}"></div>' if site_key else ""
-        form = f"""<form method="post" action="/oauth/login">{request_field}
-<label>Your email address<br><input name="email" type="email" autocomplete="email" required autofocus></label>
-{challenge}
-<button name="action" value="send">Send me a code</button>{deny}
-</form>
-<p class="hint">No account yet? Signing in makes one. A free account keeps up to a few libraries,
-with a small monthly allowance for noesis's model commands.</p>"""
-        script = ('<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>'
-                  if site_key else "")
-    # No form-action: the answer to a sign-in is a redirect to the client.
-    csp = ("default-src 'none'; style-src 'unsafe-inline'; script-src https://challenges.cloudflare.com; "
-           "frame-src https://challenges.cloudflare.com; connect-src https://challenges.cloudflare.com; "
-           "frame-ancestors 'none'; base-uri 'none'")
-    return HTMLResponse(f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in to noesis</title>{script}
-<style>body{{font:16px/1.5 system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem}}
-input{{width:100%;font:inherit;padding:.4rem;box-sizing:border-box}}button{{font:inherit;margin:.8rem .6rem 0 0}}
-.error{{color:#b00}}.hint{{color:#555;font-size:.9rem}}.cf-turnstile{{margin-top:.8rem}}</style></head><body>
-<h1>Sign in to noesis</h1>
-<p><b>{client_name}</b> ({redirect_host}) asks {asks}.</p>
-{note}{form}
-</body></html>""", headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY",
-                            "Referrer-Policy": "no-referrer", "Content-Security-Policy": csp})
-
-
-@app.get("/oauth/login")
-def oauth_login(request: str) -> Response:
-    from noesis.oauth import provider
-    sign_in = provider.pending(request)
-    if sign_in is None:
-        return PlainTextResponse("This sign-in has expired; start again from the app.", status_code=400)
-    return _login_page(request, sign_in)
-
-
-@app.post("/oauth/login")
-async def oauth_login_submit(request: Request) -> Response:
-    from urllib.parse import parse_qs
-    from noesis.oauth import provider
-    form = {k: v[0] for k, v in parse_qs((await request.body()).decode("utf-8", "replace")).items()}
-    request_id, action = form.get("request", ""), form.get("action")
-    if action == "deny":
-        target = provider.refuse(request_id)
-        return RedirectResponse(target, status_code=302) if target else PlainTextResponse("Expired.", status_code=400)
-    sign_in = provider.pending(request_id)
-    if sign_in is None:
-        return PlainTextResponse("This sign-in has expired or had too many tries; start again.", status_code=400)
-    if action == "restart":
-        provider.restart(request_id)
-        return _login_page(request_id, sign_in)
-    if action == "send":
-        ip = _client_ip(request)
-        if not await asyncio.to_thread(_human, form, ip):
-            return _login_page(request_id, sign_in, error="The check that you are a person did not pass; try again.")
-        why = await asyncio.to_thread(provider.send_code, request_id, form.get("email", ""), ip)
-        return _login_page(request_id, sign_in, error=why or "")
-    if action == "verify":
-        target = provider.verify_code(request_id, form.get("code", ""))
-        if target is not None:
-            return RedirectResponse(target, status_code=302)
-        if provider.pending(request_id) is None:
-            return PlainTextResponse("Too many wrong codes; start again from the app.", status_code=400)
-        return _login_page(request_id, sign_in, error="That is not the code we sent.")
-    return PlainTextResponse("Unknown action.", status_code=400)
-
-# ---------------------------------------------------------------------------
-# The web client (noesis/web/): static, signed in through the OAuth server above
+# The web client (noesis/web/): static, signed in at auth
 # ---------------------------------------------------------------------------
 
 _WEB = Path(__file__).resolve().parent / "web"
+AUTH_PLACEHOLDER = "{{auth}}"
 _WEB_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
               ".css": "text/css; charset=utf-8"}
 # The page holds a refresh token, so nothing but this origin's own files may
 # run in it, and nobody may frame it.
+# It signs in at auth, so auth's /token and /revoke are the one other origin
+# it may call; index.html names auth for app.js (AUTH_PLACEHOLDER).
 _WEB_HEADERS = {
     "Content-Security-Policy": "default-src 'self'; img-src 'self' blob: data:; frame-ancestors 'none'; "
-                               "base-uri 'none'; form-action 'self'; object-src 'none'",
+                               "base-uri 'none'; form-action 'self'; object-src 'none'; "
+                               "connect-src 'self' {auth}",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "no-referrer",
     "Cache-Control": "no-cache",
@@ -882,7 +668,12 @@ def web_file(name: str = "index.html") -> Response:
     path = _WEB / name
     if "/" in name or name.startswith(".") or path.suffix not in _WEB_TYPES or not path.is_file():
         raise HTTPException(404, "Not Found")
-    return Response(path.read_bytes(), media_type=_WEB_TYPES[path.suffix], headers=_WEB_HEADERS)
+    from noesis.bearer import auth_url
+    body = path.read_bytes()
+    if path.suffix == ".html":
+        body = body.replace(AUTH_PLACEHOLDER.encode(), auth_url().encode())
+    headers = {**_WEB_HEADERS, "Content-Security-Policy": _WEB_HEADERS["Content-Security-Policy"].format(auth=auth_url())}
+    return Response(body, media_type=_WEB_TYPES[path.suffix], headers=headers)
 
 
 # Last, so the API's own routes answer first.

@@ -411,7 +411,7 @@ noesis serve                          # 127.0.0.1:8001
 noesis serve --host 0.0.0.0 --port 8001
 ```
 
-`GET /healthz` is open. Everything else needs `Authorization: Bearer <token>`, either an OAuth access token from the web client, which signs in by an emailed code, or one minted by `scripts/add_token.py` for the CLI and scripts, and works on the caller's libraries, `$NOESIS_DATA_DIR/libraries/<user>/<library>`:
+`GET /healthz` is open. Everything else needs `Authorization: Bearer <token>`, either an access token from auth (`auth.rvanegas.co`, where the web client signs in by an emailed code) carrying `noesis:api`, or one minted by `scripts/add_token.py` for the CLI and scripts, and works on the caller's libraries, `$NOESIS_DATA_DIR/libraries/<user>/<library>`:
 
 ```bash
 curl -H "Authorization: Bearer $T" https://noesis.rvanegas.co/libraries
@@ -421,7 +421,7 @@ curl -N -H "Authorization: Bearer $T" -H "Content-Type: application/json" \
   https://noesis.rvanegas.co/libraries/rodvandur/philosophy/run
 ```
 
-**Claude as a client (MCP).** `/mcp` serves `reply`'s reading tools (`list_documents`, `lookup_term`, `read_file`) to MCP clients, and writes nothing: `edit_file` stays with `reply`. In claude.ai, edit with its own documents, and bring a conversation into the library with its export and `noesis import`. Claude Code sends the token as a header: `claude mcp add --transport http noesis https://noesis.rvanegas.co/mcp --header "Authorization: Bearer <token>"`. claude.ai's custom connector (Settings → Connectors → Add custom connector) needs only the URL, `https://noesis.rvanegas.co/mcp`: claude.ai registers itself with noesis's OAuth server and opens noesis's sign-in page, where you give your email address and then the code mailed to it (the first sign-in makes your account); claude.ai then holds short-lived OAuth tokens. Anyone may sign up this way, and gets libraries of their own.
+**Claude as a client (MCP).** `/mcp` serves `reply`'s reading tools (`list_documents`, `lookup_term`, `read_file`) to MCP clients, and writes nothing: `edit_file` stays with `reply`. In claude.ai, edit with its own documents, and bring a conversation into the library with its export and `noesis import`. Claude Code sends the token as a header: `claude mcp add --transport http noesis https://noesis.rvanegas.co/mcp --header "Authorization: Bearer <token>"`. claude.ai's custom connector (Settings → Connectors → Add custom connector) needs only the URL, `https://noesis.rvanegas.co/mcp`: noesis names auth as its authorization server, so claude.ai registers itself there and opens auth's sign-in page, where you give your email address and then the code mailed to it (the first sign-in makes your account, the same one for noesis, Roxana and The Floor); claude.ai then holds short-lived tokens that reach `/mcp` alone. Anyone may sign up this way, and gets libraries of their own.
 
 `PUT …/files/{path}` creates a file with `If-None-Match: *` and replaces one with `If-Match: "<sha256>"`; `DELETE` takes `If-Match`. `run` streams `output` events and ends with `done`: the exit code and the files the run changed or deleted — and, for an import, `titles`, each chat or document it wrote by the title it was given, a chat from The Floor's being a model's.
 

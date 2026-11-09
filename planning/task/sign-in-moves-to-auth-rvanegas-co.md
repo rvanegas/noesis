@@ -10,7 +10,7 @@ noesis's part is Phase 1. The provider in `oauth.py`, `/oauth/login`,
 `reservations` tables, `sends`, `create_account` and user-name derivation),
 `names.py` with the `/names` routes, and the operator scripts for them
 (`add_client.py`, `client_names.py`, `reserve_names.py`, `link_accounts.py`,
-the account half of `rename_user.py`) move to `~/src/auth`, removed here
+the account half of `rename_user.py`) move to `~/src/dianoia-auth`, removed here
 completely. noesis keeps billing (plan, allowance raises, spend), speaker
 names, its minted `users.toml` tokens and `confined_token`.
 
@@ -23,3 +23,11 @@ that keeps libraries sends a `client_credentials` JWT instead of HTTP Basic
 in at auth as an ordinary public client. **What breaks:** every client
 re-pointed at once, by the cut-over the design orders; `oauth.json` and the
 identity tables are carried to auth by the migration script, then dropped.
+
+**Built 2026-11-08, not deployed:** noesis's branch `auth-resource-server`
+(`bearer.py`; `scripts/migrate_to_auth.py`, run after auth's
+`migrate_from_noesis.py` and before this noesis serves), and auth itself in
+`~/src/dianoia-auth`. Left: the cut-over, which needs auth's hostname, mail and
+secrets on `commons`, noesis's own client at auth (`NOESIS_AUTH_CLIENT_ID`,
+`NOESIS_AUTH_CLIENT_SECRET`, `--credentials thefloor:members`), and The Floor
+able to check noesis's token when asked who belongs.

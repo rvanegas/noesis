@@ -30,8 +30,7 @@ def main(argv: list[str] | None = None) -> int:
         print("no libraries")
         return 0
     for user in users:
-        found = accounts.account(user.name)
-        print(f"{user.name}  {found.email}" if found else user.name)
+        print(f"{user.name}  {accounts.plan_of(user.name)}")
         libraries = [p for p in sorted(user.iterdir()) if p.is_dir() and service.NAME_RE.match(p.name)]
         if not libraries:
             print("  (no library)")

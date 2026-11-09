@@ -8,19 +8,20 @@ says who belongs**: noesis asks it rather than being told, so the two can
 never disagree about who may read, and somebody leaving loses the library at
 the next asking with nothing sent.
 
-- **An application keeps libraries** once the operator marks its client with
-  the URL it answers at (`scripts/client_libraries.py`), which also makes
-  `libraries/<client id>/`, so the name is taken in the register
-  (`accounts._taken`) and no person can sign up as it. Its client id is the
-  owner's name.
-- **noesis asks two questions**, with the application's own id and secret as
-  HTTP Basic, the pair it presents here: `GET <url>/noesis/libraries/<name>`,
-  the group's name and members — each by user name, whether they pay, and the
+- **An application keeps libraries** once the operator marks its client id
+  here with the URL it answers at (`scripts/client_libraries.py`, kept in
+  $NOESIS_DATA_DIR/keepers.json), which also makes `libraries/<client id>/`;
+  auth holds the name, so no person can sign up as it (its `held` names).
+  Its client id is the owner's name.
+- **noesis asks two questions**, with its own token from auth
+  (`bearer.own_token`, scope `<client id>:members`, which the application
+  checks against auth's keys): `GET <url>/noesis/libraries/<name>`, the
+  group's name and members — each by user name, whether they pay, and the
   name they go by in its transcripts — and `GET <url>/noesis/users/<user>/
   libraries`, the groups somebody belongs to. Answers are kept a minute.
-- **The application itself** signs in with the same pair as HTTP Basic, and
-  is then the owner (`caller`): it makes its groups' libraries and files into
-  them.
+- **The application itself** signs in with a token of its own from auth
+  (client_credentials, scope `noesis:keep`), and is then the owner
+  (`caller`): it makes its groups' libraries and files into them.
 - **Spending** is metered per library, as `<owner>/<library>`, for the
   application to divide among whoever pays (`GET /applications/spending`);
   the owner has no account, so nothing caps it here, and a group with nobody
@@ -31,9 +32,7 @@ the next asking with nothing sent.
 
 from __future__ import annotations
 
-import base64
 import json
-import secrets
 import time
 import urllib.error
 import urllib.parse
@@ -53,7 +52,6 @@ _cache: dict[tuple[str, ...], tuple[float, object]] = {}
 class Keeper:
     owner: str  # the client id, and the libraries' owner
     url: str
-    secret: str
 
 
 @dataclass(frozen=True)
@@ -76,32 +74,55 @@ class Group:
         return any(m.pays for m in self.members)
 
 
+def _path():
+    from noesis import service
+    return service.data_dir() / "keepers.json"
+
+
 def keepers() -> dict[str, Keeper]:
     """The applications the operator marked as keeping libraries, by owner."""
-    from noesis.oauth import provider
-    return {cid: Keeper(cid, url.rstrip("/"), secret) for cid, (url, secret) in provider.library_keepers().items()}
+    try:
+        marked = json.loads(_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {cid: Keeper(cid, url.rstrip("/")) for cid, url in marked.items()}
+
+
+def mark(client_id: str, url: str | None) -> None:
+    """Marks an application as keeping libraries at a URL, or (None) unmarks it."""
+    marked = {k.owner: k.url for k in keepers().values()}
+    if url is None:
+        marked.pop(client_id, None)
+    else:
+        marked[client_id] = url.rstrip("/")
+    path = _path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(".keepers.json.tmp")
+    tmp.write_text(json.dumps(marked, indent=2, sort_keys=True), encoding="utf-8")
+    tmp.replace(path)
 
 
 def keeper(owner: str) -> Keeper | None:
     return keepers().get(owner)
 
 
-def keeper_for_basic(authorization: str) -> str | None:
-    """The owner an application's HTTP Basic credentials sign in as, or None."""
-    try:
-        cid, _, secret = base64.b64decode(authorization.removeprefix("Basic ").strip()).decode().partition(":")
-    except ValueError:
+def keeper_for(token) -> str | None:
+    """The owner an application's own token (bearer.KEEP) signs in as, or None."""
+    from noesis.bearer import KEEP
+    if KEEP not in (token.scopes or []) or token.subject != token.client_id:
         return None
-    found = keeper(cid)
-    if found is None or not secrets.compare_digest(found.secret.encode(), secret.encode()):
-        return None
-    return found.owner
+    found = keeper(token.client_id)
+    return found.owner if found is not None else None
 
 
 def _get(found: Keeper, path: str) -> dict | None:
     """The application's answer, None for a 404; LibraryError when it cannot be asked."""
-    basic = base64.b64encode(f"{found.owner}:{found.secret}".encode()).decode()
-    request = urllib.request.Request(found.url + path, headers={"Authorization": f"Basic {basic}"})
+    from noesis import bearer
+    try:
+        token = bearer.own_token(f"{found.owner}:members")
+    except (OSError, ValueError, KeyError):
+        raise LibraryError(503, "noesis could not get its own token from auth; try again in a minute") from None
+    request = urllib.request.Request(found.url + path, headers={"Authorization": f"Bearer {token}"})
     try:
         with urllib.request.urlopen(request, timeout=10) as response:
             return json.loads(response.read().decode())

@@ -1,9 +1,13 @@
-"""The people who sign in to noesis by email, and what each may spend (SERVER.md, Phase 6).
+"""What each person may spend and store at noesis (SERVER.md, Phase 6).
 
-Sign-up is open: an emailed code signs a person in, and the first sign-in
-makes their account, its user name derived from the address. What an open
-account could cost the operator is capped instead:
+Who a person is is auth's (`auth.rvanegas.co`, since 2026-11-08): they sign
+in there, and noesis knows them by the user name in its tokens (bearer.py).
+What they may do here is noesis's, kept per user name:
 
+- **A plan.** Anybody signed in is on the free plan until the operator says
+  otherwise (scripts/accounts.py); a user with a minted users.toml token (the
+  Mac's CLI, the nightly service) and an application keeping libraries are
+  the operator's, unlimited. The meter runs for everyone.
 - **Model use** is metered in dollars, per user and calendar month (UTC):
   every Anthropic call by its tokens at list price, every dianoia call at a
   flat rate. A free account has a small monthly allowance, and all free
@@ -14,25 +18,14 @@ account could cost the operator is capped instead:
   raises add.
 - **Storage:** a free account keeps a few libraries, a bounded total, files
   of a bounded size and of the types noesis reads.
-- **Sign-in mail** is rate-limited per address, per client address and in all.
-
-Each user also keeps the names they go by in chats (speaker_names): the
-headings, besides "Prompt", that are their own voice. Every run in their
-libraries and every MCP read of them labels voices by these; any user has
-them, an operator's as much as an account's.
-
-Each account's user name is also its entry in the register of names
-(names.py): an application with accounts of its own (The Floor) reserves a
-person's name here before they have an account, and their first sign-in makes
-the account under it.
-
-A user with no account here was made by the operator (a users.toml token:
-the Mac's CLI, the nightly service) and is unlimited; so is an account whose
-plan is "unlimited" (scripts/accounts.py). The meter runs for everyone.
+- **Speaker names** (speaker_names): the chat headings, besides "Prompt",
+  that are a user's own voice. Every run in their libraries and every MCP
+  read of them labels voices by these.
 
 Kept in $NOESIS_DATA_DIR/accounts.db (SQLite, mode 600), which `noesis` itself
 writes to from a run: the server names the library's owner in NOESIS_ACCOUNT,
-and the model clients charge that user.
+and the model clients charge that user. A user has a row once the operator
+gives them a plan or a raise; without one, they are free (or the operator's).
 """
 
 from __future__ import annotations
@@ -52,26 +45,13 @@ FREE = "free"
 UNLIMITED = "unlimited"
 PLANS = (FREE, UNLIMITED)
 
-# Sign-in mail: (key prefix, window in seconds, most sends in it).
-SEND_LIMITS = (("email", 60 * 60, 5), ("ip", 60 * 60, 10), ("all", 24 * 60 * 60, 300))
-
 # What a free account may upload: the types noesis reads (assets.py). What
 # /import takes is cmd_import.IMPORTABLE.
 FREE_TYPES = frozenset({".md", ".markdown", ".txt", ".rtf", ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp"})
 
-_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 # A name is a speaker heading, so any words; NOESIS_USER_NAMES is comma-separated.
 SPEAKER_NAME_RE = re.compile(r"^[^\s,](?:[^,\n\r]*[^\s,])?$")
 MOST_SPEAKER_NAMES = 20
-
-# A user name chosen or derived from 2026-11-02: what The Floor's usernames are,
-# compared without case, so one name can be a person's at both (names.py).
-# Older names (service.NAME_RE: with -, or shorter) stand until renamed.
-MIN_USER_NAME = 4
-MAX_USER_NAME = 30
-USER_NAME_RE = re.compile(rf"^[a-z0-9_]{{{MIN_USER_NAME},{MAX_USER_NAME}}}$")
-# How many derived names are tried before one is given up on.
-NAME_TRIES = 1000
 
 
 class AllowanceExhausted(RuntimeError):
@@ -80,11 +60,10 @@ class AllowanceExhausted(RuntimeError):
 
 @dataclass(frozen=True)
 class Account:
+    """A user the operator has given a plan or a raise."""
     user: str
-    email: str
     plan: str
     created_at: float
-    disabled: bool
     extra_usd: float = 0.0
 
 
@@ -118,10 +97,8 @@ def limits() -> Limits:
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS accounts (
     user TEXT PRIMARY KEY,
-    email TEXT NOT NULL UNIQUE,
     plan TEXT NOT NULL DEFAULT 'free',
     created_at REAL NOT NULL,
-    disabled INTEGER NOT NULL DEFAULT 0,
     extra_usd REAL NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS spend (
@@ -131,16 +108,6 @@ CREATE TABLE IF NOT EXISTS spend (
     PRIMARY KEY (user, month)
 );
 CREATE TABLE IF NOT EXISTS names (user TEXT PRIMARY KEY, names TEXT NOT NULL);
--- A name and an address held for somebody with no account yet, by the
--- application that signed them up (names.py); their first sign-in takes it.
-CREATE TABLE IF NOT EXISTS reservations (
-    user TEXT PRIMARY KEY,
-    email TEXT NOT NULL UNIQUE,
-    client TEXT NOT NULL,
-    created_at REAL NOT NULL
-);
-CREATE TABLE IF NOT EXISTS sends (key TEXT NOT NULL, at REAL NOT NULL);
-CREATE INDEX IF NOT EXISTS sends_key_at ON sends (key, at);
 """
 
 
@@ -164,133 +131,33 @@ def connect():
         db.close()
 
 
-def _account(row) -> Account | None:
-    if row is None:
-        return None
-    user, email, plan, created_at, disabled, extra_usd = row
-    return Account(user, email, plan, created_at, bool(disabled), extra_usd)
-
-
-_COLUMNS = "user, email, plan, created_at, disabled, extra_usd"
-
-
-def normalize_email(value: str) -> str | None:
-    email = value.strip().lower()
-    return email if len(email) <= 254 and _EMAIL_RE.match(email) else None
-
-
-def account_for_email(email: str) -> Account | None:
-    with connect() as db:
-        return _account(db.execute(f"SELECT {_COLUMNS} FROM accounts WHERE email = ?", (email,)).fetchone())
+_COLUMNS = "user, plan, created_at, extra_usd"
 
 
 def account(user: str) -> Account | None:
     with connect() as db:
-        return _account(db.execute(f"SELECT {_COLUMNS} FROM accounts WHERE user = ?", (user,)).fetchone())
+        row = db.execute(f"SELECT {_COLUMNS} FROM accounts WHERE user = ?", (user,)).fetchone()
+    return Account(*row) if row else None
 
 
 def accounts() -> list[Account]:
     with connect() as db:
-        return [_account(r) for r in db.execute(f"SELECT {_COLUMNS} FROM accounts ORDER BY created_at")]
+        return [Account(*r) for r in db.execute(f"SELECT {_COLUMNS} FROM accounts ORDER BY created_at")]
 
 
-def _taken(db: sqlite3.Connection, user: str) -> bool:
-    """A user name in use: an account's, a reservation's, a users.toml token's, or a libraries directory's."""
-    if db.execute("SELECT 1 FROM accounts WHERE user = ?", (user,)).fetchone():
-        return True
-    if db.execute("SELECT 1 FROM reservations WHERE user = ?", (user,)).fetchone():
-        return True
-    if (service.data_dir() / "libraries" / user).exists():
-        return True
-    return user in service.token_users()
-
-
-def user_stem(text: str) -> str | None:
-    """A user name's start from an address's local part or a suggested name; None when nothing is left."""
-    local = text.split("@", 1)[0].split("+", 1)[0].lower()
-    stem = re.sub(r"[^a-z0-9_]+", "_", local).strip("_")[:MAX_USER_NAME - 4].strip("_")
-    return stem or None
-
-
-def candidates(stem: str):
-    """The names a stem offers, best first: itself when long enough, then numbered, as The Floor numbers."""
-    for n in range(1, NAME_TRIES + 1):
-        if n == 1 and len(stem) >= MIN_USER_NAME:
-            yield stem
-        elif n > 1 or len(stem) < MIN_USER_NAME:
-            yield f"{stem}{n:0{max(1, MIN_USER_NAME - len(stem))}d}"
-
-
-def free_name(db: sqlite3.Connection, stems) -> str:
-    """The first free name the stems offer, in their order; "user…" when none is left."""
-    for stem in [*stems, "user"]:
-        for name in candidates(stem):
-            if not _taken(db, name):
-                return name
-    raise RuntimeError("no free user name")
-
-
-def reservation_for_email(email: str) -> tuple[str, str] | None:
-    """The name held for an address with no account yet, and the application that holds it."""
-    with connect() as db:
-        return db.execute("SELECT user, client FROM reservations WHERE email = ?", (email,)).fetchone()
-
-
-def reservation(user: str) -> str | None:
-    """The address a reserved name is held for."""
-    with connect() as db:
-        row = db.execute("SELECT email FROM reservations WHERE user = ?", (user,)).fetchone()
-    return row[0] if row else None
-
-
-def create_account(email: str) -> Account:
-    """A free account for an address that has none: under its reserved name, or one made unique from it."""
-    with connect() as db:
-        db.execute("BEGIN IMMEDIATE")
-        try:
-            existing = db.execute(f"SELECT {_COLUMNS} FROM accounts WHERE email = ?", (email,)).fetchone()
-            if existing:
-                db.execute("COMMIT")
-                return _account(existing)
-            held = db.execute("SELECT user FROM reservations WHERE email = ?", (email,)).fetchone()
-            if held:
-                user = held[0]
-                db.execute("DELETE FROM reservations WHERE email = ?", (email,))
-            else:
-                user = free_name(db, [s for s in [user_stem(email)] if s])
-            now = time.time()
-            db.execute("INSERT INTO accounts (user, email, plan, created_at) VALUES (?, ?, ?, ?)",
-                       (user, email, FREE, now))
-            db.execute("COMMIT")
-        except BaseException:
-            db.execute("ROLLBACK")
-            raise
-    return Account(user, email, FREE, now, False)
-
-
-def link(email: str, user: str, plan: str) -> Account:
-    """An account for an existing user (one users.toml already names): the operator's."""
+def _row(db: sqlite3.Connection, user: str) -> None:
+    """A user's row, made on the free plan if it had none."""
     if not service.NAME_RE.match(user):
         raise ValueError(f"not a user name: {user!r}")
-    if plan not in PLANS:
-        raise ValueError(f"a plan is one of {', '.join(PLANS)}")
-    with connect() as db:
-        held = db.execute("SELECT 1 FROM reservations WHERE (user = ?) != (email = ?) AND (user = ? OR email = ?)",
-                          (user, email, user, email)).fetchone()
-        if held:
-            raise ValueError(f"{user} or {email} is reserved for another")
-        db.execute("DELETE FROM reservations WHERE user = ? AND email = ?", (user, email))
-        db.execute("INSERT INTO accounts (user, email, plan, created_at) VALUES (?, ?, ?, ?)",
-                   (user, email, plan, time.time()))
-    return account(user)
+    db.execute("INSERT OR IGNORE INTO accounts (user, plan, created_at) VALUES (?, ?, ?)", (user, FREE, time.time()))
 
 
 def set_plan(user: str, plan: str) -> None:
     if plan not in PLANS:
         raise ValueError(f"a plan is one of {', '.join(PLANS)}")
     with connect() as db:
-        if db.execute("UPDATE accounts SET plan = ? WHERE user = ?", (plan, user)).rowcount != 1:
-            raise ValueError(f"no account {user!r}")
+        _row(db, user)
+        db.execute("UPDATE accounts SET plan = ? WHERE user = ?", (plan, user))
 
 
 def raise_allowance(user: str, usd: float) -> float:
@@ -298,13 +165,12 @@ def raise_allowance(user: str, usd: float) -> float:
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         try:
-            row = db.execute("SELECT extra_usd FROM accounts WHERE user = ?", (user,)).fetchone()
-            if row is None:
-                raise ValueError(f"no account {user!r}")
-            extra = round(row[0] + usd, 2)
-            if extra < 0:
-                raise ValueError(f"{user} has only ${row[0]:.2f} above the default allowance to take back")
-            db.execute("UPDATE accounts SET extra_usd = ? WHERE user = ?", (extra, user))
+            _row(db, user)
+            (extra,) = db.execute("SELECT extra_usd FROM accounts WHERE user = ?", (user,)).fetchone()
+            new = round(extra + usd, 2)
+            if new < 0:
+                raise ValueError(f"{user} has only ${extra:.2f} above the default allowance to take back")
+            db.execute("UPDATE accounts SET extra_usd = ? WHERE user = ?", (new, user))
             db.execute("COMMIT")
         except BaseException:
             db.execute("ROLLBACK")
@@ -318,25 +184,27 @@ def allowance(user: str) -> float:
     return limits().allowance_usd + (found.extra_usd if found else 0.0)
 
 
-def set_disabled(user: str, disabled: bool) -> None:
-    with connect() as db:
-        if db.execute("UPDATE accounts SET disabled = ? WHERE user = ?", (int(disabled), user)).rowcount != 1:
-            raise ValueError(f"no account {user!r}")
-
-
-def is_active(user: str) -> bool:
-    found = account(user)
-    return found is not None and not found.disabled
-
-
 def plan_of(user: str) -> str:
-    """An account's plan; a user without one is the operator's, unlimited."""
+    """A user's plan: its row's; else unlimited for the operator's (a minted token, an application
+    keeping libraries, a group library's own meter, `<owner>/<library>`); else free."""
     found = account(user)
-    return found.plan if found is not None else UNLIMITED
+    if found is not None:
+        return found.plan
+    from noesis import members
+    if "/" in user or user in service.token_users() or members.keeper(user) is not None:
+        return UNLIMITED
+    return FREE
 
 
 def is_free(user: str) -> bool:
     return plan_of(user) == FREE
+
+
+def rename(old: str, new: str) -> None:
+    """A user's plan, spend and speaker names, under a new name (scripts/rename_user.py)."""
+    with connect() as db:
+        for table in ("accounts", "spend", "names"):
+            db.execute(f"UPDATE {table} SET user = ? WHERE user = ?", (new, old))
 
 
 # ---------------------------------------------------------------------------
@@ -369,32 +237,6 @@ def set_speaker_names(user: str, names: list[str]) -> tuple[str, ...]:
 
 
 # ---------------------------------------------------------------------------
-# Sign-in mail
-# ---------------------------------------------------------------------------
-
-def allow_send(email: str, ip: str) -> bool:
-    """Whether a code may go to this address from this client now; if so, counted."""
-    now = time.time()
-    keys = {"email": f"email:{email}", "ip": f"ip:{ip}", "all": "all"}
-    with connect() as db:
-        db.execute("BEGIN IMMEDIATE")
-        try:
-            db.execute("DELETE FROM sends WHERE at < ?", (now - max(w for _, w, _ in SEND_LIMITS),))
-            for kind, window, most in SEND_LIMITS:
-                (count,) = db.execute("SELECT COUNT(*) FROM sends WHERE key = ? AND at > ?",
-                                      (keys[kind], now - window)).fetchone()
-                if count >= most:
-                    db.execute("COMMIT")
-                    return False
-            db.executemany("INSERT INTO sends (key, at) VALUES (?, ?)", [(k, now) for k in keys.values()])
-            db.execute("COMMIT")
-        except BaseException:
-            db.execute("ROLLBACK")
-            raise
-    return True
-
-
-# ---------------------------------------------------------------------------
 # The meter
 # ---------------------------------------------------------------------------
 
@@ -411,10 +253,8 @@ def spent(user: str) -> float:
 def free_spent() -> float:
     """What every free account together has spent this month."""
     with connect() as db:
-        (total,) = db.execute(
-            "SELECT COALESCE(SUM(s.usd), 0) FROM spend s JOIN accounts a ON a.user = s.user "
-            "WHERE s.month = ? AND a.plan = ?", (month(), FREE)).fetchone()
-    return total
+        rows = db.execute("SELECT user, usd FROM spend WHERE month = ?", (month(),)).fetchall()
+    return sum(usd for user, usd in rows if "/" not in user and is_free(user))
 
 
 def refusal(user: str) -> str | None:

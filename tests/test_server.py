@@ -287,12 +287,12 @@ def test_import_is_a_run(client, data):
 
 
 def test_the_bare_name_leads_to_the_web_client(data):
-    # With the app's lifespan, so the MCP and OAuth app mounted at the root is
-    # up, and still answers its own paths beside the redirect.
+    # With the app's lifespan, so the MCP app mounted at the root is up, and
+    # still answers its own paths beside the redirect.
     with TestClient(server.app) as client:
         response = client.get("/", follow_redirects=False)
         assert response.status_code == 302 and response.headers["location"] == "/web/"
-        assert client.get("/.well-known/oauth-authorization-server").status_code == 200
+        assert client.get("/.well-known/oauth-protected-resource/mcp").status_code == 200
         assert client.get("/mcp").status_code == 401
 
 
@@ -302,6 +302,10 @@ def test_the_web_client_is_served_with_its_policy(client):
     assert page.status_code == 200 and page.headers["content-type"].startswith("text/html")
     assert "default-src 'self'" in page.headers["content-security-policy"]
     assert '<script src="app.js"' in page.text
+    # It signs in at auth: the page names it, and the policy lets it call auth alone besides noesis.
+    from noesis.bearer import auth_url
+    assert f'<meta name="auth" content="{auth_url()}">' in page.text and "{{auth}}" not in page.text
+    assert f"connect-src 'self' {auth_url()}" in page.headers["content-security-policy"]
     assert client.get("/web/app.js").headers["content-type"].startswith("text/javascript")
     assert client.get("/web/style.css").status_code == 200
     for missing in ("/web/nothing.js", "/web/..%2Fserver.py", "/web/README.md"):

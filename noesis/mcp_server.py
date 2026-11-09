@@ -5,9 +5,9 @@ Claude anywhere a custom connector reaches (claude.ai on the web and the
 phone, Claude Desktop, Claude Code). They run in-process on the server's copy
 of the library, which is canonical.
 
-Callers authenticate with a bearer token: an OAuth access token from noesis's
-own authorization server (oauth.py; claude.ai's connector signs in there with
-the person's noesis token), or a minted noesis token sent as it is (Claude Code).
+Callers authenticate with a bearer token carrying `noesis:read` (bearer.py):
+an access token from auth (`auth.rvanegas.co`), where claude.ai's connector
+signs the person in, or a minted noesis token sent as it is (Claude Code).
 
 **Which libraries** (2026-11-01): a grant reaches all of a person's. An
 address may narrow a request to some, `/mcp?libraries=<id>,<id>` — The
@@ -34,14 +34,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from mcp.server.auth.middleware.auth_context import get_access_token
-from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
+from mcp.server.auth.settings import AuthSettings
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 
 from noesis import library as lib
 from noesis import members
-from noesis.oauth import provider
+from noesis import bearer
 from noesis.service import LibraryError, library_ids, library_root
 
 
@@ -72,15 +72,15 @@ def build() -> MCPServer:
         name="noesis",
         title="noesis library",
         instructions=INSTRUCTIONS,
-        # noesis is its own authorization server (oauth.py), whose provider also
-        # takes a minted noesis token sent as it is.
-        auth_server_provider=provider,
+        # auth is the authorization server; noesis checks its tokens, and its
+        # own minted and confined ones (bearer.py), and names auth in its
+        # protected-resource metadata.
+        token_verifier=bearer.Verifier(),
         auth=AuthSettings(
-            issuer_url=public_url(),
+            issuer_url=bearer.auth_url(),
             resource_server_url=f"{public_url()}/mcp",
-            validate_token_resource=False,  # the provider knows its tokens
-            client_registration_options=ClientRegistrationOptions(enabled=True),
-            revocation_options=RevocationOptions(enabled=True),
+            required_scopes=[bearer.READ],
+            validate_token_resource=False,  # bearer.py checks the audience
         ),
     )
     for fn in _TOOLS:
@@ -146,9 +146,9 @@ def _open_to(ctx: Context | None) -> list[str]:
     A claude.ai connector names none, and its person names them in the
     conversation instead (guide)."""
     ids = library_ids(_caller())
-    # A token confined to one library (oauth.confined_token, an application's
+    # A token confined to one library (bearer.confined_token, an application's
     # for Claude) reaches that one whatever the address says.
-    from noesis.oauth import LIBRARY_SCOPE
+    from noesis.bearer import LIBRARY_SCOPE
     token = get_access_token()
     confined = {s.removeprefix(LIBRARY_SCOPE) for s in (token.scopes or []) if s.startswith(LIBRARY_SCOPE)}
     if confined:

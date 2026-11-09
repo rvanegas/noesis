@@ -4,9 +4,9 @@
 // are checked, fixed, indexed, downloaded and deleted; only the settings are
 // edited in place.
 //
-// Signs in through noesis's own OAuth server as the built-in public client
-// `noesis-web` (authorization code with PKCE; oauth.py), then calls the same
-// file and run API the CLI does (server.py). The refresh token is kept in
+// Signs in at auth (`auth.rvanegas.co`, named by the page's `auth` meta) as
+// the public client `noesis-web` (authorization code with PKCE), then calls
+// the same file and run API the CLI does (server.py). The refresh token is kept in
 // localStorage so a sign-in lasts its ninety days; the access token only in
 // memory. The page's CSP admits no script but this file.
 //
@@ -16,6 +16,7 @@
 "use strict";
 
 const CLIENT_ID = "noesis-web";
+const AUTH = document.querySelector('meta[name="auth"]').content;
 const REDIRECT = `${location.origin}/web/`;
 const REFRESH_KEY = "noesis.refresh";
 const LIBRARY_KEY = "noesis.library";
@@ -91,11 +92,11 @@ async function signIn() {
     response_type: "code", client_id: CLIENT_ID, redirect_uri: REDIRECT,
     code_challenge: challenge, code_challenge_method: "S256", state,
   });
-  location.assign(`/authorize?${query}`);
+  location.assign(`${AUTH}/authorize?${query}`);
 }
 
 async function tokenRequest(fields) {
-  const response = await fetch("/token", {
+  const response = await fetch(`${AUTH}/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ client_id: CLIENT_ID, ...fields }),
@@ -107,7 +108,7 @@ async function tokenRequest(fields) {
   return true;
 }
 
-// The redirect back from /oauth/login, with a code or a refusal.
+// The redirect back from auth's sign-in, with a code or a refusal.
 async function finishSignIn(query) {
   history.replaceState(null, "", REDIRECT);
   const pending = JSON.parse(recall(sessionStorage, SIGN_IN_KEY) || "null");
@@ -141,7 +142,7 @@ async function accessToken() {
 async function signOut() {
   const refresh = recall(localStorage, REFRESH_KEY);
   if (refresh) {
-    await fetch("/revoke", {
+    await fetch(`${AUTH}/revoke`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       // The SDK's revocation form requires the field even of a public client.

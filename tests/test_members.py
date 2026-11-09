@@ -5,7 +5,6 @@ The application is answered by a script kept here — who belongs to which
 library, and who pays — which is all of its behaviour noesis sees.
 """
 
-import base64
 import hashlib
 import io
 import json
@@ -14,11 +13,12 @@ import urllib.error
 import pytest
 from fastapi.testclient import TestClient
 
+import auth_tokens
 from noesis import accounts, members, server
 
 LIB = "book-club-k3x9"
-SECRET = "floor-secret"
-FLOOR = {"Authorization": "Basic " + base64.b64encode(f"thefloor:{SECRET}".encode()).decode()}
+# The Floor's own token from auth (client_credentials).
+FLOOR = auth_tokens.bearer("thefloor", scopes=["noesis:keep"], client="thefloor")
 ANN = {"Authorization": "Bearer ann-token"}
 BOB = {"Authorization": "Bearer bob-token"}
 
@@ -36,10 +36,7 @@ def data(tmp_path, monkeypatch):
         f'[[tokens]]\nuser = "bob"\nsha256 = "{_sha(b"bob-token")}"\n'
     )
     (tmp_path / "libraries" / "ann" / "notes").mkdir(parents=True)
-    (tmp_path / "oauth.json").write_text(json.dumps({"clients": {
-        "thefloor": {"client_id": "thefloor", "client_secret": SECRET,
-                     "redirect_uris": ["https://floor.example/noesis/callback"]},
-    }, "access": {}, "refresh": {}}))
+    auth_tokens.install(monkeypatch)
     members._cache.clear()
     return tmp_path
 
@@ -79,11 +76,8 @@ def test_marking_takes_the_name_and_refuses_a_person_s(data):
     from scripts.client_libraries import main as mark
     assert mark(["thefloor", "https://floor.example"]) == 0
     assert (data / "libraries" / "thefloor").is_dir()
-    with accounts.connect() as db:
-        assert accounts._taken(db, "thefloor")
-    raw = json.loads((data / "oauth.json").read_text())["clients"]
-    raw["ann"] = {"client_id": "ann", "client_secret": "x", "redirect_uris": []}
-    (data / "oauth.json").write_text(json.dumps({"clients": raw, "access": {}, "refresh": {}}))
+    assert members.keeper("thefloor").url == "https://floor.example"
+    assert accounts.plan_of("thefloor") == accounts.UNLIMITED
     with pytest.raises(SystemExit, match="somebody's name"):
         mark(["ann", "https://ann.example"])
     with pytest.raises(SystemExit, match="https"):
@@ -92,8 +86,14 @@ def test_marking_takes_the_name_and_refuses_a_person_s(data):
 
 def test_the_application_makes_its_group_s_library(client, floor):
     _made(client)
-    wrong = {"Authorization": "Basic " + base64.b64encode(b"thefloor:guess").decode()}
-    assert client.post("/libraries", json={"name": "other"}, headers=wrong).status_code == 401
+    for wrong in (auth_tokens.bearer("thefloor", scopes=["noesis:keep"], client="thefloor", key=auth_tokens.STRANGER),
+                  auth_tokens.bearer("ann", scopes=["noesis:keep"], client="thefloor"),       # a person's
+                  auth_tokens.bearer("other", scopes=["noesis:keep"], client="other")):       # not marked
+        assert client.post("/libraries", json={"name": "other"}, headers=wrong).status_code == 401
+    # Unmarked, it is nobody here.
+    from scripts.client_libraries import main as mark
+    mark(["thefloor", "--off"])
+    assert client.post("/libraries", json={"name": "other"}, headers=FLOOR).status_code == 401
 
 
 def test_a_member_reaches_it_and_nobody_else(client, floor):
@@ -178,10 +178,12 @@ def test_every_member_s_lines_are_the_library_s_own_voice(client, floor):
     assert members.voices("ann", "notes") == ()
 
 
-def test_the_application_is_asked_with_its_own_pair(data, monkeypatch):
+def test_the_application_is_asked_with_noesis_s_own_token(data, monkeypatch):
+    from noesis import bearer
     from scripts.client_libraries import main as mark
     mark(["thefloor", "https://floor.example"])
     seen = {}
+    monkeypatch.setattr(bearer, "own_token", lambda scope: seen.setdefault("scope", scope) and "noesis-own")
 
     def urlopen(request, timeout):
         seen["url"], seen["auth"] = request.full_url, request.headers["Authorization"]
@@ -190,7 +192,8 @@ def test_the_application_is_asked_with_its_own_pair(data, monkeypatch):
         return io.BytesIO(json.dumps({"name": "Book Club", "members": [{"user": "ANN", "pro": True}]}).encode())
     monkeypatch.setattr(members.urllib.request, "urlopen", urlopen)
     found = members.group("thefloor", LIB)
-    assert seen == {"url": f"https://floor.example/noesis/libraries/{LIB}", "auth": FLOOR["Authorization"]}
+    assert seen == {"url": f"https://floor.example/noesis/libraries/{LIB}", "auth": "Bearer noesis-own",
+                    "scope": "thefloor:members"}
     assert found.admits("ann") and found.funded and found.name == "Book Club"
     assert members.group("thefloor", "nothing") is None
 
@@ -204,10 +207,8 @@ def test_claude_is_handed_a_token_for_one_library_and_nothing_else(client, floor
     assert client.post("/applications/token", json={"library": "nothing"}, headers=FLOOR).status_code == 404
     assert client.post("/applications/token", json={"library": LIB}, headers=ANN).status_code == 403
 
-    import asyncio
-    from noesis import mcp_server
-    from noesis.oauth import provider
-    loaded = asyncio.run(provider.load_access_token(token))
+    from noesis import bearer, mcp_server
+    loaded = bearer.access_token(token)
     assert loaded is not None and loaded.subject == "thefloor"
     monkeypatch.setattr(mcp_server, "get_access_token", lambda: loaded)
     assert mcp_server._open_to(None) == [f"thefloor/{LIB}"]
