@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,7 +22,7 @@ def _primary(companion: Path) -> Path:
     return companion.with_suffix("").with_suffix(".md")
 
 
-def _layout_entry(index: int, sentence_id: str) -> dict:
+def _layout_entry(index: int, sentence_id: str, goal: list[str] | None = None) -> dict:
     return {
         "index": index,
         "id": sentence_id,
@@ -28,9 +30,20 @@ def _layout_entry(index: int, sentence_id: str) -> dict:
         "accepted": [],
         "rejected": [],
         "cleared": [],
-        "goal": [],
+        "goal": goal or [],
         "hidden": False,
     }
+
+
+def _sender() -> str | None:
+    """Who sends the argument: the server names its run's caller; on the Mac, nobody."""
+    return os.environ.get("NOESIS_CALLER") or None
+
+
+def _goals_summary(conclusion: str, goal: list[str]) -> str:
+    """Roxana's goalsSummary for one goal, as its getGoalsSummary (data.tsx) writes it."""
+    content = re.match(r"^\s*(.*?)\.*\s*$", conclusion, re.DOTALL).group(1)
+    return f"{content} ({', '.join(goal)})" if goal else ""
 
 
 def _argument_contents(argument: list[dict]) -> list[str]:
@@ -119,6 +132,9 @@ def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
     proposition_contents = [s["proposition"] for s in sorted(argument, key=lambda s: int(s["symbol"]))]
     argument_contents = _argument_contents(argument)
     analysis_results = _analysis_results(companion, argument)
+    # The whole argument's conclusion is its last proposition (dianoia's
+    # extraction puts it there), set as the sender's goal in Roxana.
+    conclusion = len(proposition_contents)
 
     if dry_run:
         print("Propositions:")
@@ -129,6 +145,7 @@ def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
             print(f"  {i}: {content}")
         if analysis_results:
             print(f"Analyses: positions {', '.join(str(p) for p in sorted(analysis_results))}")
+        print(f"Goal: proposition {conclusion}")
         print("Dry run — nothing sent to Roxana.")
         return 0
 
@@ -137,6 +154,7 @@ def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
         print("Error: set roxana_api_url and roxana_api_key in ~/.config/noesis/config.toml.")
         return 1
     url, api_key = config.roxana_api_url, config.roxana_api_key
+    goal = [sender] if (sender := _sender()) else []
 
     exports_path = _exports_path(config.library_path)
     exports = _load_exports(exports_path)
@@ -172,7 +190,8 @@ def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
             for index, content in enumerate(proposition_contents, start=1):
                 sentence_id = roxana_client.create_sentence(url, api_key, content, discussion_id)
                 created_ids.append(sentence_id)
-                proposition_entries.append(_layout_entry(index, sentence_id))
+                proposition_entries.append(
+                    _layout_entry(index, sentence_id, goal if index == conclusion else None))
             argument_entries = []
             for index, content in enumerate(argument_contents, start=1):
                 sentence_id = roxana_client.create_sentence(url, api_key, content, discussion_id)
@@ -182,6 +201,7 @@ def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
             roxana_client.create_discussion(
                 url, api_key, discussion_id, layout,
                 analysis_results=json.dumps(analysis_results) if analysis_results else None,
+                goals_summary=_goals_summary(proposition_contents[-1], goal),
             )
         except RuntimeError:
             for sentence_id in created_ids:
@@ -197,6 +217,10 @@ def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
     exported_analyses = f", {len(analysis_results)} analyses" if analysis_results else ""
     print(f"Exported {len(proposition_entries)} propositions, {len(argument_entries)} arguments"
           f"{exported_analyses} to discussion {discussion_id}.")
+    if goal:
+        print(f"Proposition {conclusion}, the conclusion, is {goal[0]}'s goal.")
+    else:
+        print(f"Proposition {conclusion}, the conclusion, is nobody's goal: only a run on the server knows who sent it.")
     if exports_path is not None:
         earlier = [*previous.get("earlier", []), previous["discussion_id"]] if previous else []
         exports[key] = {

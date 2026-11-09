@@ -65,6 +65,7 @@ def test_dry_run_makes_no_network_calls(argument_file, capsys):
     out = capsys.readouterr().out
     assert "Socrates is mortal." in out
     assert "1 2 3" in out
+    assert "Goal: proposition 4" in out
     assert "Dry run" in out
 
 
@@ -102,16 +103,18 @@ class FakeRoxana:
         self.calls.append(("sentence", content, discussion_id, sentence_id))
         return sentence_id
 
-    def create_discussion(self, url, api_key, discussion_id, layout, analysis_results=None):
+    def create_discussion(self, url, api_key, discussion_id, layout, analysis_results=None, goals_summary=""):
         self.calls.append(("discussion", discussion_id, layout))
         self.analysis_results = analysis_results
+        self.goals_summary = goals_summary
 
     def delete_sentence(self, url, api_key, sentence_id):
         self.calls.append(("delete", sentence_id))
 
 
 @pytest.fixture
-def configured(tmp_path):
+def configured(tmp_path, monkeypatch):
+    monkeypatch.delenv("NOESIS_CALLER", raising=False)
     with patch("noesis.config.load_config") as load_config:
         config = load_config.return_value
         config.library_path = tmp_path
@@ -159,6 +162,20 @@ def test_export_flow(argument_file, configured, capsys):
     assert "4 propositions, 2 arguments" in out
     assert "https://roxana.example/discussions/k2rw" in out
     assert fake.analysis_results is None
+    assert all(e["goal"] == [] for e in layout["propositions"])
+    assert fake.goals_summary == ""
+    assert "nobody's goal" in out
+
+
+def test_conclusion_is_the_senders_goal(argument_file, configured, monkeypatch, capsys):
+    monkeypatch.setenv("NOESIS_CALLER", "zedd")
+    fake = FakeRoxana()
+    assert _run_with(fake, argument_file) == 0
+    layout = json.loads(fake.calls[-1][2])
+    assert [e["goal"] for e in layout["propositions"]] == [[], [], [], ["zedd"]]
+    assert all(e["goal"] == [] for e in layout["arguments"])
+    assert fake.goals_summary == "Socrates will die (zedd)"
+    assert "Proposition 4, the conclusion, is zedd's goal." in capsys.readouterr().out
 
 
 ANALYSIS_TEXT = """

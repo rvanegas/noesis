@@ -58,7 +58,7 @@ def create_sentence(url: str, api_key: str, content: str, discussion_id: str) ->
 
 
 def create_discussion(url: str, api_key: str, discussion_id: str, layout: str,
-                      analysis_results: str | None = None) -> None:
+                      analysis_results: str | None = None, goals_summary: str = "") -> None:
     input_: dict = {
         "id": discussion_id,
         "version": 2,
@@ -66,6 +66,7 @@ def create_discussion(url: str, api_key: str, discussion_id: str, layout: str,
         "isPrivate": False,
         "layout": layout,
         "pool": 1,
+        "goalsSummary": goals_summary,
     }
     if analysis_results is not None:
         input_["analysisResults"] = analysis_results

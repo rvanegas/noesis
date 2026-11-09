@@ -247,7 +247,7 @@ On subsequent runs (companion exists), noesis submits the argument file to diano
 
 ### `noesis export`
 
-Send a document's argument to Roxana as a new public discussion: its propositions, its arguments, and any analyses in `<stem>.analysis.md`. The web client's *Send to Roxana* runs it.
+Send a document's argument to Roxana as a new public discussion: its propositions, its arguments, and any analyses in `<stem>.analysis.md`. The web client's *Send to Roxana* runs it. The conclusion of the whole argument, its last proposition, is set as the sender's goal: a run on the server knows who asked for it, by the noesis name Roxana knows them by; one on the Mac does not, and sets no goal.
 
 ```bash
 noesis export essay.md             # send essay.argument.md; prints the discussion's address

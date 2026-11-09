@@ -591,14 +591,15 @@ def _check_run(run: Run) -> None:
 
 
 @app.post("/libraries/{user}/{library}/run")
-async def run_command(run: Run, root: Path = Depends(library)) -> StreamingResponse:
+async def run_command(run: Run, root: Path = Depends(library),
+                      who: str = Depends(caller)) -> StreamingResponse:
     _check_run(run)
     lock = lock_for(root)
     if lock.locked():
         raise HTTPException(409, "a run is in progress in this library")
     _may_run(root, run.argv[0])
     await lock.acquire()
-    return _stream(root, run.argv, lock)
+    return _stream(root, run.argv, lock, who=who)
 
 
 @app.post("/libraries/{user}/{library}/import")
@@ -646,10 +647,11 @@ async def import_file(
     return _stream(root, argv, lock, cleanup=lambda: shutil.rmtree(staging, ignore_errors=True))
 
 
-def _stream(root: Path, argv: list[str], lock: asyncio.Lock, cleanup=None) -> StreamingResponse:
+def _stream(root: Path, argv: list[str], lock: asyncio.Lock, cleanup=None,
+            who: str | None = None) -> StreamingResponse:
     """Runs noesis in the library, whose lock the caller holds, as server-sent events."""
     events: asyncio.Queue = asyncio.Queue()
-    task = asyncio.create_task(_execute(root, argv, events, lock, cleanup))
+    task = asyncio.create_task(_execute(root, argv, events, lock, cleanup, who))
     _runs.add(task)
     task.add_done_callback(_runs.discard)
     from noesis import accounts
@@ -667,7 +669,7 @@ def _stream(root: Path, argv: list[str], lock: asyncio.Lock, cleanup=None) -> St
 
 
 async def _execute(root: Path, argv: list[str], events: asyncio.Queue,
-                   lock: asyncio.Lock, cleanup=None) -> None:
+                   lock: asyncio.Lock, cleanup=None, who: str | None = None) -> None:
     from noesis import accounts
     try:
         before = await asyncio.to_thread(tree_hashes, root)
@@ -678,10 +680,14 @@ async def _execute(root: Path, argv: list[str], events: asyncio.Queue,
         # NOESIS_RUN_LOCAL: this noesis is the server's, never a client of it.
         # NOESIS_ACCOUNT: whose allowance the run's model calls spend (accounts.py).
         # NOESIS_USER_NAMES: whose voice is whose in the owner's chats.
+        # NOESIS_CALLER: who asked for the run, a person, not a service (cmd_export.py).
         from noesis import members
         voices = await asyncio.to_thread(members.voices, _owner(root), root.name)
         env.update(NOESIS_USER_NAMES=",".join(voices), PYTHONUNBUFFERED="1", NOESIS_RUN_LOCAL="1",
                    NOESIS_ACCOUNT=_metered(root))
+        env.pop("NOESIS_CALLER", None)
+        if who and who != "*":
+            env["NOESIS_CALLER"] = who
         process = await asyncio.create_subprocess_exec(
             sys.executable, "-m", "noesis", "--lib", str(root), *argv,
             cwd=root, env=env,

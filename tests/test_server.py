@@ -212,6 +212,8 @@ def test_a_run_knows_the_owners_names_whoever_starts_it(client, monkeypatch):
     for who in (ANN, {"Authorization": "Bearer service-token"}):
         client.post(f"{BASE}/run", headers=who, json={"argv": ["check", "old-roman"]})
     assert [e["NOESIS_USER_NAMES"] for e in envs] == ["Ann,Mary Ann", "Ann,Mary Ann"]
+    # Who started it, though, is a person's name or none (cmd_export.py).
+    assert [e.get("NOESIS_CALLER") for e in envs] == ["ann", None]
 
 
 def test_one_run_at_a_time_and_no_writes_meanwhile(client, data):
