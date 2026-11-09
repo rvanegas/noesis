@@ -242,7 +242,7 @@ In a channel's library, the argument is the one every member took part in. Each 
 - 3 (from: 1, 2; accepted: Ann; inference accepted: Ann, Bob): Socrates is mortal.
 ```
 
-Here Bob grants that Socrates is mortal if he is a man, and denies that he is one. A member is in neither list of a pair where they took no stance, and in both of none; an inference needs its `from:`. A name with a comma, semicolon or parenthesis cannot stand in a list, and is left out.
+Here Bob grants that Socrates is mortal if he is a man, and denies that he is one. In a person's own library the one participant is its owner, by the display name auth keeps (on the Mac, without the server, `roxana_user`): what you assert, grant or dispute in a chat, against Claude's turns, which are nobody's stance; a document of your own is said to be yours. A member is in neither list of a pair where they took no stance, and in both of none; an inference needs its `from:`. A name with a comma, semicolon or parenthesis cannot stand in a list, and is left out.
 
 | Argument | Description |
 |----------|-------------|
@@ -251,7 +251,7 @@ Here Bob grants that Socrates is mortal if he is a man, and denies that he is on
 
 ### `noesis export`
 
-Send an argument to Roxana as a new public discussion: its propositions, its arguments, and any analyses in `<stem>.analysis.md`. The web client's *Send to Roxana* runs it, offered on the `.argument.md` alone, where its stances can be read first; *Extract argument* is offered on a chat or a document whose stem has none yet. The conclusion of the whole argument, its last proposition, is set as the sender's goal: by the noesis name Roxana knows them by, which a run on the server takes from who asked for it and one on the Mac from `roxana_user` in the config. In a channel's library, each member's stances go with each proposition, and their stances on each inference with the argument Roxana makes of it, and each member has a goal of their own: what they are justifying, the last proposition with justifiers that they accept, or, if they justify nothing, the goal of the member whose justification they reject. Only if no member has a goal is the conclusion the sender's.
+Send an argument to Roxana as a new public discussion: its propositions, its arguments, and any analyses in `<stem>.analysis.md`. The web client's *Send to Roxana* runs it, offered on the `.argument.md` alone, where its stances can be read first; *Extract argument* is offered on a chat or a document whose stem has none yet. The conclusion of the whole argument, its last proposition, is set as the sender's goal: by the noesis name Roxana knows them by, which a run on the server takes from who asked for it and one on the Mac from `roxana_user` in the config. Each person's stances go with each proposition (a channel's members, or a person's library's owner), and their stances on each inference with the argument Roxana makes of it, and each has a goal of their own: what they are justifying, the last proposition with justifiers that they accept, or, if they justify nothing, the goal of the member whose justification they reject. Only if nobody has a goal is the conclusion the sender's.
 
 ```bash
 noesis export essay.md             # send essay.argument.md; prints the discussion's address

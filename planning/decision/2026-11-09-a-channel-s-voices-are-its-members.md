@@ -75,3 +75,18 @@ only where there are any, so an argument recorded before keeps its digest.
 The web client follows: *Extract argument* is offered on a chat as well as a
 document, until the stem has its argument, and *Send to Roxana* on the
 `.argument.md` alone, where the stances can be read before they go.
+
+## A person's own library records its owner's stances
+
+Added later on 2026-11-09, at the prompt. In a person's library the one
+participant is its owner, so an argument from their chat says what they
+asserted, granted or disputed, and their goal in Roxana is what they
+justify, not whatever the last proposition is, which Claude may have drawn.
+The server names the owner to a run in `NOESIS_OWNER`, by the display name
+auth keeps (`members.display_name`, asked with noesis's own token, the user
+name if auth does not answer); on the Mac without the server, `roxana_user`
+stands in. Before extraction their chat headings (`## Prompt`, their names)
+become that name, and a document of theirs is said to be theirs. **Claude is
+nobody's stance**: its turns stay `## Claude`, and dianoia is never given it
+as a participant, since it has no account in Roxana and its lines are
+context, not a position anybody holds.

@@ -10,7 +10,7 @@ from noesis.config import load_config
 def config_file(tmp_path, monkeypatch):
     path = tmp_path / "config.toml"
     monkeypatch.setattr(noesis.config, "DEFAULT_CONFIG_PATH", path)
-    for var in ("NOESIS_LIBRARY", "NOESIS_USER_NAMES"):
+    for var in ("NOESIS_LIBRARY", "NOESIS_USER_NAMES", "NOESIS_OWNER", "NOESIS_MEMBERS"):
         monkeypatch.delenv(var, raising=False)
     return path
 
@@ -52,3 +52,18 @@ def test_no_library_no_library_prompt(config_file):
     config = load_config()
     assert config.library_path is None
     assert "Last, First (year)" in config.system_prompt
+
+
+def test_a_person_s_library_has_its_owner_whose_headings_are_the_user_names(config_file, monkeypatch):
+    import json
+    monkeypatch.setenv("NOESIS_USER_NAMES", "Ann")
+    monkeypatch.setenv("NOESIS_OWNER", json.dumps({"user": "ann", "name": "Ann Example"}))
+    owner = load_config().owner
+    assert (owner.user, owner.name, owner.headings) == ("ann", "Ann Example", ("Prompt", "Ann"))
+    # On the Mac, with no server to say, roxana_user by user name.
+    monkeypatch.delenv("NOESIS_OWNER")
+    config_file.write_text('roxana_user = "ann"\n')
+    assert load_config().owner.name == "ann"
+    # A channel's members come first.
+    monkeypatch.setenv("NOESIS_MEMBERS", json.dumps([{"user": "bob", "name": "Bob", "headings": ["Bob"]}]))
+    assert [m.user for m in load_config().people] == ["bob"]

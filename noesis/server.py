@@ -626,14 +626,20 @@ async def _execute(root: Path, argv: list[str], events: asyncio.Queue,
         # NOESIS_ACCOUNT: whose allowance the run's model calls spend (accounts.py).
         # NOESIS_USER_NAMES: the owner's headings in a person's chats.
         # NOESIS_MEMBERS: a channel's members, each their own voice (members.speakers).
+        # NOESIS_OWNER: a person's library's owner (below).
         # NOESIS_CALLER: who asked for the run, a person, not a service (cmd_export.py).
         from noesis import members
         voices = await asyncio.to_thread(members.voices, _owner(root), root.name)
         speakers = await asyncio.to_thread(members.speakers, _owner(root), root.name)
+        # NOESIS_OWNER: a person's library's owner, by their display name at auth,
+        # whose stances an argument records (config.people).
+        owner = None if speakers else {"user": _owner(root),
+                                        "name": await asyncio.to_thread(members.display_name, _owner(root))}
         env.update(NOESIS_USER_NAMES=",".join(voices), PYTHONUNBUFFERED="1", NOESIS_RUN_LOCAL="1",
                    NOESIS_ACCOUNT=_metered(root),
                    NOESIS_MEMBERS=json.dumps([{"user": m.user, "name": m.name, "headings": list(m.headings)}
-                                              for m in speakers]))
+                                              for m in speakers]),
+                   NOESIS_OWNER=json.dumps(owner) if owner else "")
         env.pop("NOESIS_CALLER", None)
         if who and who != "*":
             env["NOESIS_CALLER"] = who

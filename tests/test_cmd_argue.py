@@ -104,3 +104,22 @@ def test_argue_keeps_an_inference_only_where_there_is_one(tmp_path):
     written = (tmp_path / "2026-10-30-lunch.argument.md").read_text()
     assert "- 1 (accepted: Ann): P." in written
     assert "- 2 (from: 1; rejected: Bob; inference accepted: Bob; inference rejected: Ann): Q." in written
+
+
+def test_in_a_person_s_library_the_owner_is_the_one_participant(tmp_path):
+    chat = tmp_path / "2026-10-30-essay.chat.md"
+    chat.write_text("\n# Essay\n2026-10-30\n\n## Prompt\n\nP, so Q.\n\n## Claude\n\nNot Q.\n\n## Ann\n\nQ.\n")
+    owner = AppConfig(owner=Speaker("ann", "Ann Example", ("Prompt", "Ann")))
+    assert owner.people == (owner.owner,)
+    code, extract = _argue(chat, owner, {"argument": [
+        {"symbol": "1", "proposition": "P.", "justifiers": [], "accepted": ["Ann Example", "Claude"]}]})
+    assert code == 0 and extract.call_args.kwargs["participants"] == ["Ann Example"]
+    # Her headings are her name to dianoia; Claude's stays Claude's, and is nobody's stance.
+    sent = extract.call_args.args[0]
+    assert "## Ann Example\n\nP, so Q." in sent and "## Claude\n\nNot Q." in sent and "## Ann Example\n\nQ." in sent
+    assert "- 1 (accepted: Ann Example): P." in (tmp_path / "2026-10-30-essay.argument.md").read_text()
+    # Her own document is said to be hers.
+    document = tmp_path / "2026-10-31-notes.document.md"
+    document.write_text("\n# Notes\n2026-10-31\n\nProse.\n")
+    _, extract = _argue(document, owner, {"argument": [{"symbol": "1", "proposition": "P.", "justifiers": []}]})
+    assert extract.call_args.args[0].startswith("[Written by Ann Example.]\n")

@@ -123,6 +123,7 @@ def configured(tmp_path, monkeypatch):
         config.roxana_web_url = "https://roxana.example"
         config.roxana_user = None
         config.members = ()
+        config.people = ()
         yield config
 
 
@@ -350,6 +351,7 @@ def test_a_channel_s_argument_carries_each_member_s_stances_and_goal(tmp_path, c
     from noesis.config import Speaker
     configured.members = (Speaker("ann", "Ann", ("Ann",)), Speaker("bob", "Bob", ("Bob",)),
                           Speaker("cy", "Cy", ("Cy",)))
+    configured.people = configured.members
     companion = tmp_path / "2026-10-30-lunch.argument.md"
     companion.write_text(CHANNEL_ARGUMENT, encoding="utf-8")
     fake = FakeRoxana()
@@ -364,3 +366,27 @@ def test_a_channel_s_argument_carries_each_member_s_stances_and_goal(tmp_path, c
     assert fake.goals_summary == "Socrates will die (ann, bob) \u2014 Socrates will not die (cy)"
     out = capsys.readouterr().out
     assert "Proposition 4 is the goal of ann, bob." in out and "Proposition 6 is the goal of cy." in out
+
+
+def test_in_a_person_s_library_the_owner_s_stances_and_goal_go(tmp_path, configured):
+    from noesis.config import Speaker
+    configured.people = (Speaker("ann", "Ann Example", ("Prompt", "Ann")),)
+    companion = tmp_path / "2026-10-30-essay.argument.md"
+    companion.write_text("""
+# Essay
+2026-10-30
+
+## Argument
+- 1 (accepted: Ann Example): All humans are mortal.
+- 2 (rejected: Ann Example): Socrates is a god.
+- 3 (from: 1; accepted: Ann Example; inference accepted: Ann Example): Humans die.
+- 4 (from: 2): Socrates will not die.
+""", encoding="utf-8")
+    fake = FakeRoxana()
+    assert _run_with(fake, companion) == 0
+    layout = json.loads(fake.calls[-1][2])
+    assert [(e["accepted"], e["rejected"]) for e in layout["propositions"]] == [
+        (["ann"], []), ([], ["ann"]), (["ann"], []), ([], [])]
+    # Her goal is what she justifies, not the last proposition, which Claude may have drawn.
+    assert [e["goal"] for e in layout["propositions"]] == [[], [], ["ann"], []]
+    assert [e["accepted"] for e in layout["arguments"]] == [["ann"], []]

@@ -86,6 +86,15 @@ class AppConfig:
     # A channel's library: its members, each their own voice, where a person's
     # library has none (NOESIS_MEMBERS, members.speakers).
     members: tuple[Speaker, ...] = ()
+    # A person's library: its owner, the one voice whose stances an argument
+    # records there (NOESIS_OWNER from the server, else roxana_user), their
+    # headings the user names.
+    owner: Speaker | None = None
+
+    @property
+    def people(self) -> tuple[Speaker, ...]:
+        """Whose stances an argument records: a channel's members, else the owner."""
+        return self.members or ((self.owner,) if self.owner else ())
 
     def member(self, heading: str) -> Speaker | None:
         """The member a chat heading is, if any."""
@@ -170,7 +179,20 @@ def load_config() -> AppConfig:
         server_token=server_token,
         mirrors=mirrors,
         members=members,
+        owner=_owner(os.environ.get("NOESIS_OWNER", ""), roxana_user, user_names),
     )
+
+
+def _owner(raw: str, roxana_user: str | None, user_names: tuple[str, ...]) -> Speaker | None:
+    """The library's owner as the server names them to a run, in JSON (their
+    user name and display name), else, on the Mac, roxana_user by user name."""
+    try:
+        named = json.loads(raw) if raw.strip() else {}
+    except ValueError:
+        named = {}
+    if isinstance(named, dict) and named.get("user"):
+        return Speaker(str(named["user"]), str(named.get("name") or named["user"]), user_names)
+    return Speaker(roxana_user, roxana_user, user_names) if roxana_user else None
 
 
 def _members(raw: str) -> tuple[Speaker, ...]:

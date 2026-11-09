@@ -189,6 +189,29 @@ def voices(owner: str, library: str) -> tuple[str, ...]:
     return accounts.speaker_names(owner) if keeper(owner) is None else ()
 
 
+def display_name(user: str) -> str:
+    """The name a person is shown by, as auth keeps it (since 2026-11-09), else
+    their user name: auth not answering costs a run nothing but the name.
+
+    Asked with noesis's own token from auth, which answers `/names/display`
+    for any token it signed; the scope is the one noesis's client is allowed.
+    """
+    from noesis import bearer
+
+    def ask() -> str | None:
+        token = bearer.own_token("thefloor:members")
+        request = urllib.request.Request(
+            f"{bearer.auth_url()}/names/display?{urllib.parse.urlencode({'user': user})}",
+            headers={"Authorization": f"Bearer {token}"})
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return (json.loads(response.read().decode()).get("names") or {}).get(user.lower())
+
+    try:
+        return _cached(("display", user), ask) or user
+    except (OSError, ValueError, KeyError):
+        return user
+
+
 def speakers(owner: str, library: str) -> tuple[Speaker, ...]:
     """A group's members, each by the name the application gives them (else
     their user name) and their headings: that name and the names they keep

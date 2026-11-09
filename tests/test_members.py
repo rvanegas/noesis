@@ -273,3 +273,24 @@ def test_the_application_deletes_its_library_and_nobody_else_does(client, floor,
     assert client.delete(f"/libraries/thefloor/{LIB}", headers=FLOOR).status_code == 204
     assert not (data / "libraries" / "thefloor" / LIB).exists()
     assert client.delete(f"/libraries/thefloor/{LIB}", headers=FLOOR).status_code == 404
+
+
+def test_a_person_s_display_name_is_auth_s_else_their_user_name(data, monkeypatch):
+    from noesis import bearer
+    monkeypatch.setattr(bearer, "own_token", lambda scope: "noesis-own")
+    seen = []
+
+    def urlopen(request, timeout):
+        seen.append((request.full_url, request.headers["Authorization"]))
+        user = request.full_url.rsplit("=", 1)[1]
+        return io.BytesIO(json.dumps({"names": {user: "Ann Example" if user == "ann" else None}}).encode())
+    monkeypatch.setattr(members.urllib.request, "urlopen", urlopen)
+    assert members.display_name("ann") == "Ann Example"
+    assert members.display_name("bob") == "bob"
+    assert seen[0] == (f"{bearer.auth_url()}/names/display?user=ann", "Bearer noesis-own")
+    members._cache.clear()
+
+    def down(request, timeout):
+        raise urllib.error.URLError("no")
+    monkeypatch.setattr(members.urllib.request, "urlopen", down)
+    assert members.display_name("ann") == "ann"                  # auth away: the user name

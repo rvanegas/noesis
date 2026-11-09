@@ -208,11 +208,15 @@ def test_a_run_knows_the_owners_names_whoever_starts_it(client, monkeypatch):
         return await spawn(*args, env=env, **kwargs)
 
     monkeypatch.setattr(server.asyncio, "create_subprocess_exec", spy)
+    from noesis import members
+    monkeypatch.setattr(members, "display_name", lambda user: {"ann": "Ann Example"}.get(user, user))
     client.put("/me/names", headers=ANN, json={"names": ["Ann", "Mary Ann"]})
     for who in (ANN, {"Authorization": "Bearer service-token"}):
         client.post(f"{BASE}/run", headers=who, json={"argv": ["check", "old-roman"]})
     assert [e["NOESIS_USER_NAMES"] for e in envs] == ["Ann,Mary Ann", "Ann,Mary Ann"]
     assert [e["NOESIS_MEMBERS"] for e in envs] == ["[]", "[]"]              # a person's library has none
+    # Its owner instead, by the display name auth keeps, whose stances an argument records.
+    assert [json.loads(e["NOESIS_OWNER"]) for e in envs] == [{"user": "ann", "name": "Ann Example"}] * 2
     # Who started it, though, is a person's name or none (cmd_export.py).
     assert [e.get("NOESIS_CALLER") for e in envs] == ["ann", None]
 

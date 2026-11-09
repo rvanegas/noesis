@@ -186,10 +186,10 @@ def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
     # member of a channel has a goal of their own.
     conclusion = len(proposition_contents)
     config = load_config()
-    # In a channel, each member's stances and goal, by the user name Roxana
-    # knows them by; else, or where no member has a goal, the conclusion is
-    # the sender's.
-    users = {m.name: m.user for m in config.members}
+    # Each person's stances and goal, a channel's members or a person's library's
+    # owner (config.people), by the user name Roxana knows them by; where
+    # nobody has a goal, the conclusion is the sender's.
+    users = {m.name: m.user for m in config.people}
     ordered = sorted(argument, key=lambda s: int(s["symbol"]))
     def stances_of(step: dict, pair: tuple[str, str]) -> dict[str, list[str]]:
         return {side: [users[n] for n in step.get(stance) or [] if n in users]
@@ -199,7 +199,7 @@ def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
     # An argument's stances are its inference's, in _argument_contents' order.
     inferences = [stances_of(s, INFERENCE_STANCES) for s in ordered if s.get("justifiers")]
     goals: list[list[str]] = [[] for _ in ordered]
-    for name, symbol in member_goals(argument, [m.name for m in config.members]).items():
+    for name, symbol in member_goals(argument, [m.name for m in config.people]).items():
         goals[int(symbol) - 1].append(users[name])
     sender = _sender(config) if not any(goals) else None
     if sender:
