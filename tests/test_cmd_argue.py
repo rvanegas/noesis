@@ -123,3 +123,20 @@ def test_in_a_person_s_library_the_owner_is_the_one_participant(tmp_path):
     document.write_text("\n# Notes\n2026-10-31\n\nProse.\n")
     _, extract = _argue(document, owner, {"argument": [{"symbol": "1", "proposition": "P.", "justifiers": []}]})
     assert extract.call_args.args[0].startswith("[Written by Ann Example.]\n")
+
+
+def test_a_proposition_that_names_a_participant_is_warned_of(tmp_path, capsys):
+    from noesis.argue import naming
+    argument = [
+        {"symbol": "12", "proposition": "Rodrigo's rationality standard would permit belief in it."},
+        {"symbol": "13", "proposition": "JENSEN conceded the point."},
+        {"symbol": "14", "proposition": "Flat-earth belief is irrational though it entails no contradiction."},
+        {"symbol": "15", "proposition": "Danielle is a name, and so is Rod."},
+    ]
+    assert naming(argument, ["Rodrigo", "Daniel Jensen"]) == [("12", "Rodrigo"), ("13", "Daniel Jensen")]
+    chat = tmp_path / "2026-10-30-lunch.chat.md"
+    chat.write_text(CHAT)
+    _argue(chat, CHANNEL, {"argument": [
+        {"symbol": "1", "proposition": "Bob's view is that P.", "justifiers": [], "accepted": ["Ann"]}]})
+    out = capsys.readouterr().out
+    assert "Warning: these propositions name a participant" in out and "1 names Bob" in out

@@ -205,6 +205,11 @@ def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
     if sender:
         goals[conclusion - 1] = [sender]
 
+    # Sent all the same: the person may mean it, and reads the argument file first.
+    from noesis.argue import naming
+    for symbol, name in naming(argument, [m.name for m in config.people]):
+        print(f"Warning: proposition {symbol} names {name}; who holds a proposition is its stances.")
+
     if dry_run:
         print("Propositions:")
         for i, content in enumerate(proposition_contents, start=1):

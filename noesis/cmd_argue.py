@@ -112,4 +112,15 @@ def run_argue(path: Path, max_props: int | None = None) -> int:
     companion.write_text(companion_text, encoding="utf-8")
     _print_argument(args_dict)
     print(f"\nWritten to {companion.name}. Edit it, then run: noesis analyze {path.name} <proposition>")
+    _warn_of_names(args_dict.get("argument") or [], participants)
     return 0
+
+
+def _warn_of_names(argument: list[dict], participants: list[str]) -> None:
+    from noesis.argue import naming
+    named = naming(argument, participants)
+    if named:
+        print("\nWarning: these propositions name a participant, where the content should stand "
+              "alone and who holds it be its stances; edit them before sending:")
+        for symbol, name in named:
+            print(f"  {symbol} names {name}")

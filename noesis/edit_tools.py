@@ -98,8 +98,9 @@ accept and which reject the inference to it, whatever they hold of its \
 premises: `- 3 (from: 1, 2; accepted: Ann; rejected: Cy; inference accepted: \
 Ann, Cy): text`. Keep these stances as the chat states them. A member who has \
 taken no stance is in neither list of a pair, and nobody is in both. A \
-proposition states its content, never who holds it: not "Ann holds that P" \
-but P, with Ann among those who accept it.\
+proposition never names a member: not "Ann holds that P" but P, with Ann among \
+those who accept it; not "Ann's standard would permit Q" but the standard by \
+what it says; not "Ann herself judged R" but R, accepted by Ann.\
 """
 
 

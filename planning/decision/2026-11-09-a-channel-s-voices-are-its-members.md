@@ -90,3 +90,15 @@ become that name, and a document of theirs is said to be theirs. **Claude is
 nobody's stance**: its turns stay `## Claude`, and dianoia is never given it
 as a participant, since it has no account in Roxana and its lines are
 context, not a position anybody holds.
+
+## A proposition never names a participant
+
+Found on 2026-11-09 in Roxana discussions 5e48 and d4r4: extracted steps such
+as "Rodrigo holds that P", then, once that was forbidden, "Rodrigo's standard
+would permit Q" and "Rodrigo himself judged R". Both people accept such
+reports, so the stances fell on the attribution and the disagreement
+vanished. dianoia's prompt now forbids naming a participant in a proposition
+(its decision says how a standard and an argument from someone's own
+practice are written instead), the editing prompt says the same, and
+`argue` and `export` warn of any proposition that still names one
+(`argue.naming`), sending it all the same, since the person may mean it.

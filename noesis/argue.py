@@ -52,6 +52,24 @@ def source_of(companion: Path) -> Path:
     return chat if chat.exists() and not document.exists() else document
 
 
+def naming(argument: list[dict], names: list[str]) -> list[tuple[str, str]]:
+    """The propositions that name a participant, (symbol, name): who holds a
+    proposition is its stances, and a proposition that names one ("Ann's
+    standard…", "Ann herself judged…") puts the attribution where the content
+    should be (dianoia's extraction prompt says so; this catches what slips
+    through). A name is found whole or by any word of it of three letters or
+    more, as a whole word and in any case."""
+    found = []
+    for step in argument:
+        text = step.get("proposition", "")
+        for name in names:
+            words = [name, *(w for w in name.split() if len(w) >= 3)]
+            if any(re.search(rf"(?<!\w){re.escape(w)}(?!\w)", text, re.IGNORECASE) for w in words):
+                found.append((str(step.get("symbol")), name))
+                break
+    return found
+
+
 def nameable(name: str) -> bool:
     """Whether a member's name can stand in a stance: not empty, and none of its punctuation."""
     return bool(name.strip()) and not _STANCE_PUNCTUATION & set(name)
