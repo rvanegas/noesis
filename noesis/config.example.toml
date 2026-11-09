@@ -47,3 +47,7 @@ llm_names = ["Claude", "GPT"]
 
 # Web app base URL, used to print a link to the exported discussion.
 # roxana_web_url = "https://..."
+
+# Your Roxana username (your noesis user name), whose goal an exported
+# argument's conclusion becomes. A run on the server names its caller instead.
+# roxana_user = "..."

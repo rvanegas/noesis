@@ -35,9 +35,9 @@ def _layout_entry(index: int, sentence_id: str, goal: list[str] | None = None) -
     }
 
 
-def _sender() -> str | None:
-    """Who sends the argument: the server names its run's caller; on the Mac, nobody."""
-    return os.environ.get("NOESIS_CALLER") or None
+def _sender(config) -> str | None:
+    """Who sends the argument: the server names its run's caller; on the Mac, roxana_user."""
+    return os.environ.get("NOESIS_CALLER") or config.roxana_user
 
 
 def _goals_summary(conclusion: str, goal: list[str]) -> str:
@@ -154,7 +154,7 @@ def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
         print("Error: set roxana_api_url and roxana_api_key in ~/.config/noesis/config.toml.")
         return 1
     url, api_key = config.roxana_api_url, config.roxana_api_key
-    goal = [sender] if (sender := _sender()) else []
+    goal = [sender] if (sender := _sender(config)) else []
 
     exports_path = _exports_path(config.library_path)
     exports = _load_exports(exports_path)
@@ -220,7 +220,7 @@ def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
     if goal:
         print(f"Proposition {conclusion}, the conclusion, is {goal[0]}'s goal.")
     else:
-        print(f"Proposition {conclusion}, the conclusion, is nobody's goal: only a run on the server knows who sent it.")
+        print(f"Proposition {conclusion}, the conclusion, is nobody's goal: set roxana_user in ~/.config/noesis/config.toml.")
     if exports_path is not None:
         earlier = [*previous.get("earlier", []), previous["discussion_id"]] if previous else []
         exports[key] = {

@@ -121,6 +121,7 @@ def configured(tmp_path, monkeypatch):
         config.roxana_api_url = "https://example/graphql"
         config.roxana_api_key = "da2-test"
         config.roxana_web_url = "https://roxana.example"
+        config.roxana_user = None
         yield config
 
 
@@ -176,6 +177,21 @@ def test_conclusion_is_the_senders_goal(argument_file, configured, monkeypatch, 
     assert all(e["goal"] == [] for e in layout["arguments"])
     assert fake.goals_summary == "Socrates will die (zedd)"
     assert "Proposition 4, the conclusion, is zedd's goal." in capsys.readouterr().out
+
+
+def test_on_the_mac_the_sender_is_roxana_user(argument_file, configured):
+    configured.roxana_user = "ann"
+    fake = FakeRoxana()
+    assert _run_with(fake, argument_file) == 0
+    assert json.loads(fake.calls[-1][2])["propositions"][-1]["goal"] == ["ann"]
+
+
+def test_the_servers_caller_comes_before_roxana_user(argument_file, configured, monkeypatch):
+    configured.roxana_user = "ann"
+    monkeypatch.setenv("NOESIS_CALLER", "zedd")
+    fake = FakeRoxana()
+    assert _run_with(fake, argument_file) == 0
+    assert json.loads(fake.calls[-1][2])["propositions"][-1]["goal"] == ["zedd"]
 
 
 ANALYSIS_TEXT = """

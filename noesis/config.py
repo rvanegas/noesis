@@ -65,6 +65,7 @@ class AppConfig:
     roxana_api_url: str | None = None
     roxana_api_key: str | None = None
     roxana_web_url: str | None = None
+    roxana_user: str | None = None
     dianoia_api_url: str | None = None
     dianoia_token: str | None = None
     # noesis's API (SERVER.md, Phase 3): where the model-backed commands run, and
@@ -117,6 +118,7 @@ def load_config() -> AppConfig:
     roxana_api_url = str(data.get("roxana_api_url", "")).strip() or os.environ.get("ROXANA_API_URL", "").strip() or None
     roxana_api_key = str(data.get("roxana_api_key", "")).strip() or os.environ.get("ROXANA_API_KEY", "").strip() or None
     roxana_web_url = str(data.get("roxana_web_url", "")).strip() or os.environ.get("ROXANA_WEB_URL", "").strip() or None
+    roxana_user = str(data.get("roxana_user", "")).strip() or None
 
     dianoia_api_url = str(data.get("dianoia_api_url", "")).strip() or os.environ.get("DIANOIA_API_URL", "").strip() or None
     dianoia_token = str(data.get("dianoia_token", "")).strip() or os.environ.get("DIANOIA_TOKEN", "").strip() or None
@@ -143,6 +145,7 @@ def load_config() -> AppConfig:
         roxana_api_url=roxana_api_url,
         roxana_api_key=roxana_api_key,
         roxana_web_url=roxana_web_url,
+        roxana_user=roxana_user,
         dianoia_api_url=dianoia_api_url,
         dianoia_token=dianoia_token,
         server_url=server_url,
