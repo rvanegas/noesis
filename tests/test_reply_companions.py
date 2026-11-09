@@ -70,7 +70,7 @@ def test_in_a_channel_the_document_is_claude_s_account_of_its_members(tmp_path):
     argument.write_text("\n# Essay\n2026-10-27\n\n## Argument\n- 1: P\n")
     told = build_edit_context([document, argument], members=channel)
     assert "an account of what each member of the channel thinks" in told
-    assert "The channel's members write the propositions." in told and "inference accepted:" in told
+    assert "The channel's members write the propositions." in told and "inference accepted:" in told and "never who holds it" in told
     alone = build_edit_context([document, argument])
     assert "member" not in alone and "The user writes the propositions." in alone
     assert channel_note(channel).startswith("This chat is a channel's, whose members are Ann, Bob.")
