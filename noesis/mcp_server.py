@@ -23,8 +23,10 @@ write depended on Claude remembering to make it.
 Files come back as they are. A chat whose headings go beyond Prompt and the
 model's comes after one line saying whose voice each heading is: the
 library owner's by the names they keep (accounts.speaker_names), the
-model's, anyone else's. Without it a chat of several people says nothing of
-which of them is the user.
+model's, anyone else's. In a channel's library the user is whoever reads,
+and each other member is named as one, speaking for themselves (_heard).
+Without it a chat of several people says nothing of which of them is the
+user.
 """
 
 from __future__ import annotations
@@ -200,9 +202,21 @@ def _root(library: str | None, ctx: Context | None = None) -> Path:
     return _roots(library, ctx, many=False)[0][1]
 
 
-def _voiced(root: Path, name: str, text: str) -> str:
+def _heard(owner: str, library: str, reader: str) -> tuple[set[str], set[str]]:
+    """The headings that are the reader's own, and those of a channel's other
+    members: in a person's library the owner's names are the user's, and in a
+    channel's only the reader's are, each other member being their own voice."""
+    from noesis.config import PROMPT_HEADING
+    group = members.speakers(owner, library)
+    if not group:
+        return {PROMPT_HEADING, *members.voices(owner, library)}, set()
+    me = next((m for m in group if m.user == reader), None)
+    mine = {PROMPT_HEADING, *(me.headings if me else ())}
+    return mine, {h for m in group if m is not me for h in m.headings} - mine
+
+
+def _voiced(root: Path, name: str, text: str, reader: str) -> str:
     """A chat of more than Prompt and a model, after a line saying whose each heading is."""
-    from noesis import accounts
     from noesis.config import PROMPT_HEADING, load_config
     from noesis.library import _STRUCTURAL_HEADINGS
     from noesis.transcript import HEADING_RE
@@ -213,15 +227,19 @@ def _voiced(root: Path, name: str, text: str) -> str:
     llm = set(load_config().llm_names)
     if set(speakers) <= {PROMPT_HEADING} | llm:
         return text
-    mine = {PROMPT_HEADING, *members.voices(root.parent.name, root.name)}
+    mine, fellows = _heard(root.parent.name, root.name, reader)
 
     def headings(group: list[str], one: str, many: str) -> str:
         return f"{', '.join(f'## {s}' for s in group)} {one if len(group) == 1 else many}"
 
     users = [s for s in speakers if s in mine]
     models = [s for s in speakers if s in llm]
-    others = [s for s in speakers if s not in mine and s not in llm]
+    members_ = [s for s in speakers if s in fellows and s not in llm]
+    others = [s for s in speakers if s not in mine and s not in llm and s not in fellows]
     parts = [headings(users, "is the user", "are the user") if users else "no heading is the user"]
+    if members_:
+        parts.append(headings(members_, "is another member of the channel, speaking for themselves",
+                              "are other members of the channel, each speaking for themselves"))
     if models:
         parts.append(headings(models, "is a model", "are models"))
     if others:
@@ -256,14 +274,22 @@ def guide(ctx: Context) -> str:
                  "have named none, ask which before searching.")
     else:
         which = f"This user's library: {open_ids[0]}." if open_ids else "This user has no library yet."
-    # One library's voice where only one is open — a group's every member's
-    # (members.voices) — else the caller's own names.
-    voices = (members.voices(*open_ids[0].split("/", 1)) if len(open_ids) == 1
-              else accounts.speaker_names(who))
-    names = ", ".join(f"## {n}" for n in (PROMPT_HEADING, *voices))
-    return (f"{INSTRUCTIONS}\n\n{which}\n\nIn this user's chats, the sections headed {names} are the "
-            "user's own words. A section under any other name is someone else's, the "
-            "model's or another person's, even where it sounds like the user.")
+    # One library's voices where only one is open — in a channel's, the
+    # caller's and the other members' (_heard) — else the caller's own names.
+    if len(open_ids) == 1:
+        mine, fellows = _heard(*open_ids[0].split("/", 1), who)
+    else:
+        mine, fellows = {PROMPT_HEADING, *accounts.speaker_names(who)}, set()
+    names = ", ".join(f"## {n}" for n in (PROMPT_HEADING, *sorted(mine - {PROMPT_HEADING})))
+    said = (f"{INSTRUCTIONS}\n\n{which}\n\nIn this user's chats, the sections headed {names} are the "
+            "user's own words. ")
+    if fellows:
+        said += (f"This library is a channel's: the sections headed "
+                 f"{', '.join(f'## {n}' for n in sorted(fellows))} are its other members', each "
+                 "speaking for themselves, and its documents are Claude's account of what each "
+                 "member thinks, naming them. ")
+    return said + ("A section under any other name is someone else's, the "
+                   "model's or another person's, even where it sounds like the user.")
 
 
 @_tool
@@ -311,6 +337,6 @@ def read_file(ctx: Context, name: str, library: str | None = None) -> str:
     section, one per line as '| *Exact Title*'."""
     root = _root(library, ctx)
     try:
-        return lib.read_file(root, name, voiced=lambda found, text: _voiced(root, found, text))
+        return lib.read_file(root, name, voiced=lambda found, text: _voiced(root, found, text, _caller()))
     except lib.NotFound as exc:
         raise ToolError(str(exc)) from None

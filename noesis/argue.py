@@ -5,7 +5,13 @@ from __future__ import annotations
 import re
 
 
-_ARGUMENT_RE = re.compile(r"^- (\d+)(?:\s+\(from:\s*([\d,\s]+)\))?\s*:\s+(.+)$")
+# `- 3 (from: 1, 2; accepted: Ann, Bob; rejected: Cy): text`: justifiers, and
+# in a channel's library which members accept and reject it (STANCES).
+_ARGUMENT_RE = re.compile(r"^- (\d+)(?:\s+\(([^()]*)\))?\s*:\s+(.+)$")
+_CLAUSE_RE = re.compile(r"^(from|accepted|rejected):\s*(.*)$")
+STANCES = ("accepted", "rejected")
+# What a name in a stance cannot hold, being the clause's own punctuation.
+_STANCE_PUNCTUATION = set(",;()")
 _PROP_SYMBOL_RE = re.compile(r"^- (\d+)[\s:(]")
 _DECORATED_PROP_RE = re.compile(r"^- (\d[\w'*]*)[\s:(]")
 
@@ -28,6 +34,40 @@ def _read_title_date(text: str) -> tuple[str, str]:
     if not date_str:
         raise ValueError("could not find date line in preamble")
     return title, date_str
+
+
+def nameable(name: str) -> bool:
+    """Whether a member's name can stand in a stance: not empty, and none of its punctuation."""
+    return bool(name.strip()) and not _STANCE_PUNCTUATION & set(name)
+
+
+def _clauses(step: dict) -> str:
+    """A step's parenthesis: its justifiers, then who accepts and who rejects it."""
+    clauses = [f"from: {', '.join(step['justifiers'])}"] if step.get("justifiers") else []
+    for stance in STANCES:
+        names = step.get(stance) or []
+        bad = [n for n in names if not nameable(n)]
+        if bad:
+            raise ValueError(f"name(s) {bad} cannot stand in '{stance}': no commas, semicolons or parentheses")
+        if names:
+            clauses.append(f"{stance}: {', '.join(names)}")
+    return f" ({'; '.join(clauses)})" if clauses else ""
+
+
+def _parse_clauses(raw: str | None, lineno: int) -> dict[str, list[str]]:
+    """The parenthesis back into justifiers and stances."""
+    parsed: dict[str, list[str]] = {}
+    for clause in (raw or "").split(";"):
+        if not clause.strip():
+            continue
+        m = _CLAUSE_RE.match(clause.strip())
+        if not m or m.group(1) in parsed:
+            raise ValueError(f"line {lineno}: cannot parse '({raw})': expected 'from:', 'accepted:' or 'rejected:', once each")
+        values = [v.strip() for v in m.group(2).split(",") if v.strip()]
+        if m.group(1) == "from" and not all(v.isdigit() for v in values):
+            raise ValueError(f"line {lineno}: justifiers must be proposition numbers: '({raw})'")
+        parsed[m.group(1)] = values
+    return parsed
 
 
 def _to_alpha_index(n: int) -> str:
@@ -75,11 +115,9 @@ def argument_to_markdown(args_dict: dict, title: str, date_str: str) -> str:
     for step in argument:
         symbol = step.get("symbol", "")
         prop = step.get("proposition", "")
-        justifiers = step.get("justifiers", [])
         if not symbol or not prop:
             raise ValueError(f"argument step missing symbol or proposition: {step!r}")
-        from_clause = f" (from: {', '.join(justifiers)})" if justifiers else ""
-        lines.append(f"- {symbol}{from_clause}: {prop}")
+        lines.append(f"- {symbol}{_clauses(step)}: {prop}")
         symbols.append(int(symbol))
     lines.append("")
 
@@ -146,17 +184,16 @@ def markdown_to_argument(text: str) -> dict:
             m = _ARGUMENT_RE.match(line)
             if not m:
                 raise ValueError(f"line {lineno}: cannot parse argument step: {raw_line!r}")
-            justifiers_raw = m.group(2)
+            clauses = _parse_clauses(m.group(2), lineno)
             argument.append({
                 "symbol": m.group(1),
                 "proposition": m.group(3).strip(),
-                "justifiers": (
-                    [j.strip() for j in justifiers_raw.split(",") if j.strip()]
-                    if justifiers_raw else []
-                ),
+                "justifiers": clauses.get("from", []),
                 # required by dianoia's Step wire schema; not part of noesis's own
                 # format and never round-tripped through argument_to_markdown
                 "truth_score": "",
+                # A channel's stances, only where the file has them.
+                **{stance: clauses[stance] for stance in STANCES if clauses.get(stance)},
             })
             continue
 
@@ -206,6 +243,13 @@ def check_argument(text: str) -> list[str]:
         return [f"expected exactly one section, '## Argument'; found {sections or 'none'}"]
     numbers, decorated = _prop_numbers_in_sections(text)
     errors = []
+    for lineno, line in enumerate(text.splitlines(), 1):
+        m = _ARGUMENT_RE.match(line.strip())
+        if m:
+            try:
+                _parse_clauses(m.group(2), lineno)
+            except ValueError as e:
+                errors.append(str(e))
     if decorated:
         errors.append(f"invalid proposition symbol(s) {decorated}: use plain integers only")
     gap = _check_full_sequence(numbers)

@@ -31,6 +31,7 @@ def run_review(reset: bool, theme: str | None = None, selection: bool = False, d
         load_review_state,
         review_path_for,
         save_doc_review,
+        CHANNEL_REVIEW_NOTE,
         build_themed_synthesis_messages,
         _DEFAULT_THEMED_SYNTHESIS_PASS1_PROMPT,
         _DEFAULT_THEMED_SYNTHESIS_PASS2_PROMPT,
@@ -424,6 +425,8 @@ def run_review(reset: bool, theme: str | None = None, selection: bool = False, d
             parts.append(f"{stale} updated since last review")
         print(f"{len(pending)} of {len(all_doc_titles)} document(s) need reviews ({', '.join(parts)}).")
         doc_review_system_prompt = load_prompt(_REVIEW_PROMPTS_DIR / "doc-system.md", _DEFAULT_DOC_REVIEW_SYSTEM_PROMPT)
+        if config.members:
+            doc_review_system_prompt += CHANNEL_REVIEW_NOTE
         client = AnthropicChatClient(model=effective_model, api_key=config.anthropic_api_key)
         rates = _lookup_price(effective_model, _ANTHROPIC_PRICING)
         cumulative_cost = 0.0

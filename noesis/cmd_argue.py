@@ -5,20 +5,21 @@ from pathlib import Path
 
 
 def _print_argument(args_dict: dict) -> None:
-    from noesis.argue import assign_argument_labels
+    from noesis.argue import _clauses, assign_argument_labels
 
     argument = args_dict.get("argument", [])
     labels = assign_argument_labels(argument)
     print("Argument:")
     for s in argument:
-        j = f" (from: {', '.join(s['justifiers'])})" if s.get("justifiers") else ""
+        j = _clauses(s)
         label = f" [{labels[s['symbol']]}]" if s["symbol"] in labels else ""
         print(f"  {s['symbol']}{j}{label}: {s['proposition']}")
 
 
 def run_argue(path: Path, max_props: int | None = None) -> int:
-    from noesis.argue import _read_title_date, argument_to_markdown
+    from noesis.argue import STANCES, _read_title_date, argument_to_markdown, nameable
     from noesis import dianoia_client
+    from noesis.config import load_config
     from noesis.form import check_global_issues
 
     def _read_file(p: Path) -> str:
@@ -31,13 +32,16 @@ def run_argue(path: Path, max_props: int | None = None) -> int:
             print(f"Warning: {p.name} was not UTF-8; converted in place (backup: {p.name}.bak).", file=sys.stderr)
             return text
 
+    # From a document or a chat; an argument file's stem prefers its document.
     if path.name.endswith(".argument.md"):
         companion = path
-        path = path.with_suffix("").with_suffix(".document.md")
-    elif path.name.endswith(".document.md"):
+        document = path.with_suffix("").with_suffix(".document.md")
+        chat = path.with_suffix("").with_suffix(".chat.md")
+        path = chat if chat.exists() and not document.exists() else document
+    elif path.name.endswith((".document.md", ".chat.md")):
         companion = path.with_suffix("").with_suffix(".argument.md")
     else:
-        print(f"Error: '{path.name}' is not a document: argue reads a .document.md.")
+        print(f"Error: '{path.name}' is neither a document nor a chat: argue reads a .document.md or a .chat.md.")
         return 1
     if not path.exists() and not companion.exists():
         print(f"Error: '{path}' does not exist.")
@@ -55,12 +59,20 @@ def run_argue(path: Path, max_props: int | None = None) -> int:
             print(f"  error: {e}")
         return 1
 
+    # In a channel's library, one argument every member took part in, with
+    # who accepts and who rejects each proposition, by display name.
+    participants = [m.name for m in load_config().members if nameable(m.name)]
     print("Extracting argument…")
     try:
-        args_dict = dianoia_client.extract(text, max_props=max_props)
+        args_dict = dianoia_client.extract(text, max_props=max_props, participants=participants or None)
     except RuntimeError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+    for step in args_dict.get("argument") or []:
+        for stance in STANCES:
+            named = [n for n in step.pop(stance, None) or [] if n in participants]
+            if named:
+                step[stance] = named
     try:
         title, date_str = _read_title_date(text)
     except ValueError as e:

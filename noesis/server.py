@@ -33,7 +33,9 @@ file arguments are names, which noesis resolves across the library. Its output
 streams as it is written (reply prints tokens without newlines), and the
 last event says which files the run changed or deleted. A run knows the
 library owner's voice by the names they keep here (accounts.speaker_names),
-in NOESIS_USER_NAMES, whoever starts it: the owner, or the nightly index. One run at a time
+in NOESIS_USER_NAMES, whoever starts it: the owner, or the nightly index; a
+channel's library has no owner's voice but its members', each their own, in
+NOESIS_MEMBERS (members.speakers). One run at a time
 per library; while it runs, writes to the library get 409. The run belongs
 to the server, not the request: a client that goes away does not cut it short.
 
@@ -622,12 +624,16 @@ async def _execute(root: Path, argv: list[str], events: asyncio.Queue,
         env = {k: v for k, v in os.environ.items() if k not in ("NOESIS_LIBRARY", "EDITOR", "NOESIS_EDITOR")}
         # NOESIS_RUN_LOCAL: this noesis is the server's, never a client of it.
         # NOESIS_ACCOUNT: whose allowance the run's model calls spend (accounts.py).
-        # NOESIS_USER_NAMES: whose voice is whose in the owner's chats.
+        # NOESIS_USER_NAMES: the owner's headings in a person's chats.
+        # NOESIS_MEMBERS: a channel's members, each their own voice (members.speakers).
         # NOESIS_CALLER: who asked for the run, a person, not a service (cmd_export.py).
         from noesis import members
         voices = await asyncio.to_thread(members.voices, _owner(root), root.name)
+        speakers = await asyncio.to_thread(members.speakers, _owner(root), root.name)
         env.update(NOESIS_USER_NAMES=",".join(voices), PYTHONUNBUFFERED="1", NOESIS_RUN_LOCAL="1",
-                   NOESIS_ACCOUNT=_metered(root))
+                   NOESIS_ACCOUNT=_metered(root),
+                   NOESIS_MEMBERS=json.dumps([{"user": m.user, "name": m.name, "headings": list(m.headings)}
+                                              for m in speakers]))
         env.pop("NOESIS_CALLER", None)
         if who and who != "*":
             env["NOESIS_CALLER"] = who

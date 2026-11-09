@@ -58,3 +58,19 @@ def test_reply_answers_a_chat_alone(session, capsys):
         assert run_reply(document) == 1
     reply.assert_not_called()
     assert "not a chat" in capsys.readouterr().out
+
+
+def test_in_a_channel_the_document_is_claude_s_account_of_its_members(tmp_path):
+    from noesis.config import Speaker
+    from noesis.edit_tools import build_edit_context, channel_note
+    channel = (Speaker("ann", "Ann", ("Ann",)), Speaker("bob", "Bob", ("Bob",)))
+    document = tmp_path / "2026-10-27-essay.document.md"
+    document.write_text("\n# Essay\n2026-10-27\n\nProse.\n")
+    argument = tmp_path / "2026-10-27-essay.argument.md"
+    argument.write_text("\n# Essay\n2026-10-27\n\n## Argument\n- 1: P\n")
+    told = build_edit_context([document, argument], members=channel)
+    assert "an account of what each member of the channel thinks" in told
+    assert "The channel's members write the propositions." in told and "accepted: Ann, Bob" in told
+    alone = build_edit_context([document, argument])
+    assert "member" not in alone and "The user writes the propositions." in alone
+    assert channel_note(channel).startswith("This chat is a channel's, whose members are Ann, Bob.")

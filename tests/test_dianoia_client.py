@@ -155,3 +155,11 @@ def test_missing_config_is_reported():
     with patch("noesis.config.load_config", return_value=AppConfig()), \
          pytest.raises(RuntimeError, match="dianoia_api_url and dianoia_token"):
         dianoia_client.audit(ARGS)
+
+
+def test_extract_names_the_participants_of_a_channel(configured):
+    fake, served = _serve(ARGS)
+    with served:
+        dianoia_client.extract("Ann: p. Bob: not p.", participants=["Ann", "Bob"])
+    [request] = fake.requests
+    assert request["body"] == {"text": "Ann: p. Bob: not p.", "max_props": None, "participants": ["Ann", "Bob"]}

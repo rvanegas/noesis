@@ -225,29 +225,33 @@ noesis edit conversation.md
 
 ### `noesis argue`
 
-Extract a structured logical argument from a plain document, or evaluate a companion argument file via the dianoia API.
+Extract a structured argument from a document or a chat, through dianoia, into `<stem>.argument.md`.
 
 ```bash
-noesis argue essay.md              # extract argument → essay.argument.md
-noesis argue essay.md              # (run again) evaluate the companion
-noesis argue essay.argument.md     # evaluate directly
-noesis argue essay.md P3           # evaluate only step P3 and its justifiers
+noesis argue essay.document.md     # extract → essay.argument.md
+noesis argue lunch.chat.md         # from the conversation itself
+noesis argue essay.argument.md     # from its stem's document, else its chat
 ```
 
-On first run (no companion `.argument.md` exists), noesis calls dianoia to extract the argument from the document and writes `<stem>.argument.md`. Edit that file, then run again to submit it for evaluation.
+An existing `.argument.md` is never extracted again: edit it, then `noesis analyze`, `noesis audit` or `noesis export` it.
 
-On subsequent runs (companion exists), noesis submits the argument file to dianoia for formal and content evaluation and writes the results back into the companion.
+In a channel's library, the argument is the one every member took part in, and each proposition says, by display name, which members accept it and which reject it:
+
+```
+- 2 (accepted: Ann; rejected: Bob): Socrates is a man.
+- 3 (from: 1, 2; accepted: Ann): Socrates is mortal.
+```
+
+A member is in neither list where they took no stance. A name with a comma, semicolon or parenthesis cannot stand in a list, and is left out.
 
 | Argument | Description |
 |----------|-------------|
-| `path` | Plain document or companion `.argument.md` file. |
-| `STEP` | Optional. Evaluate only this step and its direct justifiers. Requires a companion. |
-| `-v`, `--verbose` | Show extra detail. |
+| `path` | A `.document.md`, a `.chat.md`, or their stem's `.argument.md`. |
 | `-m N`, `--max-props N` | Maximum number of propositions passed to dianoia extract. |
 
 ### `noesis export`
 
-Send a document's argument to Roxana as a new public discussion: its propositions, its arguments, and any analyses in `<stem>.analysis.md`. The web client's *Send to Roxana* runs it. The conclusion of the whole argument, its last proposition, is set as the sender's goal: by the noesis name Roxana knows them by, which a run on the server takes from who asked for it and one on the Mac from `roxana_user` in the config.
+Send a document's argument to Roxana as a new public discussion: its propositions, its arguments, and any analyses in `<stem>.analysis.md`. The web client's *Send to Roxana* runs it. The conclusion of the whole argument, its last proposition, is set as the sender's goal: by the noesis name Roxana knows them by, which a run on the server takes from who asked for it and one on the Mac from `roxana_user` in the config. In a channel's library, each member's stances go with each proposition, and each member has a goal of their own: what they are justifying, the last proposition with justifiers that they accept, or, if they justify nothing, the goal of the member whose justification they reject. Only if no member has a goal is the conclusion the sender's.
 
 ```bash
 noesis export essay.md             # send essay.argument.md; prints the discussion's address

@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from noesis.cmd_export import _argument_contents, _layout_entry, run_export
+from noesis.cmd_export import _argument_contents, _layout_entry, member_goals, run_export
 from noesis.roxana_client import _ID_ALPHABET, generate_discussion_id
 
 
@@ -122,6 +122,7 @@ def configured(tmp_path, monkeypatch):
         config.roxana_api_key = "da2-test"
         config.roxana_web_url = "https://roxana.example"
         config.roxana_user = None
+        config.members = ()
         yield config
 
 
@@ -321,3 +322,42 @@ def test_new_starts_another_discussion_and_keeps_the_first(argument_file, config
     assert record["discussion_id"] == "m7qp"
     assert record["earlier"] == ["k2rw"]
     assert "https://roxana.example/discussions/m7qp" in capsys.readouterr().out
+
+
+CHANNEL_ARGUMENT = """
+# Lunch
+2026-10-30
+
+## Argument
+- 1 (accepted: Ann, Bob): All humans are mortal.
+- 2 (accepted: Ann; rejected: Bob): Socrates is a human.
+- 3 (from: 1, 2; accepted: Ann): Socrates is mortal.
+- 4 (from: 3; accepted: Ann): Socrates will die.
+- 5 (accepted: Cy): Socrates is a god.
+- 6 (from: 5; accepted: Cy; rejected: Ann): Socrates will not die.
+"""
+
+
+def test_each_member_s_goal_is_what_they_justify_or_what_they_contest():
+    from noesis.argue import markdown_to_argument
+    argument = markdown_to_argument(CHANNEL_ARGUMENT)["argument"]
+    # Ann justifies 3 and then 4, the last; Cy justifies 6; Bob justifies
+    # nothing and rejects 2, which Ann's goal rests on. Dee has no stance.
+    assert member_goals(argument, ["Ann", "Bob", "Cy", "Dee"]) == {"Ann": "4", "Cy": "6", "Bob": "4"}
+
+
+def test_a_channel_s_argument_carries_each_member_s_stances_and_goal(tmp_path, configured, capsys):
+    from noesis.config import Speaker
+    configured.members = (Speaker("ann", "Ann", ("Ann",)), Speaker("bob", "Bob", ("Bob",)),
+                          Speaker("cy", "Cy", ("Cy",)))
+    companion = tmp_path / "2026-10-30-lunch.argument.md"
+    companion.write_text(CHANNEL_ARGUMENT, encoding="utf-8")
+    fake = FakeRoxana()
+    assert _run_with(fake, companion) == 0
+    propositions = json.loads(fake.calls[-1][2])["propositions"]
+    assert [(e["accepted"], e["rejected"]) for e in propositions] == [
+        (["ann", "bob"], []), (["ann"], ["bob"]), (["ann"], []), (["ann"], []), (["cy"], []), (["cy"], ["ann"])]
+    assert [e["goal"] for e in propositions] == [[], [], [], ["ann", "bob"], [], ["cy"]]
+    assert fake.goals_summary == "Socrates will die (ann, bob) \u2014 Socrates will not die (cy)"
+    out = capsys.readouterr().out
+    assert "Proposition 4 is the goal of ann, bob." in out and "Proposition 6 is the goal of cy." in out

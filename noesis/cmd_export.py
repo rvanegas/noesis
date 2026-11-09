@@ -22,17 +22,67 @@ def _primary(companion: Path) -> Path:
     return companion.with_suffix("").with_suffix(".md")
 
 
-def _layout_entry(index: int, sentence_id: str, goal: list[str] | None = None) -> dict:
+def _layout_entry(index: int, sentence_id: str, goal: list[str] | None = None,
+                  accepted: list[str] | None = None, rejected: list[str] | None = None) -> dict:
     return {
         "index": index,
         "id": sentence_id,
         "status": "committed",
-        "accepted": [],
-        "rejected": [],
+        "accepted": accepted or [],
+        "rejected": rejected or [],
         "cleared": [],
         "goal": goal or [],
         "hidden": False,
     }
+
+
+def _ancestors(argument: list[dict], symbol: str) -> set[str]:
+    """A proposition and everything its justification rests on."""
+    by_symbol = {s["symbol"]: s for s in argument}
+    seen: set[str] = set()
+    todo = [symbol]
+    while todo:
+        current = todo.pop()
+        if current in seen or current not in by_symbol:
+            continue
+        seen.add(current)
+        todo.extend(by_symbol[current].get("justifiers") or [])
+    return seen
+
+
+def member_goals(argument: list[dict], names: list[str]) -> dict[str, str]:
+    """Each member's goal in a channel's argument, name → proposition symbol.
+
+    A member's goal is what they are justifying: of the propositions with
+    justifiers they accept, the last they reach, one none of those justifies.
+    A member who justifies nothing takes the goal of the first member whose
+    justification they reject, that goal or anything it rests on.
+    (planning/decision/2026-11-09-a-channel-s-voices-are-its-members.md, *Goals*.)
+    """
+    goals: dict[str, str] = {}
+    for name in names:
+        theirs = [s for s in argument if s.get("justifiers") and name in (s.get("accepted") or [])]
+        used = {j for s in theirs for j in s["justifiers"]}
+        ends = [s["symbol"] for s in theirs if s["symbol"] not in used]
+        if ends:
+            goals[name] = max(ends, key=int)
+    rejected = {name: {s["symbol"] for s in argument if name in (s.get("rejected") or [])} for name in names}
+    for name in names:
+        if name in goals:
+            continue
+        for other in names:
+            if other != name and other in goals and rejected[name] & _ancestors(argument, goals[other]):
+                goals[name] = goals[other]
+                break
+    return goals
+
+
+def _goals_summary_of(contents: list[str], goals: list[list[str]]) -> str:
+    """Roxana's goalsSummary for any goals, as its getGoalsSummary (data.tsx)
+    writes it: most people first, ties in order, joined by an em dash."""
+    held = [(i, g) for i, g in enumerate(goals) if g]
+    held.sort(key=lambda pair: -len(pair[1]))
+    return " \u2014 ".join(_goals_summary(contents[i], g) for i, g in held)
 
 
 def _sender(config) -> str | None:
@@ -106,7 +156,7 @@ def _discussion_link(web_url: str | None, discussion_id: str) -> str:
 
 
 def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
-    from noesis.argue import markdown_to_argument
+    from noesis.argue import STANCES, markdown_to_argument
     from noesis.config import load_config
     from noesis import roxana_client
 
@@ -133,8 +183,23 @@ def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
     argument_contents = _argument_contents(argument)
     analysis_results = _analysis_results(companion, argument)
     # The whole argument's conclusion is its last proposition (dianoia's
-    # extraction puts it there), set as the sender's goal in Roxana.
+    # extraction puts it there), set as the sender's goal in Roxana where no
+    # member of a channel has a goal of their own.
     conclusion = len(proposition_contents)
+    config = load_config()
+    # In a channel, each member's stances and goal, by the user name Roxana
+    # knows them by; else, or where no member has a goal, the conclusion is
+    # the sender's.
+    users = {m.name: m.user for m in config.members}
+    ordered = sorted(argument, key=lambda s: int(s["symbol"]))
+    stances = [{stance: [users[n] for n in s.get(stance) or [] if n in users] for stance in STANCES}
+               for s in ordered]
+    goals: list[list[str]] = [[] for _ in ordered]
+    for name, symbol in member_goals(argument, [m.name for m in config.members]).items():
+        goals[int(symbol) - 1].append(users[name])
+    sender = _sender(config) if not any(goals) else None
+    if sender:
+        goals[conclusion - 1] = [sender]
 
     if dry_run:
         print("Propositions:")
@@ -145,16 +210,18 @@ def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
             print(f"  {i}: {content}")
         if analysis_results:
             print(f"Analyses: positions {', '.join(str(p) for p in sorted(analysis_results))}")
-        print(f"Goal: proposition {conclusion}")
+        for index, goal in enumerate(goals, start=1):
+            if goal:
+                print(f"Goal: proposition {index} ({', '.join(goal)})")
+        if not any(goals):
+            print(f"Goal: proposition {conclusion}")
         print("Dry run — nothing sent to Roxana.")
         return 0
 
-    config = load_config()
     if not config.roxana_api_url or not config.roxana_api_key:
         print("Error: set roxana_api_url and roxana_api_key in ~/.config/noesis/config.toml.")
         return 1
     url, api_key = config.roxana_api_url, config.roxana_api_key
-    goal = [sender] if (sender := _sender(config)) else []
 
     exports_path = _exports_path(config.library_path)
     exports = _load_exports(exports_path)
@@ -191,7 +258,7 @@ def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
                 sentence_id = roxana_client.create_sentence(url, api_key, content, discussion_id)
                 created_ids.append(sentence_id)
                 proposition_entries.append(
-                    _layout_entry(index, sentence_id, goal if index == conclusion else None))
+                    _layout_entry(index, sentence_id, goals[index - 1], **stances[index - 1]))
             argument_entries = []
             for index, content in enumerate(argument_contents, start=1):
                 sentence_id = roxana_client.create_sentence(url, api_key, content, discussion_id)
@@ -201,7 +268,7 @@ def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
             roxana_client.create_discussion(
                 url, api_key, discussion_id, layout,
                 analysis_results=json.dumps(analysis_results) if analysis_results else None,
-                goals_summary=_goals_summary(proposition_contents[-1], goal),
+                goals_summary=_goals_summary_of(proposition_contents, goals),
             )
         except RuntimeError:
             for sentence_id in created_ids:
@@ -217,9 +284,12 @@ def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
     exported_analyses = f", {len(analysis_results)} analyses" if analysis_results else ""
     print(f"Exported {len(proposition_entries)} propositions, {len(argument_entries)} arguments"
           f"{exported_analyses} to discussion {discussion_id}.")
-    if goal:
-        print(f"Proposition {conclusion}, the conclusion, is {goal[0]}'s goal.")
-    else:
+    if sender:
+        print(f"Proposition {conclusion}, the conclusion, is {sender}'s goal.")
+    for index, goal in enumerate(goals, start=1):
+        if goal and not sender:
+            print(f"Proposition {index} is the goal of {', '.join(goal)}.")
+    if not any(goals):
         print(f"Proposition {conclusion}, the conclusion, is nobody's goal: set roxana_user in ~/.config/noesis/config.toml.")
     if exports_path is not None:
         earlier = [*previous.get("earlier", []), previous["discussion_id"]] if previous else []

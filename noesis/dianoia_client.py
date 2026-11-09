@@ -62,11 +62,19 @@ def _restrict_to_step(args: dict, step: str) -> dict:
     return {**args, "argument": [s for s in args["argument"] if s["symbol"] in keep]}
 
 
-def extract(text: str, max_props: int | None = None) -> dict:
-    """Extract an argument from text, return Arguments dict."""
+def extract(text: str, max_props: int | None = None, participants: list[str] | None = None) -> dict:
+    """Extract an argument from text, return Arguments dict.
+
+    With participants, the names the text uses for its people, each step also
+    says which of them accept it and which reject it (`accepted`, `rejected`;
+    dianoia's task extraction-returns-each-participant-s-stances.md). A
+    dianoia that does not know them yet returns steps without them.
+    """
     base, token = _endpoint()
-    return _request(base, token, "POST", "/argument/extract",
-                    body={"text": text, "max_props": max_props})
+    body: dict = {"text": text, "max_props": max_props}
+    if participants:
+        body["participants"] = participants
+    return _request(base, token, "POST", "/argument/extract", body=body)
 
 
 def audit(args: dict) -> dict:

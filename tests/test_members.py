@@ -9,6 +9,7 @@ import hashlib
 import io
 import json
 import urllib.error
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -180,14 +181,50 @@ def test_spending_is_metered_per_library_and_read_by_the_application(client, flo
     assert client.get("/applications/spending", headers=ANN).status_code == 403
 
 
-def test_every_member_s_lines_are_the_library_s_own_voice(client, floor):
+def test_each_member_is_their_own_voice_and_none_is_the_library_s(client, floor):
+    from noesis.config import Speaker
     groups, _ = floor
     groups[LIB]["members"].append({"user": "bob", "pro": True, "name": "Bob, Jr."})
-    groups[LIB]["members"].append({"user": "cy", "pro": False, "name": "Cy"})
+    groups[LIB]["members"].append({"user": "cy", "pro": False, "name": None})
     accounts.set_speaker_names("ann", ["Ann"])
-    assert members.voices("thefloor", LIB) == ("Ann Example", "Ann", "Cy")    # a comma would split the list
-    accounts.set_speaker_names("ann", [])
-    assert members.voices("ann", "notes") == ()
+    try:
+        assert members.voices("thefloor", LIB) == ()
+        assert members.speakers("thefloor", LIB) == (
+            Speaker("ann", "Ann Example", ("Ann Example", "Ann")),
+            Speaker("bob", "Bob, Jr.", ("Bob, Jr.",)),
+            Speaker("cy", "cy", ("cy",)))                               # no display name: the user name
+        assert members.voices("ann", "notes") == ("Ann",)
+        assert members.speakers("ann", "notes") == ()
+    finally:
+        accounts.set_speaker_names("ann", [])
+
+
+CHANNEL = ("\n# Lunch\n2026-10-30\n\n## Ann Example\n\nMine.\n\n## Bob\n\nHis.\n\n"
+           "## Claude\n\nThe model's.\n\n## Dee\n\nA guest's.\n")
+
+
+def test_whoever_reads_a_channel_s_chat_is_the_user_and_the_others_members(client, floor, monkeypatch):
+    from noesis import mcp_server
+    groups, _ = floor
+    groups[LIB]["members"].append({"user": "bob", "pro": True, "name": "Bob"})
+    root = Path("/srv/libraries/thefloor") / LIB
+
+    def voiced(reader):
+        return mcp_server._voiced(root, "2026-10-30-lunch.chat.md", CHANNEL, reader).split("\n", 1)[0]
+    assert voiced("ann") == ("Voices: ## Ann Example is the user; ## Bob is another member of the channel, "
+                             "speaking for themselves; ## Claude is a model; ## Dee is someone else.")
+    assert voiced("bob") == ("Voices: ## Bob is the user; ## Ann Example is another member of the channel, "
+                             "speaking for themselves; ## Claude is a model; ## Dee is someone else.")
+    # The application's confined token, Claude's in the channel: nobody there is the user.
+    assert voiced("thefloor") == ("Voices: no heading is the user; ## Ann Example, ## Bob are other members "
+                                  "of the channel, each speaking for themselves; ## Claude is a model; "
+                                  "## Dee is someone else.")
+    monkeypatch.setattr(mcp_server, "_caller", lambda: "ann")
+    monkeypatch.setattr(mcp_server, "_open_to", lambda ctx: [f"thefloor/{LIB}"])
+    said = mcp_server.guide(None)
+    assert "the sections headed ## Prompt, ## Ann Example are the user's own words" in said
+    assert "the sections headed ## Bob are its other members'" in said
+    assert "Claude's account of what each member thinks" in said
 
 
 def test_the_application_is_asked_with_noesis_s_own_token(data, monkeypatch):

@@ -26,8 +26,12 @@ the next asking with nothing sent.
   application to divide among whoever pays (`GET /applications/spending`);
   the owner has no account, so nothing caps it here, and a group with nobody
   paying is refused whatever would spend (server.py, `_may_run`).
-- **Voice**: every member's lines are the library's own, by the names the
-  application gives and the names each keeps here; anybody else's are context.
+- **Voice** (since 2026-11-09, planning/decision/2026-11-09-a-channel-s-voices-are-its-members.md):
+  each member is their own voice, named by the display name the application
+  gives them, their headings that name and the names they keep here
+  (`speakers`). No heading is the library's own: who is "the user" is
+  whoever reads (mcp_server._voiced), and a run, which nobody reads, names
+  each member instead.
 """
 
 from __future__ import annotations
@@ -39,6 +43,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 
+from noesis.config import Speaker
 from noesis.service import LibraryError
 
 # How long an answer is believed: long enough that a session's reads ask once,
@@ -178,19 +183,24 @@ def libraries_of(user: str) -> dict[str, str | None]:
 
 
 def voices(owner: str, library: str) -> tuple[str, ...]:
-    """The headings that are the library's own voice: a person's own names, or
-    every member's of a group — the name the application gives, and theirs here."""
+    """The headings that are the library's owner: a person's own names, and none
+    of a group's, whose members are each their own voice (speakers)."""
+    from noesis import accounts
+    return accounts.speaker_names(owner) if keeper(owner) is None else ()
+
+
+def speakers(owner: str, library: str) -> tuple[Speaker, ...]:
+    """A group's members, each by the name the application gives them (else
+    their user name) and their headings: that name and the names they keep
+    here. None for a person's library."""
     from noesis import accounts
     if keeper(owner) is None:
-        return accounts.speaker_names(owner)
+        return ()
     found = group(owner, library)
-    names: list[str] = []
-    for member in found.members if found else ():
-        for name in (member.name, *accounts.speaker_names(member.user)):
-            # A comma or line break would split NOESIS_USER_NAMES (server.py).
-            if name and name not in names and not any(c in name for c in ",\n\r"):
-                names.append(name)
-    return tuple(names)
+    return tuple(
+        Speaker(member.user, member.name or member.user,
+                tuple(dict.fromkeys(h for h in (member.name or member.user, *accounts.speaker_names(member.user)) if h)))
+        for member in (found.members if found else ()))
 
 
 def metered(owner: str, library: str) -> str:

@@ -58,6 +58,9 @@ is refused whatever would spend (402); reading goes on.
 
 ## Voice
 
+*Replaced on 2026-11-09 by `2026-11-09-a-channel-s-voices-are-its-members.md`:
+each member is their own voice.*
+
 Every member's lines are the library's own voice — the name The Floor gives
 each, and the names each keeps here — and anybody else's (Claude's, a
 guest's) context.

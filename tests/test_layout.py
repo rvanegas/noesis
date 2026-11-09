@@ -125,6 +125,18 @@ def test_voice_by_role():
     assert "[VOICE: user]" in chat and "[VOICE: llm" in chat
 
 
+def test_voice_in_a_channel_names_each_member_and_nobody_is_the_user():
+    from noesis.cmd_index import _annotate_voice
+    from noesis.config import Speaker
+    channel = (Speaker("ann", "Ann Example", ("Ann Example", "Ann")), Speaker("bob", "Bob", ("Bob",)))
+    assert "Claude's account of the channel members' thoughts" in _annotate_voice(
+        "text", "document", ("Prompt",), ("Claude",), channel)
+    chat = _annotate_voice("\n# T\n\n## Ann\n\nQ\n\n## Bob\n\nR\n\n## Claude\n\nA\n\n## Dee\n\nS\n",
+                           "chat", ("Prompt",), ("Claude",), channel)
+    assert "## Ann\n\n[VOICE: member — Ann Example]" in chat and "## Bob\n\n[VOICE: member — Bob]" in chat
+    assert "[VOICE: user]" not in chat and "## Dee\n\n[VOICE: third-party]" in chat
+
+
 def test_index_takes_a_sessions_document_not_its_chat(tmp_path):
     from noesis.library import build_index
     (tmp_path / "2026").mkdir()

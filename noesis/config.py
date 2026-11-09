@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import os
 from pathlib import Path
 from typing import Final
@@ -52,6 +53,15 @@ Year may be a single year (1989), a range (53-55), a slash pair (1781/1787), or 
 
 
 @dataclass(frozen=True)
+class Speaker:
+    """A member of a channel's library: their user name, the display name they
+    are named by, and the chat headings that are theirs."""
+    user: str
+    name: str
+    headings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class AppConfig:
     model: str | None = None
     system_prompt: str = _BASE_SYSTEM_PROMPT
@@ -73,6 +83,13 @@ class AppConfig:
     server_url: str | None = None
     server_token: str | None = None
     mirrors: tuple[tuple[str, Path], ...] = ()
+    # A channel's library: its members, each their own voice, where a person's
+    # library has none (NOESIS_MEMBERS, members.speakers).
+    members: tuple[Speaker, ...] = ()
+
+    def member(self, heading: str) -> Speaker | None:
+        """The member a chat heading is, if any."""
+        return next((m for m in self.members if heading in m.headings), None)
 
 
 def _write_default_config(path: Path) -> None:
@@ -111,6 +128,7 @@ def load_config() -> AppConfig:
     raw_names = os.environ.get("NOESIS_USER_NAMES", "").strip()
     names = raw_names.split(",") if raw_names else data.get("user_names", [])
     user_names = tuple(dict.fromkeys([PROMPT_HEADING, *(str(n).strip() for n in names if str(n).strip())]))
+    members = _members(os.environ.get("NOESIS_MEMBERS", ""))
     llm_names  = tuple(str(n).strip() for n in data.get("llm_names",  ["Claude", "GPT"])     if str(n).strip())
     wrap_width = int(data.get("wrap_width", 100))
     revision_retention_days = int(data.get("revision_retention_days", 7))
@@ -151,7 +169,18 @@ def load_config() -> AppConfig:
         server_url=server_url,
         server_token=server_token,
         mirrors=mirrors,
+        members=members,
     )
+
+
+def _members(raw: str) -> tuple[Speaker, ...]:
+    """A channel's members as the server names them to a run, in JSON."""
+    try:
+        listed = json.loads(raw) if raw.strip() else []
+    except ValueError:
+        return ()
+    return tuple(Speaker(str(m["user"]), str(m["name"]), tuple(str(h) for h in m.get("headings") or ()))
+                 for m in listed if isinstance(m, dict) and m.get("user") and m.get("name"))
 
 
 def _build_system_prompt(library_path: Path | None) -> str:

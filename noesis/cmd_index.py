@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 from pathlib import Path
 
-from noesis.config import load_config
+from noesis.config import Speaker, load_config
 from noesis.text_utils import (
     _format_cost,
     _format_total,
@@ -18,22 +18,30 @@ def _annotate_voice(
     role: str,
     user_names: tuple[str, ...],
     llm_names: tuple[str, ...],
+    members: tuple[Speaker, ...] = (),
 ) -> str:
     """Return content annotated with [VOICE: ...] labels, by its role.
 
     A document is the user's own writing, whole; a chat is labelled section
-    by section from its speaker headings.
+    by section from its speaker headings. In a channel's library (members) a
+    document is Claude's account of what its members think, and each member's
+    sections are labelled by their name: nobody there is the user.
     """
     from noesis.library import _STRUCTURAL_HEADINGS
     from noesis.transcript import HEADING_RE
 
     if role == "document":
+        if members:
+            return "[VOICE: Claude's account of the channel members' thoughts, each attributed by name]\n\n" + content
         return "[VOICE: this entire document is the user's own writing]\n\n" + content
 
     user_set = frozenset(user_names)
     llm_set = frozenset(llm_names)
 
     def _label(speaker: str) -> str:
+        member = next((m for m in members if speaker in m.headings), None)
+        if member is not None:
+            return f"[VOICE: member — {member.name}]"
         if speaker in user_set:
             return "[VOICE: user]"
         if speaker in llm_set:
@@ -73,7 +81,10 @@ def _index_prompt(content: str, word_count: int) -> str:
         "expand on the user's thinking and should be treated as representing the user's intellectual "
         "context unless a later [VOICE: user] section explicitly contradicts them; "
         "[VOICE: third-party] marks external sources or quoted voices; "
-        "[VOICE: this entire document is the user's own writing] means all content is the user's voice.\n"
+        "[VOICE: this entire document is the user's own writing] means all content is the user's voice; "
+        "[VOICE: member — <name>] marks one member of a group speaking for themselves, and "
+        "[VOICE: Claude's account of the channel members' thoughts, each attributed by name] a document "
+        "reporting what each member thinks: attribute each view to the member who holds it, by name.\n"
         f"- TERMS must be {t_target} index terms separated by semicolons: key topics, "
         "concepts, and names as found in a book index. Write people's names in "
         "inverted form suitable for sorting (e.g. 'Twain, Mark'). "
@@ -171,7 +182,7 @@ def run_index(refs_only: bool = False, reprocess_all: bool = False, verbose: boo
         def summarize(content: str, word_count: int, role: str) -> tuple[str, list[str]]:
             nonlocal total_cost
             system = "You are a library indexing assistant."
-            annotated = _annotate_voice(content, role, config.user_names, config.llm_names)
+            annotated = _annotate_voice(content, role, config.user_names, config.llm_names, config.members)
             messages = [{"role": "user", "content": _index_prompt(annotated, word_count)}]
             reply = client.generate_reply(system, messages)
             if rates:

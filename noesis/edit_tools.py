@@ -6,6 +6,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
+from noesis.config import Speaker
 from noesis.transcript import TranscriptError
 
 EDIT_TOOL: dict[str, object] = {
@@ -81,6 +82,30 @@ editing the document, treat the argument structure as a constraint on logical \
 coherence.\
 """
 
+_CHANNEL_DOCUMENT = """\
+The document is written in your own voice, Claude's: an account of what each \
+member of the channel thinks, naming them ("Ann holds that…; Bob objects \
+that…"). It is not the members' joint writing, and no member speaks in it. A \
+member's request changes the account but does not make the document theirs, \
+and nothing in it is agreed unless the chat shows that each member it names \
+agrees.\
+"""
+
+_CHANNEL_ARGUMENT = """\
+In a channel, each proposition also says which members accept it and which \
+reject it, by name: `- 3 (from: 1, 2; accepted: Ann, Bob; rejected: Cy): \
+text`. Keep these stances as the chat states them. A member who has taken no \
+stance is in neither list.\
+"""
+
+
+def channel_note(members: tuple[Speaker, ...]) -> str:
+    """What a model replying in a channel's chat is told about its speakers."""
+    return (f"This chat is a channel's, whose members are {', '.join(m.name for m in members)}. "
+            "Each member's turns are headed by their name and speak for that member alone; the "
+            "latest turn's speaker is the one asking.")
+
+
 _BACKUP_RE = re.compile(r"^(.+)--(\d+)(\.[^.]+)$")
 
 
@@ -106,8 +131,12 @@ def resolve_edit_targets(chat_path: Path) -> list[Path]:
     return targets
 
 
-def build_edit_context(targets: list[Path], wrap_width: int = 100, revisions_dir: Path | None = None) -> str:
+def build_edit_context(targets: list[Path], wrap_width: int = 100, revisions_dir: Path | None = None,
+                       members: tuple[Speaker, ...] = ()) -> str:
     """Build the file-content block injected into the system prompt.
+
+    In a channel's library (members) the document is Claude's account of what
+    each member thinks, and the argument records each member's stances.
 
     Wraps each target before sending to the model. If wrapping changes the
     content, saves a revision and writes the wrapped version to disk first so
@@ -122,7 +151,13 @@ def build_edit_context(targets: list[Path], wrap_width: int = 100, revisions_dir
     if has_argument and has_document:
         parts += [_TRIAD_NOTE, ""]
     parts += [_EDIT_INSTRUCTIONS, ""]
-    if has_argument:
+    if has_document and members:
+        parts += [_CHANNEL_DOCUMENT, ""]
+    if has_argument and members:
+        parts += [_ARGUMENT_FORMAT.replace("The user writes the propositions.",
+                                           "The channel's members write the propositions."), "",
+                  _CHANNEL_ARGUMENT, ""]
+    elif has_argument:
         parts += [_ARGUMENT_FORMAT, ""]
 
     for t in targets:

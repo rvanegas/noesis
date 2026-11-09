@@ -240,13 +240,14 @@ def _reply_anthropic(
 
         status("Library tools active.")
 
-    from noesis.edit_tools import EDIT_TOOL, build_edit_context, make_edit_executor, resolve_edit_targets
+    from noesis.edit_tools import EDIT_TOOL, build_edit_context, channel_note, make_edit_executor, resolve_edit_targets
 
     edit_targets = resolve_edit_targets(path) if edit else []
     if edit_targets:
         _rev_dir = (config.library_path / "REVISIONS") if config.library_path else None
         edit_exec = make_edit_executor(edit_targets, wrap_width=config.wrap_width, revisions_dir=_rev_dir)
-        edit_context = build_edit_context(edit_targets, wrap_width=config.wrap_width, revisions_dir=_rev_dir)
+        edit_context = build_edit_context(edit_targets, wrap_width=config.wrap_width, revisions_dir=_rev_dir,
+                                          members=config.members)
         tools = (tools or []) + [EDIT_TOOL]
         prev_exec = tool_executor
         def tool_executor(name: str, inp: dict[str, object]) -> str:  # noqa: E306
@@ -256,6 +257,10 @@ def _reply_anthropic(
         library_context = (library_context or "") + ("\n\n" if library_context else "") + edit_context
         for t in edit_targets:
             status(f"Edit target: {t.name}")
+
+    # In a channel's chat each speaker is a member, the latest the one asking.
+    system_prompt = (f"{config.system_prompt}\n\n{channel_note(config.members)}" if config.members
+                     else config.system_prompt)
 
     if web:
         tools = (tools or []) + [
@@ -302,7 +307,7 @@ def _reply_anthropic(
             return resolved.file_id
 
         return build_anthropic_input(
-            transcript, config.system_prompt, path,
+            transcript, system_prompt, path,
             library_context=library_context,
             resolve_file_id=resolve_file_id if has_binary_assets else None,
         )

@@ -685,9 +685,9 @@ def build_parser() -> argparse.ArgumentParser:
     # argue
     argue_parser = subparsers.add_parser(
         "argue",
-        help="Extract a structured argument from a plain document.",
+        help="Extract a structured argument from a document or a chat.",
     )
-    argue_parser.add_argument("path", help="Plain document (.md). Extracts argument to <stem>.argument.md if absent.")
+    argue_parser.add_argument("path", help="A .document.md or .chat.md. Extracts its argument to <stem>.argument.md if absent.")
     argue_parser.add_argument(
         "-m", "--max-props",
         metavar="N",

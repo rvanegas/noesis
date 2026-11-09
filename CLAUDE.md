@@ -49,7 +49,7 @@ The tool has two main pipelines: **CLI → Transcript parsing → Format validat
 - **`library.py`** — Library indexing: scans a directory of markdown documents, generates AI summaries and index terms, writes `MANIFEST.md` and `INDEX.md`, reads `KEYS.md` for term canonicalization
 - **`accounts.py`**, **`bearer.py`** — sign-in is auth's (`~/src/dianoia-auth`, at `auth.rvanegas.co`, since 2026-11-08), noesis a resource server: `bearer.py` takes auth's JWTs by scope (`noesis:read` /mcp, `noesis:import`, `noesis:api` the API, `noesis:keep` an application's own), minted tokens and its library-confined ones; `accounts.py` is what a user may spend and store (free unless given a plan); a run's model calls charge `NOESIS_ACCOUNT` (SERVER.md, Phase 6)
 - **`deletion.py`** — what is deleted, kept thirty days then swept by `noesis serve`: a file deleted through the API in `$NOESIS_DATA_DIR/trash/`, a person auth says deleted their account (`DELETE /users/<user>`, auth's token alone, scope `noesis:erase`) refused at once, their libraries in `deleted/`; `scripts/libraries.py --trash`, `scripts/accounts.py deleted|restore`
-- **`members.py`** — libraries an application keeps for its groups, since 2026-11-07: The Floor's channel's is `thefloor/<handle>`, reached by every member and nobody else, noesis asking the application who belongs with its own token from auth (`scripts/client_libraries.py` marks it); metered as the library, refused spending when nobody pays
+- **`members.py`** — libraries an application keeps for its groups, since 2026-11-07: The Floor's channel's is `thefloor/<handle>`, reached by every member and nobody else, noesis asking the application who belongs with its own token from auth (`scripts/client_libraries.py` marks it); metered as the library, refused spending when nobody pays; each member is their own voice, never the library's (`speakers`, a run's `NOESIS_MEMBERS`): the MCP reader is the user and the others members, a document is Claude's account of each member's thoughts, and an argument records each member's stances
 - **`anthropic_client.py`** — the streaming model client; noesis uses Anthropic alone (`## GPT` headings are still read as LLM voice)
 
 ### Data flow for `noesis reply`
@@ -106,7 +106,7 @@ Every dated file names its role in a secondary suffix: `YYYY-MM-DD-slug.{role}.{
 | `.chat.md` | A transcript; drives `noesis reply`, which auto-discovers the `.document.md` and `.argument.md` of its stem |
 | `.document.md` | The user's own prose |
 | `.source.{ext}` | Third-party material, in any format: a paper, an uploaded markdown file, notes from elsewhere |
-| `.argument.md` | A pure numbered list of propositions, extracted by `noesis argue` |
+| `.argument.md` | A pure numbered list of propositions, extracted by `noesis argue` from a document or chat |
 | `.analysis.md` | Per-argument dianoia analysis, produced by `noesis analyze <doc> <proposition>`; never hand-edited |
 | `.review.md` | A document's review, written by `noesis review` |
 
@@ -125,7 +125,7 @@ The library indexer indexes `.chat.md` and `.document.md` (`library.INDEXED_ROLE
 - 3 (from: 1, 2): conclusion text
 ```
 
-Proposition numbers are a strict integer succession starting at 1 with no gaps, and are never renumbered once assigned (`validate_proposition_numbering` in `argue.py` enforces this on every AI-driven edit). A proposition with justifiers (a `(from: ...)` clause) is an "argument" — its justifiers are premises, itself the conclusion. `noesis analyze <doc> <proposition>` submits one argument's chain to dianoia and writes the result to `<stem>.analysis.md`, labeling it with a letter (A, B, C, …, Z, AA, …) following Roxana's convention exactly: computed from the proposition's ascending position among all justified propositions, never persisted (`assign_argument_labels` / `_to_alpha_index` in `argue.py`).
+In a channel's library a line also carries stances by display name, `- 3 (from: 1, 2; accepted: Ann; rejected: Bob): …`, and `export` sends them with each member's goal. Proposition numbers are a strict integer succession starting at 1 with no gaps, and are never renumbered once assigned (`validate_proposition_numbering` in `argue.py` enforces this on every AI-driven edit). A proposition with justifiers (a `(from: ...)` clause) is an "argument" — its justifiers are premises, itself the conclusion. `noesis analyze <doc> <proposition>` submits one argument's chain to dianoia and writes the result to `<stem>.analysis.md`, labeling it with a letter (A, B, C, …, Z, AA, …) following Roxana's convention exactly: computed from the proposition's ascending position among all justified propositions, never persisted (`assign_argument_labels` / `_to_alpha_index` in `argue.py`).
 
 `noesis audit <doc>` checks the whole `.argument.md` companion against dianoia's structural conditions (connectivity, order-independence, conclusion legibility) via dianoia's `/argument/audit` route, printing per-finding issues and revision pointers; exits 1 when findings exist.
 

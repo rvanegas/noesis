@@ -39,6 +39,15 @@ _DEFAULT_DOC_REVIEW_SYSTEM_PROMPT = (
     + _REVIEW_GUIDANCE
 )
 
+# A channel's documents are Claude's account of what its members think
+# (planning/decision/2026-11-09-a-channel-s-voices-are-its-members.md), not one author's prose.
+CHANNEL_REVIEW_NOTE = (
+    "\n\nThese documents are a channel's: each is Claude's account of what the channel's "
+    "members think, naming them, not the writing of one author. Assess the views as the "
+    "members hold them, each by name, and the account for how faithfully and clearly it "
+    "reports them."
+)
+
 _DEFAULT_FINAL_PROMPT = """\
 Comprehensive Assessment
 
