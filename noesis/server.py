@@ -200,7 +200,8 @@ def filed_library(user: str, library: str, who: str = Depends(filer)) -> Path:
 
 @app.get("/libraries")
 def libraries(who: str = Depends(caller)) -> dict:
-    # names: what to show for a group's library, whose id says nothing (members.py).
+    # names: what to show for a group's library, whose id says nothing (members.py):
+    # its name, or who else is in it.
     return {"libraries": library_ids(who), "names": service.library_names(who)}
 
 

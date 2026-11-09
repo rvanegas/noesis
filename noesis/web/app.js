@@ -52,7 +52,7 @@ let open = null;             // {path, sha, blob, modified}
 let running = false;
 let exitCode = 0;            // the last run's, -1 if it never finished
 let names = [];              // the chat headings, besides Prompt, that are the user
-let groups = {};             // library id → its group's name, for an application's library
+let groups = {};             // library id → its group's name, or who else is in it, for an application's library
 
 // ---------------------------------------------------------------------------
 // Storage that may be refused (a private window): the page works without it,
@@ -253,7 +253,8 @@ async function loadLibraries() {
 }
 
 // A group's library (The Floor's channel) is named by its group, which its id
-// only slugs: the name is shown once the library is chosen.
+// only slugs, or by who else is in it when the group has no name: the name is
+// shown once the library is chosen.
 function showGroup() {
   $("group").textContent = groups[library] ?? "";
   $("group").hidden = !groups[library];

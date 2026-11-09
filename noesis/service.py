@@ -109,16 +109,39 @@ def library_ids(who: str) -> list[str]:
         for u in users if u.is_dir()
         for lib in sorted(u.iterdir()) if lib.is_dir() and NAME_RE.match(lib.name)
     ]
-    return own + [i for i in library_names(who) if i not in own]
+    return own + [i for i in _groups(who) if i not in own]
 
 
-def library_names(who: str) -> dict[str, str | None]:
-    """The groups' libraries a person reaches (members.py), id → the group's
-    name, which is what to show: the id's second half is only an id."""
+def _groups(who: str) -> dict[str, str | None]:
+    """The groups' libraries a person reaches (members.py), id → the group's name."""
     from noesis import members
     if who == "*" or members.keeper(who) is not None:
         return {}
     return {i: name for i, name in members.libraries_of(who).items() if (data_dir() / "libraries" / i).is_dir()}
+
+
+def library_names(who: str) -> dict[str, str | None]:
+    """The groups' libraries a person reaches, id → what to show, the id's
+    second half being only an id: the group's name, or for a group without
+    one (a channel nobody named), who else is in it, as The Floor shows it."""
+    names = _groups(who)
+    for i, name in names.items():
+        if name is None:
+            names[i] = _others(who, *i.split("/", 1))
+    return names
+
+
+def _others(who: str, owner: str, library: str) -> str | None:
+    """A group's other members, by the names it gives them: "With Ann and Bob"."""
+    from noesis import members
+    try:
+        found = members.group(owner, library)
+    except LibraryError:
+        return None
+    others = [m.name or m.user for m in found.members if m.user != who] if found else []
+    if not others:
+        return None
+    return "With " + (others[0] if len(others) == 1 else ", ".join(others[:-1]) + " and " + others[-1])
 
 
 def lock_for(root: Path) -> asyncio.Lock:

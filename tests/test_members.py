@@ -127,6 +127,18 @@ def test_a_member_lists_it_beside_their_own_by_the_group_s_name(client, floor):
     assert client.get("/libraries", headers=BOB).json() == {"libraries": [], "names": {}}
 
 
+def test_a_group_without_a_name_is_shown_by_who_else_is_in_it(client, floor):
+    groups, _ = floor
+    _made(client)
+    groups[LIB]["name"] = None
+    names = lambda: client.get("/libraries", headers=ANN).json()["names"][f"thefloor/{LIB}"]
+    assert names() is None  # nobody else
+    groups[LIB]["members"] += [{"user": "bob", "pro": False, "name": "Bob B"}, {"user": "cy", "pro": False, "name": None}]
+    members._cache.clear()
+    assert names() == "With Bob B and cy"
+    assert client.get("/libraries", headers=BOB).json()["names"] == {f"thefloor/{LIB}": "With Ann Example and cy"}
+
+
 def test_a_group_s_library_not_made_yet_is_not_listed(client, floor):
     assert client.get("/libraries", headers=ANN).json() == {"libraries": ["ann/notes"], "names": {}}
 

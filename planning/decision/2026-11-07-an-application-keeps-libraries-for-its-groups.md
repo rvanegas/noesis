@@ -34,7 +34,9 @@ does not answer admits nobody (503) and lists nothing.
 - **Listed by the group's name.** `/libraries` and `/me` carry `names`, id →
   the group's current name, since the handle is only an id and survives the
   channel's renames; the web client lists the id, and heads a chosen
-  library with its group's name.
+  library with its group's name. A group without one, a channel nobody
+  named, is shown by who else is in it, "With Ann and Bob" (since
+  2026-11-09).
 
 ## Claude consults one library, by a token confined to it
 
