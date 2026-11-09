@@ -22,6 +22,10 @@ What they may do here is noesis's, kept per user name:
   that are a user's own voice. Every run in their libraries and every MCP
   read of them labels voices by these.
 
+A person who deletes their account at auth is deleted here too, and their
+plan, spend and names go thirty days later (deletion.py, which keeps who and
+when in `deleted`).
+
 Kept in $NOESIS_DATA_DIR/accounts.db (SQLite, mode 600), which `noesis` itself
 writes to from a run: the server names the library's owner in NOESIS_ACCOUNT,
 and the model clients charge that user. A user has a row once the operator
@@ -108,6 +112,7 @@ CREATE TABLE IF NOT EXISTS spend (
     PRIMARY KEY (user, month)
 );
 CREATE TABLE IF NOT EXISTS names (user TEXT PRIMARY KEY, names TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS deleted (user TEXT PRIMARY KEY, at REAL NOT NULL);
 """
 
 

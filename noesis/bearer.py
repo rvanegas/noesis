@@ -11,7 +11,11 @@ kinds of token reach it:
   conversations and the speaker names, `noesis:api` the file and run API;
   `noesis:keep` is an application's own token (The Floor keeping libraries,
   members.py), whose `sub` is its client id. A disabled account's tokens
-  last out their quarter hour: auth refuses refresh at once.
+  last out their quarter hour: auth refuses refresh at once. Auth's own
+  token, `sub` and `client_id` `dianoia-auth` and scope `noesis:erase`,
+  tells noesis that a person deleted their account (server.py,
+  `DELETE /users/<user>`); a deleted person's tokens, of any kind, are
+  refused from then on (deletion.py).
 - **Minted noesis tokens** (users.toml, scripts/add_token.py): the CLI's and
   the nightly service's, sent as they are, reaching everything.
 - **Library-confined tokens**: noesis's own, an hour, for /mcp and one of an
@@ -41,6 +45,9 @@ READ = "noesis:read"
 IMPORT = "noesis:import"
 API = "noesis:api"
 KEEP = "noesis:keep"
+# Auth itself, telling noesis that somebody deleted their account.
+ERASE = "noesis:erase"
+AUTH_CLIENT = "dianoia-auth"
 # A token confined to one library: `library:<owner>/<name>` (confined_token).
 LIBRARY_SCOPE = "library:"
 # What a minted token is called where a client id is asked for.
@@ -127,7 +134,15 @@ def confined_token(owner: str, library_id: str) -> tuple[str, int]:
 
 
 def access_token(token: str) -> AccessToken | None:
-    """Whatever the bearer is: a minted token, a confined one, or auth's."""
+    """Whatever the bearer is: a minted token, a confined one, or auth's; None for a deleted person's."""
+    from noesis import deletion
+    found = _access_token(token)
+    if found is not None and found.subject and deletion.is_deleted(found.subject):
+        return None
+    return found
+
+
+def _access_token(token: str) -> AccessToken | None:
     user = service.user_for_token(token)
     if user is not None:
         return AccessToken(token=token, client_id=MINTED, scopes=[READ, IMPORT, API], subject=user)

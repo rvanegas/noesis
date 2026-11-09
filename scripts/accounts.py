@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""What people may spend and store at noesis: list them, change a plan, allowance or names.
+"""What people may spend and store at noesis: list them, change a plan, allowance or names, restore the deleted.
 
 An operator task (SERVER.md, Phase 6), run in the container. Who a person is,
 their address, and disabling them, are auth's (its scripts/accounts.py).
@@ -9,6 +9,8 @@ their address, and disabling them, are auth's (its scripts/accounts.py).
     docker compose run --rm noesis python scripts/accounts.py raise ann 5
     docker compose run --rm noesis python scripts/accounts.py raised
     docker compose run --rm noesis python scripts/accounts.py names rodvandur Rodrigo "Rodrigo Vanegas"
+    docker compose run --rm noesis python scripts/accounts.py deleted
+    docker compose run --rm noesis python scripts/accounts.py restore ann
 
 `list` is every user with libraries here or a plan of their own, with this
 month's spend. `raise` adds dollars to a free account's monthly allowance,
@@ -16,6 +18,9 @@ kept every month until changed; a negative amount takes back, never below
 the default; `raised` lists the accounts whose allowance is not the default
 (ts cap, from the Mac). `names` sets the chat headings, besides Prompt, that
 are a user's own voice (the user alone prints them; --clear clears them).
+`deleted` lists the people who deleted their account at auth, each with the
+day their libraries go for good (deletion.py); `restore` brings one back
+within that window (their account at auth is auth's operator's to restore).
 """
 
 from __future__ import annotations
@@ -41,6 +46,8 @@ def main(argv: list[str] | None = None) -> int:
     names.add_argument("user")
     names.add_argument("names", nargs="*", help="none prints them; --clear clears them")
     names.add_argument("--clear", action="store_true")
+    sub.add_parser("deleted", help="the people deleted, and when each is removed for good")
+    sub.add_parser("restore", help="undo a deletion within its window").add_argument("user")
     args = parser.parse_args(argv)
 
     if args.command == "list":
@@ -65,6 +72,20 @@ def main(argv: list[str] | None = None) -> int:
             plan = "" if found.plan == accounts.FREE else f"  ({found.plan}: not limited)"
             print(f"{found.user:<24} +${found.extra_usd:.2f} = "
                   f"${accounts.allowance(found.user):.2f}, ${accounts.spent(found.user):.2f} spent{plan}")
+        return 0
+    if args.command == "deleted":
+        from noesis import deletion
+        for user, at in deletion.deleted():
+            gone = time.strftime("%Y-%m-%d", time.gmtime(at + deletion.DAYS * deletion.DAY_SECONDS))
+            print(f"{user:<24} deleted {time.strftime('%Y-%m-%d', time.gmtime(at))}, removed after {gone}")
+        return 0
+    if args.command == "restore":
+        from noesis import deletion
+        try:
+            deletion.restore_user(args.user)
+        except ValueError as exc:
+            raise SystemExit(f"✗ {exc}") from None
+        print(f"✓ {args.user} restored")
         return 0
     if args.command == "names":
         try:

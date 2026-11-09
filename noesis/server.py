@@ -17,7 +17,7 @@ run:
 - GET    …/files/{rel_path}                  the bytes, ETag their sha256, Last-Modified their mtime
 - HEAD   …/files/{rel_path}                  the same headers, without the bytes
 - PUT    …/files/{rel_path}                  If-None-Match: * creates; If-Match: "<sha>" replaces
-- DELETE …/files/{rel_path}                  If-Match: "<sha>"
+- DELETE …/files/{rel_path}                  If-Match: "<sha>"; kept thirty days (deletion.py)
 - POST   …/run {argv}                        server-sent events: output, then done
 - POST   …/import?filename=…[&only=…&replace=true&document_of=…]   the body is the file; as /run
 - GET    /me                                 the caller's account here: plan, spend, storage,
@@ -25,6 +25,8 @@ run:
                                              issued to (any of auth's tokens for a person;
                                              who they are is auth's own /me)
 - PUT    /me/names {names}                   the headings that are the caller's voice in chats
+- DELETE /users/{user}                       auth's alone (scope noesis:erase): the person deleted
+                                             their account, and their libraries go (deletion.py)
 
 /run runs `noesis --lib <library> <argv>` in a subprocess from the library root:
 file arguments are names, which noesis resolves across the library. Its output
@@ -103,10 +105,30 @@ _free_runs: set[asyncio.Task] = set()
 from noesis.mcp_server import mcp_app, mcp_lifespan
 
 
+# What was deleted thirty days ago is removed for good (deletion.py), this often.
+SWEEP_SECONDS = 6 * 60 * 60
+
+
+async def _sweep_forever() -> None:
+    from noesis import deletion
+    while True:
+        try:
+            if service.data_dir().is_dir():
+                for line in await asyncio.to_thread(deletion.sweep):
+                    print(f"deletion: {line}", file=sys.stderr)
+        except Exception as exc:
+            print(f"deletion: the sweep failed: {exc}", file=sys.stderr)
+        await asyncio.sleep(SWEEP_SECONDS)
+
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
-    async with mcp_lifespan():
-        yield
+    sweeping = asyncio.create_task(_sweep_forever())
+    try:
+        async with mcp_lifespan():
+            yield
+    finally:
+        sweeping.cancel()
 
 
 app = FastAPI(title="noesis", lifespan=_lifespan)
@@ -461,20 +483,36 @@ def delete_file(
         raise HTTPException(428, 'If-Match: "<sha256>" is required')
     if not path.is_file() or _sha256(path) != _unquote(if_match):
         raise HTTPException(412, "the file has changed")
-    path.unlink()
+    from noesis import deletion
+    deletion.trash(root, path)
     return Response(status_code=204)
 
 
 @app.delete("/libraries/{user}/{library}")
 def delete_library(root: Path = Depends(library), who: str = Depends(caller)) -> Response:
     """An application's library, deleted whole by the application (members.py):
-    The Floor's, a week after its channel was deleted. Nobody else deletes a
+    The Floor's, thirty days after its channel was deleted. Nobody else deletes a
     library here — a person's goes by the operator's hand."""
     from noesis import members
     if members.keeper(who) is None or _owner(root) != who:
         raise HTTPException(403, "only the application whose library it is")
     _writable(root)
     shutil.rmtree(root)
+    return Response(status_code=204)
+
+
+@app.delete("/users/{user}")
+def delete_user(user: str, authorization: str | None = Header(default=None)) -> Response:
+    """Auth's word that a person deleted their account (dianoia-auth's departures.py):
+    their libraries go, kept thirty days for the operator (deletion.py). 204
+    whether or not noesis knew them, so auth may say it again."""
+    from noesis import bearer, deletion
+    token = _token(authorization)
+    if token.client_id != bearer.AUTH_CLIENT or bearer.ERASE not in (token.scopes or []):
+        raise HTTPException(403, "only auth says who deleted their account")
+    if not service.NAME_RE.match(user):
+        raise HTTPException(400, "not a user name")
+    deletion.delete_user(user)
     return Response(status_code=204)
 
 

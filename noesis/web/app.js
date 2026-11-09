@@ -508,7 +508,7 @@ async function remove() {
     say(`${open.path}: ${await detail(response)}`);
     return;
   }
-  say(`Deleted ${open.path}.`);
+  say(`Deleted ${open.path}. It is kept thirty days, and can be restored by asking.`);
   closePanel("file");
   await loadFiles();
 }
