@@ -406,16 +406,17 @@ async function openFile(path) {
   const markdown = path.endsWith(".md");
   const setting = SETTINGS.has(path);
   const note = writtenBy(path);
-  // A document's argument is its .argument.md: Extract makes it, once, and
-  // Send to Roxana sends it, from either file.
-  const pair = /\.(document|argument)\.md$/;
-  const argued = pair.test(path) && files[path.replace(pair, ".argument.md")] !== undefined;
+  // A stem's argument is its .argument.md: Extract makes it, once, from the
+  // chat or the document, and Send to Roxana sends it from the argument file
+  // alone, where its stances can be read before they go.
+  const source = /\.(document|chat)\.md$/;
+  const argued = source.test(path) && files[path.replace(source, ".argument.md")] !== undefined;
   for (const button of $("file-actions").querySelectorAll("[data-run]")) {
     const run = button.dataset.run;
     button.hidden = setting ? !(run === "validate" && path === "KEYS.md" && sha)
       : !markdown || !!note || (run === "check" && !path.endsWith(".chat.md"))
-        || (run === "argue" && (!path.endsWith(".document.md") || argued))
-        || (run === "export" && !argued);
+        || (run === "argue" && (!source.test(path) || argued))
+        || (run === "export" && !path.endsWith(".argument.md"));
   }
   // A chat without its document takes one written elsewhere (claude.ai, an
   // editor), as <stem>.document.md beside it: the position the conversation

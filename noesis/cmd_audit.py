@@ -4,10 +4,6 @@ import sys
 from pathlib import Path
 
 
-def _primary(companion: Path) -> Path:
-    return companion.with_suffix("").with_suffix(".md")
-
-
 _CONDITION_TITLES = {
     "connectivity": "Connectivity",
     "order_independence": "Order independence",
@@ -27,7 +23,7 @@ def _print_findings(findings: list[dict]) -> None:
 
 
 def run_audit(path: Path) -> int:
-    from noesis.argue import markdown_to_argument
+    from noesis.argue import markdown_to_argument, source_of
     from noesis import dianoia_client
 
     if path.name.endswith(".argument.md"):
@@ -39,7 +35,7 @@ def run_audit(path: Path) -> int:
         return 1
 
     if not companion.exists():
-        print(f"Error: '{companion.name}' does not exist. Run 'noesis argue {_primary(companion).name}' first.")
+        print(f"Error: '{companion.name}' does not exist. Run 'noesis argue {source_of(companion).name}' first.")
         return 1
 
     argument_text = companion.read_text(encoding="utf-8")

@@ -58,11 +58,6 @@ def _require_bare(s: str) -> int:
 _DATED_SLUG_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-.+\.md$")
 
 
-def _primary(companion: Path) -> Path:
-    """Return the primary document path for a companion file (*.chat.md, *.document.md, *.argument.md)."""
-    return companion.with_suffix("").with_suffix(".md")
-
-
 def _resolve_path_abbrev(s: str, cwd: Path, *, secondary_priority: tuple[str, ...] = ()) -> Path | None:
     """Resolve a file argument: a path, a name anywhere in the library, or an abbreviation.
 

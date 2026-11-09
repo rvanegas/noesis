@@ -17,7 +17,8 @@ def _print_argument(args_dict: dict) -> None:
 
 
 def run_argue(path: Path, max_props: int | None = None) -> int:
-    from noesis.argue import STANCES, _read_title_date, argument_to_markdown, nameable
+    from noesis.argue import (INFERENCE_STANCES, PROPOSITION_STANCES, _read_title_date,
+                              argument_to_markdown, nameable, source_of)
     from noesis import dianoia_client
     from noesis.config import load_config
     from noesis.form import check_global_issues
@@ -35,9 +36,7 @@ def run_argue(path: Path, max_props: int | None = None) -> int:
     # From a document or a chat; an argument file's stem prefers its document.
     if path.name.endswith(".argument.md"):
         companion = path
-        document = path.with_suffix("").with_suffix(".document.md")
-        chat = path.with_suffix("").with_suffix(".chat.md")
-        path = chat if chat.exists() and not document.exists() else document
+        path = source_of(path)
     elif path.name.endswith((".document.md", ".chat.md")):
         companion = path.with_suffix("").with_suffix(".argument.md")
     else:
@@ -68,11 +67,17 @@ def run_argue(path: Path, max_props: int | None = None) -> int:
     except RuntimeError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+    # Members alone, never on both sides of a pair, and an inference only
+    # where the step has justifiers to infer from.
     for step in args_dict.get("argument") or []:
-        for stance in STANCES:
-            named = [n for n in step.pop(stance, None) or [] if n in participants]
-            if named:
-                step[stance] = named
+        for accepting, rejecting in (PROPOSITION_STANCES, INFERENCE_STANCES):
+            accepted = [n for n in step.pop(accepting, None) or [] if n in participants]
+            rejected = [n for n in step.pop(rejecting, None) or [] if n in participants and n not in accepted]
+            if accepting in INFERENCE_STANCES and not step.get("justifiers"):
+                continue
+            for stance, named in ((accepting, accepted), (rejecting, rejected)):
+                if named:
+                    step[stance] = named
     try:
         title, date_str = _read_title_date(text)
     except ValueError as e:

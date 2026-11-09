@@ -10,10 +10,6 @@ _SECTION_RE = re.compile(
 )
 
 
-def _primary(companion: Path) -> Path:
-    return companion.with_suffix("").with_suffix(".md")
-
-
 def _parse_analysis_blocks(text: str) -> dict[int, str]:
     """Return {proposition_number: body_text} for existing '## Argument ... (proposition N) ...' blocks."""
     blocks: dict[int, str] = {}
@@ -59,7 +55,7 @@ def _write_analysis(analysis_path: Path, title: str, date_str: str, argument: li
 
 
 def run_analyze(path: Path, proposition: int, verbose: bool = False) -> int:
-    from noesis.argue import _read_title_date, markdown_to_argument
+    from noesis.argue import _read_title_date, markdown_to_argument, source_of
     from noesis import dianoia_client
 
     if path.name.endswith(".argument.md"):
@@ -71,7 +67,7 @@ def run_analyze(path: Path, proposition: int, verbose: bool = False) -> int:
         return 1
 
     if not companion.exists():
-        print(f"Error: '{companion.name}' does not exist. Run 'noesis argue {_primary(companion).name}' first.")
+        print(f"Error: '{companion.name}' does not exist. Run 'noesis argue {source_of(companion).name}' first.")
         return 1
 
     argument_text = companion.read_text(encoding="utf-8")

@@ -331,7 +331,7 @@ CHANNEL_ARGUMENT = """
 ## Argument
 - 1 (accepted: Ann, Bob): All humans are mortal.
 - 2 (accepted: Ann; rejected: Bob): Socrates is a human.
-- 3 (from: 1, 2; accepted: Ann): Socrates is mortal.
+- 3 (from: 1, 2; accepted: Ann; inference accepted: Ann, Bob): Socrates is mortal.
 - 4 (from: 3; accepted: Ann): Socrates will die.
 - 5 (accepted: Cy): Socrates is a god.
 - 6 (from: 5; accepted: Cy; rejected: Ann): Socrates will not die.
@@ -358,6 +358,9 @@ def test_a_channel_s_argument_carries_each_member_s_stances_and_goal(tmp_path, c
     assert [(e["accepted"], e["rejected"]) for e in propositions] == [
         (["ann", "bob"], []), (["ann"], ["bob"]), (["ann"], []), (["ann"], []), (["cy"], []), (["cy"], ["ann"])]
     assert [e["goal"] for e in propositions] == [[], [], [], ["ann", "bob"], [], ["cy"]]
+    # An argument's stances are its inference's: Bob grants that 3 follows from 1 and 2.
+    arguments = json.loads(fake.calls[-1][2])["arguments"]
+    assert [(e["accepted"], e["rejected"]) for e in arguments] == [(["ann", "bob"], []), ([], []), ([], [])]
     assert fake.goals_summary == "Socrates will die (ann, bob) \u2014 Socrates will not die (cy)"
     out = capsys.readouterr().out
     assert "Proposition 4 is the goal of ann, bob." in out and "Proposition 6 is the goal of cy." in out

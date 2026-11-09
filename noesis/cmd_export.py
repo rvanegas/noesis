@@ -18,10 +18,6 @@ _ID_ATTEMPTS = 8
 EXPORTS = "exports.json"
 
 
-def _primary(companion: Path) -> Path:
-    return companion.with_suffix("").with_suffix(".md")
-
-
 def _layout_entry(index: int, sentence_id: str, goal: list[str] | None = None,
                   accepted: list[str] | None = None, rejected: list[str] | None = None) -> dict:
     return {
@@ -128,8 +124,11 @@ def _analysis_results(companion: Path, argument: list[dict]) -> dict[int, dict]:
             if prop_num in position_by_prop}
 
 
-def _digest(propositions: list[str], arguments: list[str], analyses: dict) -> str:
-    payload = json.dumps([propositions, arguments, analyses], sort_keys=True, ensure_ascii=False)
+def _digest(propositions: list[str], arguments: list[str], analyses: dict, stances: list | None = None) -> str:
+    """What was sent, to know it again; stances count only where there are any,
+    so an argument without them keeps the digest it was recorded under."""
+    sent = [propositions, arguments, analyses] + ([stances] if stances else [])
+    payload = json.dumps(sent, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
@@ -156,7 +155,7 @@ def _discussion_link(web_url: str | None, discussion_id: str) -> str:
 
 
 def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
-    from noesis.argue import STANCES, markdown_to_argument
+    from noesis.argue import INFERENCE_STANCES, PROPOSITION_STANCES, markdown_to_argument, source_of
     from noesis.config import load_config
     from noesis import roxana_client
 
@@ -169,7 +168,7 @@ def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
         return 1
 
     if not companion.exists():
-        print(f"Error: '{companion.name}' does not exist. Run 'noesis argue {_primary(companion).name}' first.")
+        print(f"Error: '{companion.name}' does not exist. Run 'noesis argue {source_of(companion).name}' first.")
         return 1
 
     try:
@@ -192,8 +191,13 @@ def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
     # the sender's.
     users = {m.name: m.user for m in config.members}
     ordered = sorted(argument, key=lambda s: int(s["symbol"]))
-    stances = [{stance: [users[n] for n in s.get(stance) or [] if n in users] for stance in STANCES}
-               for s in ordered]
+    def stances_of(step: dict, pair: tuple[str, str]) -> dict[str, list[str]]:
+        return {side: [users[n] for n in step.get(stance) or [] if n in users]
+                for side, stance in zip(("accepted", "rejected"), pair)}
+
+    stances = [stances_of(s, PROPOSITION_STANCES) for s in ordered]
+    # An argument's stances are its inference's, in _argument_contents' order.
+    inferences = [stances_of(s, INFERENCE_STANCES) for s in ordered if s.get("justifiers")]
     goals: list[list[str]] = [[] for _ in ordered]
     for name, symbol in member_goals(argument, [m.name for m in config.members]).items():
         goals[int(symbol) - 1].append(users[name])
@@ -226,7 +230,8 @@ def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
     exports_path = _exports_path(config.library_path)
     exports = _load_exports(exports_path)
     key = _export_key(companion, config.library_path)
-    digest = _digest(proposition_contents, argument_contents, analysis_results)
+    digest = _digest(proposition_contents, argument_contents, analysis_results,
+                     [*stances, *inferences] if any(any(x.values()) for x in [*stances, *inferences]) else None)
     previous = exports.get(key)
     if previous and not new:
         link = _discussion_link(config.roxana_web_url, previous["discussion_id"])
@@ -263,7 +268,7 @@ def run_export(path: Path, dry_run: bool = False, new: bool = False) -> int:
             for index, content in enumerate(argument_contents, start=1):
                 sentence_id = roxana_client.create_sentence(url, api_key, content, discussion_id)
                 created_ids.append(sentence_id)
-                argument_entries.append(_layout_entry(index, sentence_id))
+                argument_entries.append(_layout_entry(index, sentence_id, **inferences[index - 1]))
             layout = json.dumps({"propositions": proposition_entries, "arguments": argument_entries})
             roxana_client.create_discussion(
                 url, api_key, discussion_id, layout,

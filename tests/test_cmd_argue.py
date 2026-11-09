@@ -73,5 +73,34 @@ def test_stances_round_trip_and_a_bad_clause_is_named():
     assert parsed[1]["accepted"] == ["Ann"] and parsed[1]["rejected"] == ["Bob"] and "rejected" not in parsed[0]
     assert argument_to_markdown({"argument": parsed}, "Lunch", "2026-10-30") == text
     assert check_argument("## Argument\n- 1 (accepted: Ann; denied: Bob): p\n") == [
-        "line 2: cannot parse '(accepted: Ann; denied: Bob)': expected 'from:', 'accepted:' or 'rejected:', once each"]
+        "line 2: cannot parse '(accepted: Ann; denied: Bob)': expected 'from:', 'accepted:', 'rejected:', "
+        "'inference accepted:', 'inference rejected:', once each"]
     assert check_argument("## Argument\n- 1: p (an aside): q\n") == []
+
+
+def test_an_inference_has_stances_of_its_own():
+    text = "## Argument\n- 1 (accepted: Ann, Bob): P\n" \
+           "- 2 (from: 1; accepted: Ann; rejected: Bob; inference accepted: Ann, Bob): Q\n"
+    assert check_argument(text) == []
+    step = markdown_to_argument(text)["argument"][1]
+    assert step["inference_accepted"] == ["Ann", "Bob"] and "inference_rejected" not in step
+    assert argument_to_markdown({"argument": markdown_to_argument(text)["argument"]}, "T", "2026-11-09").endswith(
+        "- 2 (from: 1; accepted: Ann; rejected: Bob; inference accepted: Ann, Bob): Q\n")
+    # No inference without justifiers, and nobody on both sides of one.
+    assert "need its justifiers" in check_argument("## Argument\n- 1 (inference accepted: Ann): P\n")[0]
+    assert "both accept and reject" in check_argument(
+        "## Argument\n- 1: P\n- 2 (from: 1; inference accepted: Ann; inference rejected: Ann): Q\n")[0]
+
+
+def test_argue_keeps_an_inference_only_where_there_is_one(tmp_path):
+    chat = tmp_path / "2026-10-30-lunch.chat.md"
+    chat.write_text(CHAT)
+    extracted = {"argument": [
+        {"symbol": "1", "proposition": "P.", "justifiers": [], "accepted": ["Ann"], "inference_accepted": ["Ann"]},
+        {"symbol": "2", "proposition": "Q.", "justifiers": ["1"], "rejected": ["Bob"],
+         "inference_accepted": ["Bob", "Zed"], "inference_rejected": ["Bob", "Ann"]},
+    ]}
+    assert _argue(chat, CHANNEL, extracted)[0] == 0
+    written = (tmp_path / "2026-10-30-lunch.argument.md").read_text()
+    assert "- 1 (accepted: Ann): P." in written
+    assert "- 2 (from: 1; rejected: Bob; inference accepted: Bob; inference rejected: Ann): Q." in written

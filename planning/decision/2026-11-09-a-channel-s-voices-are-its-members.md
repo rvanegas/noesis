@@ -58,3 +58,20 @@ accept, one that none of their others justifies. A member who justifies
 nothing takes the goal of the first member whose justification they reject,
 meaning that goal or anything it rests on (`cmd_export.member_goals`). Only
 if no member has a goal is the conclusion the sender's, as before.
+
+## Inferences have stances too
+
+Added later on 2026-11-09, at the prompt. A step with justifiers is also an
+inference, and a member may accept that a conclusion follows while rejecting
+a premise, or deny that it follows while accepting every proposition in it.
+Roxana keeps stances on each argument as it does on each proposition. So a
+line also says who accepts and who rejects its inference
+(`inference accepted:`, `inference rejected:`, only with `from:`, nobody on
+both sides of a pair), dianoia returns them
+(`inference_accepted`, `inference_rejected`), and `export` sends them as each
+argument's `accepted` and `rejected`. Stances count in an export's digest
+only where there are any, so an argument recorded before keeps its digest.
+
+The web client follows: *Extract argument* is offered on a chat as well as a
+document, until the stem has its argument, and *Send to Roxana* on the
+`.argument.md` alone, where the stances can be read before they go.

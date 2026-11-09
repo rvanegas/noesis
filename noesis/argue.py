@@ -3,13 +3,21 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 
-# `- 3 (from: 1, 2; accepted: Ann, Bob; rejected: Cy): text`: justifiers, and
-# in a channel's library which members accept and reject it (STANCES).
+# `- 3 (from: 1, 2; accepted: Ann; rejected: Cy; inference accepted: Ann, Cy;
+# inference rejected: Bob): text`: justifiers, and in a channel's library which
+# members accept and reject the proposition, and, where it has justifiers, the
+# inference to it from them (STANCES; the clause is the key, spaced).
 _ARGUMENT_RE = re.compile(r"^- (\d+)(?:\s+\(([^()]*)\))?\s*:\s+(.+)$")
-_CLAUSE_RE = re.compile(r"^(from|accepted|rejected):\s*(.*)$")
-STANCES = ("accepted", "rejected")
+STANCES = ("accepted", "rejected", "inference_accepted", "inference_rejected")
+# The proposition's pair, and its inference's: Roxana's stances on a
+# proposition, and on the argument a step with justifiers makes.
+PROPOSITION_STANCES = STANCES[:2]
+INFERENCE_STANCES = STANCES[2:]
+_CLAUSES = ("from", *(stance.replace("_", " ") for stance in STANCES))
+_CLAUSE_RE = re.compile(rf"^({'|'.join(_CLAUSES)}):\s*(.*)$")
 # What a name in a stance cannot hold, being the clause's own punctuation.
 _STANCE_PUNCTUATION = set(",;()")
 _PROP_SYMBOL_RE = re.compile(r"^- (\d+)[\s:(]")
@@ -36,37 +44,56 @@ def _read_title_date(text: str) -> tuple[str, str]:
     return title, date_str
 
 
+def source_of(companion: Path) -> Path:
+    """What an argument file is extracted from: its stem's document, else its chat
+    (cmd_argue), the document named where there is neither."""
+    document = companion.with_suffix("").with_suffix(".document.md")
+    chat = companion.with_suffix("").with_suffix(".chat.md")
+    return chat if chat.exists() and not document.exists() else document
+
+
 def nameable(name: str) -> bool:
     """Whether a member's name can stand in a stance: not empty, and none of its punctuation."""
     return bool(name.strip()) and not _STANCE_PUNCTUATION & set(name)
 
 
 def _clauses(step: dict) -> str:
-    """A step's parenthesis: its justifiers, then who accepts and who rejects it."""
+    """A step's parenthesis: its justifiers, then who accepts and who rejects it and its inference."""
     clauses = [f"from: {', '.join(step['justifiers'])}"] if step.get("justifiers") else []
     for stance in STANCES:
         names = step.get(stance) or []
+        label = stance.replace("_", " ")
         bad = [n for n in names if not nameable(n)]
         if bad:
-            raise ValueError(f"name(s) {bad} cannot stand in '{stance}': no commas, semicolons or parentheses")
+            raise ValueError(f"name(s) {bad} cannot stand in '{label}': no commas, semicolons or parentheses")
+        if names and stance in INFERENCE_STANCES and not step.get("justifiers"):
+            raise ValueError(f"step {step.get('symbol')} has no justifiers, so no inference to stand on")
         if names:
-            clauses.append(f"{stance}: {', '.join(names)}")
+            clauses.append(f"{label}: {', '.join(names)}")
     return f" ({'; '.join(clauses)})" if clauses else ""
 
 
 def _parse_clauses(raw: str | None, lineno: int) -> dict[str, list[str]]:
-    """The parenthesis back into justifiers and stances."""
+    """The parenthesis back into justifiers (`from`) and stances (by STANCES' keys)."""
     parsed: dict[str, list[str]] = {}
     for clause in (raw or "").split(";"):
         if not clause.strip():
             continue
         m = _CLAUSE_RE.match(clause.strip())
-        if not m or m.group(1) in parsed:
-            raise ValueError(f"line {lineno}: cannot parse '({raw})': expected 'from:', 'accepted:' or 'rejected:', once each")
+        key = m.group(1).replace(" ", "_") if m else None
+        if not m or key in parsed:
+            raise ValueError(f"line {lineno}: cannot parse '({raw})': expected "
+                             f"{', '.join(repr(c + ':') for c in _CLAUSES)}, once each")
         values = [v.strip() for v in m.group(2).split(",") if v.strip()]
-        if m.group(1) == "from" and not all(v.isdigit() for v in values):
+        if key == "from" and not all(v.isdigit() for v in values):
             raise ValueError(f"line {lineno}: justifiers must be proposition numbers: '({raw})'")
-        parsed[m.group(1)] = values
+        parsed[key] = values
+    if any(parsed.get(stance) for stance in INFERENCE_STANCES) and not parsed.get("from"):
+        raise ValueError(f"line {lineno}: an inference's stances need its justifiers, 'from:': '({raw})'")
+    for accepting, rejecting in (PROPOSITION_STANCES, INFERENCE_STANCES):
+        both = set(parsed.get(accepting, [])) & set(parsed.get(rejecting, []))
+        if both:
+            raise ValueError(f"line {lineno}: {sorted(both)} both accept and reject the same thing: '({raw})'")
     return parsed
 
 

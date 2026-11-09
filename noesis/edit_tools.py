@@ -93,9 +93,11 @@ agrees.\
 
 _CHANNEL_ARGUMENT = """\
 In a channel, each proposition also says which members accept it and which \
-reject it, by name: `- 3 (from: 1, 2; accepted: Ann, Bob; rejected: Cy): \
-text`. Keep these stances as the chat states them. A member who has taken no \
-stance is in neither list.\
+reject it, by name, and a proposition with justifiers says too which members \
+accept and which reject the inference to it, whatever they hold of its \
+premises: `- 3 (from: 1, 2; accepted: Ann; rejected: Cy; inference accepted: \
+Ann, Cy): text`. Keep these stances as the chat states them. A member who has \
+taken no stance is in neither list of a pair, and nobody is in both.\
 """
 
 
