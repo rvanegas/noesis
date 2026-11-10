@@ -244,6 +244,7 @@ def test_the_libraries_report(data):
     assert lines[1].split() == ["notes", "1", "indexed", "2", "files"]
     assert lines[2] == "rod  unlimited"
     assert lines[3].split() == ["philosophy", "0", "indexed", "0", "files"]
+    assert lines[1].index("indexed") == lines[3].index("indexed")
 
 
 def _script(name):

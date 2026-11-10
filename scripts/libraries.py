@@ -49,15 +49,17 @@ def main(argv: list[str] | None = None) -> int:
     if not users:
         print("no libraries")
         return 0
-    for user in users:
+    held = {user: [p for p in sorted(user.iterdir()) if p.is_dir() and service.NAME_RE.match(p.name)]
+            for user in users}
+    width = max((len(p.name) for libraries in held.values() for p in libraries), default=0)
+    for user, libraries in held.items():
         print(f"{user.name}  {accounts.plan_of(user.name)}")
-        libraries = [p for p in sorted(user.iterdir()) if p.is_dir() and service.NAME_RE.match(p.name)]
         if not libraries:
             print("  (no library)")
         for library in libraries:
             indexed = len(load_entries(library))
             files = len(_library_files(library))
-            print(f"  {library.name:<24} {indexed:>6} indexed  {files:>6} files")
+            print(f"  {library.name:<{width}} {indexed:>6} indexed  {files:>6} files")
     return 0
 
 
