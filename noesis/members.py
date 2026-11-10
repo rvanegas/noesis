@@ -22,6 +22,9 @@ the next asking with nothing sent.
 - **The application itself** signs in with a token of its own from auth
   (client_credentials, scope `noesis:keep`), and is then the owner
   (`caller`): it makes its groups' libraries and files into them.
+- **Reading is every member's; more is a paying member's** (since
+  2026-11-10): one who does not pay lists and reads the library's files and
+  does nothing else there, nor copies out of it (server._paying).
 - **Spending** is metered per library, as `<owner>/<library>`, for the
   application to divide among whoever pays (`GET /applications/spending`);
   the owner has no account, so nothing caps it here, and a group with nobody

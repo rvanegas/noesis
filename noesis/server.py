@@ -406,6 +406,19 @@ def _may_run(root: Path, command: str) -> None:
         raise HTTPException(503, "the server is busy with other free accounts' runs; try again in a minute")
 
 
+def _paying(root: Path, who: str) -> None:
+    """In a group's library, a member who does not pay reads and nothing more
+    (since 2026-11-10: The Floor's noesis is read-only without Pro): no
+    writes, runs, imports or copies out. The owner and services are not members."""
+    from noesis import members
+    owner = _owner(root)
+    if who in (owner, "*") or members.keeper(owner) is None:
+        return
+    found = members.group(owner, root.name)
+    if not any(m.user == who and m.pays for m in (found.members if found else ())):
+        raise HTTPException(403, "only a member who pays does more than read this library")
+
+
 def _writable(root: Path) -> None:
     lock = service.locks.get(root)
     if lock is not None and lock.locked():
@@ -451,10 +464,12 @@ async def write_file(
     rel_path: str,
     request: Request,
     root: Path = Depends(library),
+    who: str = Depends(caller),
     if_match: str | None = Header(default=None),
     if_none_match: str | None = Header(default=None),
 ) -> Response:
     path = _file(root, rel_path)
+    _paying(root, who)
     _writable(root)
     if if_none_match is not None:
         if if_none_match.strip() != "*":
@@ -479,9 +494,11 @@ async def write_file(
 def delete_file(
     rel_path: str,
     root: Path = Depends(library),
+    who: str = Depends(caller),
     if_match: str | None = Header(default=None),
 ) -> Response:
     path = _file(root, rel_path)
+    _paying(root, who)
     _writable(root)
     if if_match is None:
         raise HTTPException(428, 'If-Match: "<sha256>" is required')
@@ -541,6 +558,7 @@ def _check_run(run: Run) -> None:
 async def run_command(run: Run, root: Path = Depends(library),
                       who: str = Depends(caller)) -> StreamingResponse:
     _check_run(run)
+    _paying(root, who)
     lock = lock_for(root)
     if lock.locked():
         raise HTTPException(409, "a run is in progress in this library")
@@ -557,9 +575,11 @@ async def import_file(
     replace: bool = False,
     document_of: str | None = None,
     root: Path = Depends(filed_library),
+    who: str = Depends(filer),
 ) -> StreamingResponse:
     """`noesis import` on an uploaded file, kept outside the library while it runs;
     with document_of, as that chat's document."""
+    _paying(root, who)
     if "/" in filename or "\\" in filename or filename.startswith(".") or not filename.strip():
         raise HTTPException(400, f"a file name, not a path: {filename!r}")
     if document_of is not None:
@@ -637,6 +657,7 @@ async def copy_file(body: Copy, root: Path = Depends(library), who: str = Depend
         raise HTTPException(400, "only a chat or a document is copied")
     if who == "*" or members.keeper(who) is not None:
         raise HTTPException(400, "only a person copies into a library of their own")
+    _paying(root, who)
     try:
         target = library_root(who, body.to, who)
     except LibraryError as exc:

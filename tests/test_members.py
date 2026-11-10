@@ -309,6 +309,7 @@ def filed(client, floor, data, monkeypatch):
     monkeypatch.setenv("PYTHONPATH", str(Path(__file__).resolve().parent.parent))
     monkeypatch.setenv("NOESIS_CACHE_DIR", str(data / "cache"))
     groups, _ = floor
+    groups[LIB]["members"][0]["pro"] = True
     groups[LIB]["members"].append({"user": "bob", "pro": True, "name": "Bob"})
     _made(client)
     (data / "libraries/thefloor" / LIB / "2026").mkdir()
@@ -360,3 +361,23 @@ def test_a_copy_goes_only_into_the_copier_s_own_library(client, filed, data):
     assert client.post(filed, headers=ANN, json={"file": "2026/nope.chat.md", "to": "notes"}).status_code == 404
     assert client.post("/libraries/ann/notes/copy", headers=BOB,
                        json={"file": "x.chat.md", "to": "notes"}).status_code == 403
+
+
+def test_a_member_who_does_not_pay_reads_and_nothing_more(client, filed, data, floor):
+    groups, _ = floor
+    groups[LIB]["members"][0]["pro"] = False
+    members._cache.clear()
+    base = f"/libraries/thefloor/{LIB}"
+    rel = "2026/2026-10-30-lunch.chat.md"
+    assert client.get(f"{base}/files", headers=ANN).status_code == 200
+    assert client.get(f"{base}/files/{rel}", headers=ANN).status_code == 200
+    assert client.post(filed, headers=ANN, json={"file": rel, "to": "notes"}).status_code == 403
+    assert client.put(f"{base}/files/2026/x.document.md", headers={**ANN, "If-None-Match": "*"},
+                      content=b"x").status_code == 403
+    sha = _sha((data / "libraries/thefloor" / LIB / rel).read_bytes())
+    assert client.delete(f"{base}/files/{rel}", headers={**ANN, "If-Match": f'"{sha}"'}).status_code == 403
+    assert client.post(f"{base}/run", headers=ANN, json={"argv": ["check", "lunch"]}).status_code == 403
+    assert client.post(f"{base}/import", headers=ANN, params={"filename": "x.md"}, content=b"x").status_code == 403
+    # Bob pays: more than reading is his.
+    assert client.put(f"{base}/files/2026/x.document.md", headers={**BOB, "If-None-Match": "*"},
+                      content=b"x").status_code == 200

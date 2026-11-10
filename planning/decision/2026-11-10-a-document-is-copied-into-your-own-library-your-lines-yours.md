@@ -35,6 +35,16 @@ their names, or the copy reads them as somebody else's. So:
   they were not in. The answer comes back as `names`, which must each be a
   heading in the chat, never a near match; `[]` copies with no name taken.
 
+## A member who does not pay reads and nothing more
+
+The same day The Floor made its noesis features Pro's, and asked what that
+meant for a channel's library, Rodrigo: *"noesis is read-only for non-Pro."*
+So in a group's library a member the application says does not pay (`pro`
+in its answer) may list and read its files and nothing else: no writes,
+deletions, runs, imports, and no copy out of it, copying being what took
+*Send to noesis*'s place and Send being Pro's (`server._paying`). The
+application itself and services are not members and are not held to it.
+
 ## Not done
 
 A document's assets are not copied with it: the chats this exists for, The
