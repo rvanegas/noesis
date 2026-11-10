@@ -55,6 +55,7 @@ let open = null;             // {path, sha, blob, modified}
 let running = false;
 let exitCode = 0;            // the last run's, -1 if it never finished
 let names = [];              // the chat headings, besides Prompt, that are the user
+let user = null;             // who is signed in, whose own libraries are "<user>/…"
 let groups = {};             // library id → its group's name, or who else is in it, for an application's library
 
 // ---------------------------------------------------------------------------
@@ -230,6 +231,7 @@ async function loadUsage() {
   if (!response.ok) return;
   const me = await response.json();
   names = me.names;
+  user = me.user;
   const usage = $("usage");
   usage.hidden = me.plan !== "free";
   if (usage.hidden) return;
@@ -439,6 +441,7 @@ async function openFile(path) {
   $("file-download").hidden = !sha;
   $("file-pdf").hidden = !markdown || setting || !sha;
   $("file-delete").hidden = !!note || setting;
+  $("file-copy").hidden = !/\.(chat|document)\.md$/.test(path) || !sha || !ownLibraries().length;
   $("file-delete").textContent = "Delete";
   $("file").hidden = false;
   $("file").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -551,6 +554,62 @@ async function save(event) {
   await openFile(path);
 }
 
+// A chat or a document into another library of the user's own — from a
+// channel's library at The Floor above all, whose transcripts are nobody's —
+// as theirs: the server adds the name they go by there to their names, and
+// asks which speaker they are when none of their names is in the chat.
+function ownLibraries() {
+  const select = $("library");
+  return [...select.options].map((o) => o.value).filter((id) => id !== library && id.startsWith(`${user}/`));
+}
+
+function pickCopy() {
+  $("copy-name").textContent = open.path.split("/").pop();
+  $("copy-to").replaceChildren(...ownLibraries().map((id) => new Option(id, id)));
+  $("copy-who").hidden = true;
+  $("copy-speakers").replaceChildren();
+  $("copy").hidden = false;
+  $("copy").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// The speakers to choose among, once the server has asked: any number, or none.
+function askWho(speakers) {
+  $("copy-speakers").replaceChildren(...speakers.map((speaker) => {
+    const label = document.createElement("label");
+    label.className = "check";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.value = speaker;
+    label.append(box, ` ${speaker}`);
+    return label;
+  }));
+  $("copy-who").hidden = false;
+}
+
+async function copyFile(event) {
+  event.preventDefault();
+  const to = $("copy-to").value;
+  const body = { file: open.path, to: to.split("/")[1] };
+  if (!$("copy-who").hidden) {
+    body.names = [...$("copy-speakers").querySelectorAll("input:checked")].map((box) => box.value);
+  }
+  closePanel("copy");
+  await stream(`copy ${body.file.split("/").pop()} to ${to}`, libraryPath("/copy"), {
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    // Which speaker they are, asked before anything is copied: back to the panel.
+    refused: async (response) => {
+      if (response.status !== 409) return false;
+      const asked = (await response.json()).detail;
+      if (!asked || !asked.speakers) return false;
+      closePanel("output");
+      $("copy").hidden = false;
+      askWho(asked.speakers);
+      return true;
+    },
+  });
+}
+
 let importing = null;
 
 function pickImport(file) {
@@ -647,7 +706,9 @@ function offer(label, argv) {
   $("output-apply").hidden = false;
 }
 
-async function stream(title, path, options) {
+// refused(response), if given, may take a refusal before the run began as its
+// own to answer, returning true.
+async function stream(title, path, { refused, ...options }) {
   if (running) {
     say("A run is in progress.");
     return;
@@ -665,7 +726,7 @@ async function stream(title, path, options) {
   try {
     const response = await api(path, { method: "POST", ...options });
     if (!response.ok) {
-      $("output-text").textContent = await detail(response);
+      if (!(refused && await refused(response))) $("output-text").textContent = await detail(response);
       return;
     }
     const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -767,6 +828,8 @@ function wire() {
   });
   $("import").addEventListener("submit", guard(importFile));
   $("document-pick").addEventListener("change", guard(importDocument));
+  $("file-copy").addEventListener("click", pickCopy);
+  $("copy").addEventListener("submit", guard(copyFile));
   $("file-claude").addEventListener("click", showDraft);
   $("draft-copy").addEventListener("click", guard(copyDraft));
   for (const button of document.querySelectorAll("[data-close]")) {

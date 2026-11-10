@@ -294,3 +294,69 @@ def test_a_person_s_display_name_is_auth_s_else_their_user_name(data, monkeypatc
         raise urllib.error.URLError("no")
     monkeypatch.setattr(members.urllib.request, "urlopen", down)
     assert members.display_name("ann") == "ann"                  # auth away: the user name
+
+
+def _copied(response) -> dict:
+    events = [block for block in response.text.strip().split("\n\n")]
+    done = json.loads(events[-1].split("data: ", 1)[1])
+    assert events[-1].startswith("event: done") and done["exit_code"] == 0, response.text
+    return done
+
+
+@pytest.fixture
+def filed(client, floor, data, monkeypatch):
+    """A transcript in the channel's library, as The Floor files it, and the run's environment."""
+    monkeypatch.setenv("PYTHONPATH", str(Path(__file__).resolve().parent.parent))
+    monkeypatch.setenv("NOESIS_CACHE_DIR", str(data / "cache"))
+    groups, _ = floor
+    groups[LIB]["members"].append({"user": "bob", "pro": True, "name": "Bob"})
+    _made(client)
+    (data / "libraries/thefloor" / LIB / "2026").mkdir()
+    (data / "libraries/thefloor" / LIB / "2026/2026-10-30-lunch.chat.md").write_text(CHANNEL)
+    yield f"/libraries/thefloor/{LIB}/copy"
+    accounts.set_speaker_names("ann", [])
+    accounts.set_speaker_names("bob", [])
+
+
+def test_a_member_copies_a_channel_s_chat_and_its_lines_become_theirs(client, filed, data):
+    response = client.post(filed, headers=ANN, json={"file": "2026/2026-10-30-lunch.chat.md", "to": "notes"})
+    assert list(_copied(response)["changed"]) == ["2026/2026-10-30-lunch.chat.md"]
+    assert "Mine." in (data / "libraries/ann/notes/2026/2026-10-30-lunch.chat.md").read_text()
+    # The name The Floor gives her is now one of hers, so her library reads her lines as hers.
+    assert accounts.speaker_names("ann") == ("Ann Example",)
+    assert members.voices("ann", "notes") == ("Ann Example",)
+
+
+def test_a_copier_none_of_whose_names_is_in_the_chat_is_asked(client, filed, data, floor):
+    groups, _ = floor
+    groups[LIB]["members"][0]["name"] = "Ann"                         # renamed since
+    members._cache.clear()
+    body = {"file": "2026/2026-10-30-lunch.chat.md", "to": "notes"}
+    asked = client.post(filed, headers=ANN, json=body)
+    assert asked.status_code == 409
+    assert asked.json()["detail"]["speakers"] == ["Ann Example", "Bob", "Dee"]
+    assert not (data / "libraries/ann/notes/2026").exists()
+    # Somebody else's heading is never taken because it is close; only what the chat holds.
+    assert client.post(filed, headers=ANN, json={**body, "names": ["Annie"]}).status_code == 400
+    _copied(client.post(filed, headers=ANN, json={**body, "names": ["Ann Example"]}))
+    assert accounts.speaker_names("ann") == ("Ann Example",)
+
+
+def test_a_copier_who_was_not_in_it_says_so_and_takes_no_name(client, filed, data, floor):
+    groups, _ = floor
+    groups[LIB]["members"][0]["name"] = "Ann"
+    members._cache.clear()
+    body = {"file": "2026/2026-10-30-lunch.chat.md", "to": "notes", "names": []}
+    _copied(client.post(filed, headers=ANN, json=body))
+    assert accounts.speaker_names("ann") == ()
+
+
+def test_a_copy_goes_only_into_the_copier_s_own_library(client, filed, data):
+    body = {"file": "2026/2026-10-30-lunch.chat.md"}
+    assert client.post(filed, headers=ANN, json={**body, "to": "missing"}).status_code == 404
+    assert client.post(filed, headers=BOB, json={**body, "to": "notes"}).status_code == 404   # bob has none
+    assert client.post(filed, headers=FLOOR, json={**body, "to": LIB}).status_code == 400    # the application
+    assert client.post(filed, headers=ANN, json={"file": "KEYS.md", "to": "notes"}).status_code == 400
+    assert client.post(filed, headers=ANN, json={"file": "2026/nope.chat.md", "to": "notes"}).status_code == 404
+    assert client.post("/libraries/ann/notes/copy", headers=BOB,
+                       json={"file": "x.chat.md", "to": "notes"}).status_code == 403

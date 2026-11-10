@@ -71,6 +71,19 @@
       <div class="actions"><button>Import</button><button type="button" class="quiet" data-close>Cancel</button></div>
     </form>
 
+    <form id="copy" class="panel" hidden>
+      <h2>Copy <span id="copy-name"></span></h2>
+      <p class="hint">Into a library of your own, as yours: in a chat, the lines under your name become your
+        own words there, and everybody else’s their own.</p>
+      <label>To<select id="copy-to"></select></label>
+      <fieldset id="copy-who" hidden>
+        <legend>None of your names is in this chat. Which of these speakers are you? Leave them all unticked
+          if you were not in it.</legend>
+        <div id="copy-speakers"></div>
+      </fieldset>
+      <div class="actions"><button>Copy</button><button type="button" class="quiet" data-close>Cancel</button></div>
+    </form>
+
     <section id="draft" class="panel" hidden>
       <div class="heading"><h2>Draft its document in Claude</h2><button class="quiet" data-close>Close</button></div>
       <p class="hint">Claude reads <code id="draft-chat"></code> from this library and writes its document with
@@ -106,6 +119,7 @@
         <a id="file-roxana" class="button" target="_blank" rel="noopener" hidden>Open in Roxana</a>
         <button id="file-claude" hidden>Draft its document in Claude</button>
         <label class="button" id="file-document" hidden>Import its document<input id="document-pick" type="file" accept=".md,.markdown,.txt" hidden></label>
+        <button id="file-copy" hidden>Copy to your library</button>
         <button id="file-edit">Edit</button>
         <button id="file-pdf" class="quiet">Make PDF</button>
         <button id="file-download" class="quiet">Download</button>

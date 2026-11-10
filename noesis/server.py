@@ -20,6 +20,8 @@ run:
 - DELETE …/files/{rel_path}                  If-Match: "<sha>"; kept thirty days (deletion.py)
 - POST   …/run {argv}                        server-sent events: output, then done
 - POST   …/import?filename=…[&only=…&replace=true&document_of=…]   the body is the file; as /run
+- POST   …/copy {file, to[, names]}          a chat or document into the caller's own library `to`,
+                                             their lines theirs; as /import
 - GET    /me                                 the caller's account here: plan, spend, storage,
                                              libraries, names, and the client the token was
                                              issued to (any of auth's tokens for a person;
@@ -568,13 +570,26 @@ async def import_file(
     from noesis.cmd_import import IMPORTABLE
     if Path(filename).suffix.lower() not in IMPORTABLE:
         raise HTTPException(415, f"import takes Markdown or text, or claude.ai's export ({', '.join(sorted(IMPORTABLE))})")
+    options = []
+    if only:
+        options += ["--only", only]
+    if replace:
+        options.append("--replace")
+    if document_of is not None:
+        options += ["--document-of", document_of]
+    return await _import(root, filename, request.body, options)
+
+
+async def _import(root: Path, filename: str, body, options: list[str]) -> StreamingResponse:
+    """`noesis import` on `await body()`, staged outside the library while it runs."""
+    from noesis.cmd_import import IMPORTABLE
     lock = lock_for(root)
     if lock.locked():
         raise HTTPException(409, "a run is in progress in this library")
     _may_run(root, "import")
     await lock.acquire()
     try:
-        data = await request.body()
+        data = await body()
         _storable(root, filename, len(data), types=IMPORTABLE)
         staging = Path(tempfile.mkdtemp(prefix="noesis-import-"))
         upload = staging / filename
@@ -582,14 +597,74 @@ async def import_file(
     except BaseException:
         lock.release()
         raise
-    argv = ["import", str(upload)]
-    if only:
-        argv += ["--only", only]
-    if replace:
-        argv.append("--replace")
-    if document_of is not None:
-        argv += ["--document-of", document_of]
-    return _stream(root, argv, lock, cleanup=lambda: shutil.rmtree(staging, ignore_errors=True))
+    return _stream(root, ["import", str(upload), *options], lock,
+                   cleanup=lambda: shutil.rmtree(staging, ignore_errors=True))
+
+
+class Copy(BaseModel):
+    file: str
+    to: str
+    # The chat's headings the caller says are theirs, once asked (409); [] for none.
+    names: list[str] | None = None
+
+
+def _people(text: str) -> list[str]:
+    """A chat's speakers but Prompt and the models: the headings whose voice is in question."""
+    from noesis.config import PROMPT_HEADING, load_config
+    from noesis.library import _STRUCTURAL_HEADINGS
+    from noesis.transcript import HEADING_RE
+    skip = {PROMPT_HEADING, *_STRUCTURAL_HEADINGS, *load_config().llm_names}
+    return list(dict.fromkeys(m.group(2).strip() for m in HEADING_RE.finditer(text)
+                              if m.group(2).strip() not in skip))
+
+
+@app.post("/libraries/{user}/{library}/copy")
+async def copy_file(body: Copy, root: Path = Depends(library), who: str = Depends(caller)) -> StreamingResponse:
+    """A chat or a document copied into a library of the caller's own, by
+    import, as the caller's: since 2026-11-10, for The Floor's channel
+    libraries above all (members.py), whose transcripts belong to nobody.
+
+    **The copier's lines become theirs.** A chat is read by its owner's names
+    (accounts.speaker_names), so the copy adds to them the heading the caller
+    goes by in the source: in a group's library, the name the application
+    gives them. Where none of the chat's people is the caller by either, it
+    asks (409, `speakers`) rather than guessing, and is called again with
+    `names`, the ones they chose, or none."""
+    from noesis import accounts, members
+    from noesis.library import role_of
+    source = _readable(root, body.file)
+    if role_of(source.name) not in ("chat", "document"):
+        raise HTTPException(400, "only a chat or a document is copied")
+    if who == "*" or members.keeper(who) is not None:
+        raise HTTPException(400, "only a person copies into a library of their own")
+    try:
+        target = library_root(who, body.to, who)
+    except LibraryError as exc:
+        raise HTTPException(exc.status, str(exc)) from None
+    if target == root:
+        raise HTTPException(400, "it is already in that library")
+    data = source.read_bytes()
+    if role_of(source.name) == "chat":
+        people = _people(data.decode("utf-8", errors="replace"))
+        names = accounts.speaker_names(who)
+        group = await asyncio.to_thread(members.speakers, _owner(root), root.name)
+        theirs = {h for m in group if m.user == who for h in m.headings}
+        known = [h for h in people if h in names or h in theirs]
+        if body.names is not None:
+            if unknown := [n for n in body.names if n not in people]:
+                raise HTTPException(400, f"not a speaker in this chat: {unknown}")
+            known = list(dict.fromkeys([*known, *body.names]))
+        elif people and not known:
+            raise HTTPException(409, {"message": "which of these speakers are you?", "speakers": people})
+        if added := [h for h in known if h not in names]:
+            try:
+                accounts.set_speaker_names(who, [*names, *added])
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from None
+
+    async def read() -> bytes:
+        return data
+    return await _import(target, source.name, read, [])
 
 
 def _stream(root: Path, argv: list[str], lock: asyncio.Lock, cleanup=None,
