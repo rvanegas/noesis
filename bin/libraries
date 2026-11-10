@@ -26,4 +26,6 @@ case "${1:-}" in
   *) echo "usage: ts libraries [--trash <user>/<library> [--restore <day>/<path>]]" >&2; exit 2 ;;
 esac
 
-$SSH "$HOST" "cd ~/noesis && docker compose run --rm -T noesis python scripts/libraries.py $(printf '%q ' "$@")"
+# printf with no arguments still prints '' once, an empty argument.
+ARGS=$( (( $# )) && printf '%q ' "$@" || true)
+$SSH "$HOST" "cd ~/noesis && docker compose run --rm -T noesis python scripts/libraries.py $ARGS"
