@@ -36,7 +36,9 @@ does not answer admits nobody (503) and lists nothing.
   channel's renames; the web client lists the id, and heads a chosen
   library with its group's name. A group without one, a channel nobody
   named, is shown by who else is in it, "With Ann and Bob" (since
-  2026-11-09).
+  2026-11-09). Since 2026-11-11 `/libraries` gives each
+  library as `{id, name, users, documents}` instead, and the web client
+  chooses among them in a view that shows all four.
 
 ## Claude consults one library, by a token confined to it
 

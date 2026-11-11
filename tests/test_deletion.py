@@ -91,10 +91,10 @@ def test_only_auths_own_token_deletes_a_person(client):
 def test_a_deleted_person_is_refused_at_once_and_swept_after_thirty_days(client, data):
     accounts.set_speaker_names("bob", ["Bob"])
     bob = auth_tokens.bearer("bob")
-    assert client.get("/libraries", headers=bob).json()["libraries"] == ["bob/notes"]
+    assert client.get("/libraries", headers=bob).json()["libraries"][0]["id"] == "bob/notes"
     client.delete("/users/bob", headers=_erase("bob"))
     assert client.get("/libraries", headers=bob).status_code == 401
-    assert "bob/notes" not in client.get("/libraries", headers={"Authorization": "Bearer ann-token"}).json()["libraries"]
+    assert "bob/notes" not in [l["id"] for l in client.get("/libraries", headers={"Authorization": "Bearer ann-token"}).json()["libraries"]]
     assert (data / "deleted/bob/notes/x.md").read_text() == "bob's"
     (when,) = [at for user, at in deletion.deleted() if user == "bob"]
     assert deletion.sweep(when + 29 * DAY) == [] and deletion.is_deleted("bob")
@@ -107,7 +107,7 @@ def test_a_deleted_person_is_restored_within_the_window(client, data):
     client.delete("/users/bob", headers=_erase("bob"))
     deletion.restore_user("bob")
     assert (data / "libraries/bob/notes/x.md").exists()
-    assert client.get("/libraries", headers=auth_tokens.bearer("bob")).json()["libraries"] == ["bob/notes"]
+    assert client.get("/libraries", headers=auth_tokens.bearer("bob")).json()["libraries"][0]["id"] == "bob/notes"
 
 
 def test_the_operators_users_are_kept_for_the_operator(data):

@@ -144,5 +144,31 @@ def _others(who: str, owner: str, library: str) -> str | None:
     return "With " + (others[0] if len(others) == 1 else ", ".join(others[:-1]) + " and " + others[-1])
 
 
+def library_details(who: str) -> list[dict]:
+    """The libraries a caller reaches, for choosing among them: each one's id,
+    its name to show (library_names; None for one's own, whose id is its name),
+    who reaches it besides a service (the owner, or a group's members by the
+    names it gives them), and how many chats and documents it holds."""
+    from noesis import library, members
+    names = library_names(who)
+    details = []
+    for i in library_ids(who):
+        owner, name = i.split("/", 1)
+        users = [owner]
+        if members.keeper(owner) is not None:
+            try:
+                found = members.group(owner, name)
+            except LibraryError:
+                found = None
+            users = [m.name or m.user for m in found.members] if found else []
+        details.append({
+            "id": i,
+            "name": names.get(i),
+            "users": users,
+            "documents": library.document_count(data_dir() / "libraries" / i),
+        })
+    return details
+
+
 def lock_for(root: Path) -> asyncio.Lock:
     return locks.setdefault(root, asyncio.Lock())

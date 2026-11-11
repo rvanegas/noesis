@@ -56,7 +56,7 @@ let running = false;
 let exitCode = 0;            // the last run's, -1 if it never finished
 let names = [];              // the chat headings, besides Prompt, that are the user
 let user = null;             // who is signed in, whose own libraries are "<user>/…"
-let groups = {};             // library id → its group's name, or who else is in it, for an application's library
+let libraries = [];          // [{id, name, users, documents}], as /libraries gives them
 
 // ---------------------------------------------------------------------------
 // Storage that may be refused (a private window): the page works without it,
@@ -208,20 +208,21 @@ function say(text) {
 // Signed in with no library yet, the page offers only to make one: every
 // other control acts on a library.
 function show(signedIn) {
-  const hasLibrary = $("library").options.length > 0;
+  const hasLibrary = libraries.length > 0;
   $("signed-in").hidden = !signedIn || !hasLibrary;
   $("first-library").hidden = !signedIn || hasLibrary;
   $("signed-out").hidden = signedIn;
   $("sign-out").hidden = !signedIn;
   $("new-library").hidden = !signedIn || !hasLibrary;
   $("your-names").hidden = !signedIn || !hasLibrary;
-  $("library").hidden = !signedIn || $("library").options.length < 2;
+  $("library").hidden = !signedIn || !hasLibrary;
   if (!signedIn) $("usage").hidden = true;
 }
 
 function closePanel(id) {
   $(id).hidden = true;
   if (id === "file") open = null;
+  if (id === "libraries") $("library").setAttribute("aria-expanded", "false");
 }
 
 // A free account's month so far: what its model commands have spent, and
@@ -242,27 +243,72 @@ async function loadUsage() {
 
 async function loadLibraries() {
   const response = await api("/libraries");
-  const { libraries: ids, names = {} } = await response.json();
-  groups = names;
-  const select = $("library");
-  select.replaceChildren(...ids.map((id) => new Option(id, id)));
-  if (!ids.length) {
+  libraries = (await response.json()).libraries;
+  if (!libraries.length) {
     library = null;
     return false;
   }
   const remembered = recall(localStorage, LIBRARY_KEY);
-  library = ids.includes(remembered) ? remembered : ids[0];
-  select.value = library;
+  library = libraries.some((l) => l.id === remembered) ? remembered : libraries[0].id;
   showGroup();
   return true;
 }
 
-// A group's library (The Floor's channel) is named by its group, which its id
-// only slugs, or by who else is in it when the group has no name: the name is
-// shown once the library is chosen.
+function current() {
+  return libraries.find((l) => l.id === library);
+}
+
+// The bar's button names the chosen library; a group's library (The Floor's
+// channel) is headed by its group's name, which its id only slugs, or by who
+// else is in it when the group has no name.
 function showGroup() {
-  $("group").textContent = groups[library] ?? "";
-  $("group").hidden = !groups[library];
+  const name = current()?.name;
+  $("library").textContent = name || library;
+  $("library").title = library;
+  $("group").textContent = name ?? "";
+  $("group").hidden = !name;
+}
+
+// Every library the user reaches, with what tells them apart: its id, the
+// name it goes by, who else reaches it, and how many chats and documents it holds.
+function pickLibrary() {
+  if (!$("libraries").hidden) {
+    closePanel("libraries");
+    return;
+  }
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  $("library-list").replaceChildren(...libraries.map((l) => {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    button.className = "library";
+    button.setAttribute("aria-current", String(l.id === library));
+    const title = document.createElement("span");
+    title.className = "library-name";
+    title.textContent = l.name || l.id.split("/")[1];
+    const id = document.createElement("code");
+    id.textContent = l.id;
+    const about = document.createElement("span");
+    about.className = "library-about";
+    about.textContent = `${plural(l.documents, "document")} · ` +
+      (l.users.length ? l.users.join(", ") : "no members");
+    button.append(title, id, about);
+    button.addEventListener("click", guard(() => chooseLibrary(l.id)));
+    item.append(button);
+    return item;
+  }));
+  $("libraries").hidden = false;
+  $("library").setAttribute("aria-expanded", "true");
+  $("libraries").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function chooseLibrary(id) {
+  closePanel("libraries");
+  if (id === library) return;
+  library = id;
+  store(localStorage, LIBRARY_KEY, library);
+  showGroup();
+  closePanel("file");
+  await loadFiles();
 }
 
 // The chat headings that are the user's own voice, kept with their account.
@@ -559,8 +605,7 @@ async function save(event) {
 // as theirs: the server adds the name they go by there to their names, and
 // asks which speaker they are when none of their names is in the chat.
 function ownLibraries() {
-  const select = $("library");
-  return [...select.options].map((o) => o.value).filter((id) => id !== library && id.startsWith(`${user}/`));
+  return libraries.map((l) => l.id).filter((id) => id !== library && id.startsWith(`${user}/`));
 }
 
 function pickCopy() {
@@ -798,13 +843,7 @@ function guard(fn) {
 function wire() {
   $("sign-in").addEventListener("click", guard(signIn));
   $("sign-out").addEventListener("click", guard(signOut));
-  $("library").addEventListener("change", guard(async () => {
-    library = $("library").value;
-    store(localStorage, LIBRARY_KEY, library);
-    showGroup();
-    closePanel("file");
-    await loadFiles();
-  }));
+  $("library").addEventListener("click", pickLibrary);
   $("new-library").addEventListener("click", pickLibraryName);
   $("create-library").addEventListener("submit", guard(createLibrary));
   $("your-names").addEventListener("click", pickNames);

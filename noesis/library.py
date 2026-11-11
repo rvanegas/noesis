@@ -795,17 +795,30 @@ def resolve_title_among(titles: dict[str, str], title: str) -> str | None:
     return None
 
 
+def _chats_and_documents(library_path: Path) -> list[Path]:
+    """The library's chats and documents, outside its records and dot directories."""
+    found = []
+    for path in sorted(library_path.rglob("*.md")):
+        rel = path.relative_to(library_path)
+        if (role_of(path.name) in INDEXED_ROLES and not any(p.startswith(".") for p in rel.parts)
+                and not _UNSORTED_DIRS.intersection(rel.parts[:-1])):
+            found.append(path)
+    return found
+
+
 def library_titles(library_path: Path) -> dict[str, str]:
     """{rel_path: title} of the library's chats and documents, read from the
     files themselves rather than index state, which a mirror's copy lacks."""
-    titles = {}
-    for path in sorted(library_path.rglob("*.md")):
-        rel = path.relative_to(library_path)
-        if (role_of(path.name) not in INDEXED_ROLES or any(p.startswith(".") for p in rel.parts)
-                or _UNSORTED_DIRS.intersection(rel.parts[:-1])):
-            continue
-        titles[rel.as_posix()] = _extract_title(path.read_text(encoding="utf-8", errors="replace"), path.stem)
-    return titles
+    return {
+        path.relative_to(library_path).as_posix():
+            _extract_title(path.read_text(encoding="utf-8", errors="replace"), path.stem)
+        for path in _chats_and_documents(library_path)
+    }
+
+
+def document_count(library_path: Path) -> int:
+    """How many chats and documents the library holds."""
+    return len(_chats_and_documents(library_path))
 
 
 def lookup_term(library_path: Path, term: str, exclude: str | None = None) -> str:

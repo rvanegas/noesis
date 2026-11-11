@@ -228,7 +228,7 @@ def test_a_token_noesis_cannot_trust_reaches_nothing(library, live):
 def test_the_web_clients_token_reaches_the_api_as_its_person(library, live):
     data, url = live
     bearer = auth_tokens.bearer("ann")
-    assert httpx.get(f"{url}/libraries", headers=bearer).json() == {"libraries": ["ann/philosophy"], "names": {}}
+    assert httpx.get(f"{url}/libraries", headers=bearer).json()["libraries"][0]["id"] == "ann/philosophy"
     assert "2026/2026-10-27-essay.document.md" in httpx.get(
         f"{url}/libraries/ann/philosophy/files", headers=bearer).json()["files"]
     assert httpx.get(f"{url}/libraries/bob/notes/files", headers=bearer).status_code == 403
@@ -240,7 +240,7 @@ def test_somebody_new_is_on_the_free_plan(library, live):
     me = httpx.get(f"{url}/me", headers=bearer).json()
     assert me["user"] == "newcomer" and me["plan"] == "free" and "email" not in me
     assert me["spent_usd"] == 0 and me["allowance_usd"] == 1.0 and me["client"] == "noesis-web"
-    assert httpx.get(f"{url}/libraries", headers=bearer).json() == {"libraries": [], "names": {}}
+    assert httpx.get(f"{url}/libraries", headers=bearer).json() == {"libraries": []}
     assert httpx.get(f"{url}/libraries/ann/philosophy/files", headers=bearer).status_code == 403
 
 

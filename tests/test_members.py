@@ -123,25 +123,27 @@ def test_a_library_the_application_does_not_know_is_nobody_s(client, floor):
 
 def test_a_member_lists_it_beside_their_own_by_the_group_s_name(client, floor):
     _made(client)
-    assert client.get("/libraries", headers=ANN).json() == {
-        "libraries": ["ann/notes", f"thefloor/{LIB}"], "names": {f"thefloor/{LIB}": "Book Club"}}
-    assert client.get("/libraries", headers=BOB).json() == {"libraries": [], "names": {}}
+    assert client.get("/libraries", headers=ANN).json() == {"libraries": [
+        {"id": "ann/notes", "name": None, "users": ["ann"], "documents": 0},
+        {"id": f"thefloor/{LIB}", "name": "Book Club", "users": ["Ann Example"], "documents": 0}]}
+    assert client.get("/libraries", headers=BOB).json() == {"libraries": []}
 
 
 def test_a_group_without_a_name_is_shown_by_who_else_is_in_it(client, floor):
     groups, _ = floor
     _made(client)
     groups[LIB]["name"] = None
-    names = lambda: client.get("/libraries", headers=ANN).json()["names"][f"thefloor/{LIB}"]
+    names = lambda: client.get("/libraries", headers=ANN).json()["libraries"][1]["name"]
     assert names() is None  # nobody else
     groups[LIB]["members"] += [{"user": "bob", "pro": False, "name": "Bob B"}, {"user": "cy", "pro": False, "name": None}]
     members._cache.clear()
     assert names() == "With Bob B and cy"
-    assert client.get("/libraries", headers=BOB).json()["names"] == {f"thefloor/{LIB}": "With Ann Example and cy"}
+    assert client.get("/libraries", headers=BOB).json()["libraries"] == [
+        {"id": f"thefloor/{LIB}", "name": "With Ann Example and cy", "users": ["Ann Example", "Bob B", "cy"], "documents": 0}]
 
 
 def test_a_group_s_library_not_made_yet_is_not_listed(client, floor):
-    assert client.get("/libraries", headers=ANN).json() == {"libraries": ["ann/notes"], "names": {}}
+    assert [l["id"] for l in client.get("/libraries", headers=ANN).json()["libraries"]] == ["ann/notes"]
 
 
 def test_an_application_that_does_not_answer_lists_nothing_and_admits_nobody(client, floor, monkeypatch):
@@ -151,7 +153,7 @@ def test_an_application_that_does_not_answer_lists_nothing_and_admits_nobody(cli
         raise members.LibraryError(503, "thefloor did not answer")
     monkeypatch.setattr(members, "_get", down)
     members._cache.clear()
-    assert client.get("/libraries", headers=ANN).json() == {"libraries": ["ann/notes"], "names": {}}
+    assert [l["id"] for l in client.get("/libraries", headers=ANN).json()["libraries"]] == ["ann/notes"]
     assert client.get(f"/libraries/thefloor/{LIB}/files", headers=ANN).status_code == 503
 
 

@@ -11,7 +11,7 @@ A user reaches only their own libraries,
 /data/libraries/<user>/<library>. A library is files to sync and commands to
 run:
 
-- GET    /libraries                          the caller's library ids
+- GET    /libraries                          the caller's libraries: id, name, users, documents
 - POST   /libraries {name}                   a new library of the caller's, its settings empty
 - GET    /libraries/{user}/{library}/files   {rel_path: sha256}
 - GET    …/files/{rel_path}                  the bytes, ETag their sha256, Last-Modified their mtime
@@ -226,9 +226,8 @@ def filed_library(user: str, library: str, who: str = Depends(filer)) -> Path:
 
 @app.get("/libraries")
 def libraries(who: str = Depends(caller)) -> dict:
-    # names: what to show for a group's library, whose id says nothing (members.py):
-    # its name, or who else is in it.
-    return {"libraries": library_ids(who), "names": service.library_names(who)}
+    # Each with what the web client's chooser shows (service.library_details).
+    return {"libraries": service.library_details(who)}
 
 
 class ConsultedLibrary(BaseModel):

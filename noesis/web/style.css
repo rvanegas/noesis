@@ -164,6 +164,29 @@ button.file {
 
 button.file:hover, button.file:focus-visible { background: var(--code-bg); }
 
+#library { max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.libraries { list-style: none; margin: 0; padding: 0; }
+.libraries li + li { border-top: 1px solid var(--line); }
+
+button.library {
+  display: grid;
+  gap: .1rem;
+  width: 100%;
+  text-align: left;
+  padding: .5rem .4rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+}
+
+button.library:hover, button.library:focus-visible { background: var(--code-bg); }
+button.library[aria-current="true"] { box-shadow: inset 3px 0 0 var(--accent); }
+.library-name { font-weight: 600; overflow-wrap: anywhere; }
+button.library code { font-size: .85rem; color: var(--muted); overflow-wrap: anywhere; }
+.library-about { font-size: .85rem; color: var(--muted); }
+
 #message {
   padding: .6rem .8rem;
   border: 1px solid var(--line);
