@@ -378,6 +378,11 @@ def test_a_member_who_does_not_pay_reads_and_nothing_more(client, filed, data, f
     assert client.delete(f"{base}/files/{rel}", headers={**ANN, "If-Match": f'"{sha}"'}).status_code == 403
     assert client.post(f"{base}/run", headers=ANN, json={"argv": ["check", "lunch"]}).status_code == 403
     assert client.post(f"{base}/import", headers=ANN, params={"filename": "x.md"}, content=b"x").status_code == 403
+    # Unlimited here, she does more than read, whatever the application says.
+    accounts.set_plan("ann", accounts.UNLIMITED)
+    assert client.put(f"{base}/files/2026/y.document.md", headers={**ANN, "If-None-Match": "*"},
+                      content=b"x").status_code == 200
+    accounts.set_plan("ann", accounts.FREE)
     # Bob pays: more than reading is his.
     assert client.put(f"{base}/files/2026/x.document.md", headers={**BOB, "If-None-Match": "*"},
                       content=b"x").status_code == 200

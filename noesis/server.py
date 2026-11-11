@@ -409,10 +409,14 @@ def _may_run(root: Path, command: str) -> None:
 def _paying(root: Path, who: str) -> None:
     """In a group's library, a member who does not pay reads and nothing more
     (since 2026-11-10: The Floor's noesis is read-only without Pro): no
-    writes, runs, imports or copies out. The owner and services are not members."""
-    from noesis import members
+    writes, runs, imports or copies out. The owner and services are not members.
+    A member whose account here is unlimited (scripts/accounts.py plan) pays
+    as much as one the application says pays."""
+    from noesis import accounts, members
     owner = _owner(root)
     if who in (owner, "*") or members.keeper(owner) is None:
+        return
+    if (mine := accounts.account(who)) is not None and mine.plan == accounts.UNLIMITED:
         return
     found = members.group(owner, root.name)
     if not any(m.user == who and m.pays for m in (found.members if found else ())):
