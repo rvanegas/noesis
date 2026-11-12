@@ -14,8 +14,8 @@ address may narrow a request to some, `/mcp?libraries=<id>,<id>` — The
 Floor's per-channel selection, enforced here — and then a search spans every
 one open and labels each result. Without it, a person with several names them
 in the conversation, and guide and the errors tell Claude to ask. They list
-each by its id, and a group's by its name too (2026-11-11, `_named`): a
-person calls a channel's library by the channel's name, not its handle.
+each by its id and by the name the id slugs (2026-11-11, `_named`): a person
+calls a library "Philosophy", and a channel's by the channel's name.
 
 Nothing here writes. edit_file is `noesis reply`'s alone, and append_turn is
 gone: claude.ai edits with its own documents, and a conversation reaches the
@@ -167,9 +167,9 @@ def _open_to(ctx: Context | None) -> list[str]:
 
 def _named(ids: list[str], who: str) -> str:
     """Libraries as the model is told of them: each id, the thing a tool takes,
-    and a group's by the name its people call it too (library_names: a
-    channel's name, of which its handle is the slug). One's own library is
-    named by its id, which is the name its owner gave it."""
+    and the name its people call it, of which the id is the slug
+    (library_names: one's own by the name it was made with, a channel's by
+    the channel's)."""
     names = library_names(who) if who != "*" else {}
     return ", ".join(f'{i} ("{names[i]}")' if names.get(i) else i for i in ids) or "none"
 

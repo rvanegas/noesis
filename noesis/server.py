@@ -12,7 +12,8 @@ A user reaches only their own libraries,
 run:
 
 - GET    /libraries                          the caller's libraries: id, name, users, documents
-- POST   /libraries {name}                   a new library of the caller's, its settings empty
+- POST   /libraries {name}                   a new library of the caller's, its settings empty,
+                                             its id the name's slug
 - GET    /libraries/{user}/{library}/files   {rel_path: sha256}
 - GET    …/files/{rel_path}                  the bytes, ETag their sha256, Last-Modified their mtime
 - HEAD   …/files/{rel_path}                  the same headers, without the bytes

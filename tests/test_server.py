@@ -107,9 +107,20 @@ def test_a_user_creates_a_library_of_their_own(client, data):
     assert (data / "libraries/ann/drafts/SYSTEM_PROMPT.md").read_text() == ""
 
 
+def test_a_library_is_made_from_a_name_its_id_the_name_s_slug(client, data):
+    response = client.post("/libraries", headers=ANN, json={"name": "  Ética  de   Spinoza "})
+    assert response.json() == {"library": "ann/etica-de-spinoza"}
+    listed = {l["id"]: l["name"] for l in client.get("/libraries", headers=ANN).json()["libraries"]}
+    assert listed["ann/etica-de-spinoza"] == "Ética de Spinoza"
+    # The name is the library's, not a file of it.
+    assert ".noesis/library.json" not in client.get("/libraries/ann/etica-de-spinoza/files", headers=ANN).json()["files"]
+    # A path is only a name: its slug stays inside the user's libraries.
+    assert client.post("/libraries", headers=ANN, json={"name": "../bob"}).json() == {"library": "ann/bob"}
+
+
 def test_a_new_library_needs_a_fresh_valid_name_and_a_user(client):
-    assert client.post("/libraries", headers=ANN, json={"name": "philosophy"}).status_code == 409
-    for name in ["", "Drafts", "../bob", ".noesis", "-x", "a/b"]:
+    assert client.post("/libraries", headers=ANN, json={"name": "Philosophy"}).status_code == 409
+    for name in ["", "  ", "—", "../"]:
         assert client.post("/libraries", headers=ANN, json={"name": name}).status_code == 400
     service = {"Authorization": "Bearer service-token"}
     assert client.post("/libraries", headers=service, json={"name": "drafts"}).status_code == 400

@@ -34,7 +34,7 @@
       noesis checks and indexes it, and Claude reads it through noesis’s tools. Start with one; you can make
       more later.</p>
     <form id="first-library-form" class="panel">
-      <label>Name (lowercase letters, digits, - and _)<input id="first-library-name" value="library" required pattern="[a-z0-9][a-z0-9_\-]*" spellcheck="false" autocapitalize="off" autocomplete="off"></label>
+      <label>Name<input id="first-library-name" value="Library" required autocomplete="off"></label>
       <div class="actions"><button>Create library</button></div>
     </form>
   </section>
@@ -53,7 +53,7 @@
 
     <form id="create-library" class="panel" hidden>
       <h2>New library</h2>
-      <label>Name (lowercase letters, digits, - and _)<input id="library-name" required pattern="[a-z0-9][a-z0-9_\-]*" spellcheck="false" autocapitalize="off" autocomplete="off"></label>
+      <label>Name<input id="library-name" required autocomplete="off"></label>
       <div class="actions"><button>Create</button><button type="button" class="quiet" data-close>Cancel</button></div>
     </form>
 

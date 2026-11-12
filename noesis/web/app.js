@@ -258,15 +258,16 @@ function current() {
   return libraries.find((l) => l.id === library);
 }
 
-// The bar's button names the chosen library; a group's library (The Floor's
-// channel) is headed by its group's name, which its id only slugs, or by who
-// else is in it when the group has no name.
+// The bar's button names the chosen library by the name its id only slugs;
+// a group's library (The Floor's channel) is headed by its group's name too,
+// or by who else is in it when the group has no name.
 function showGroup() {
   const name = current()?.name;
+  const group = library?.split("/")[0] !== user ? name : null;
   $("library").textContent = name || library;
   $("library").title = library;
-  $("group").textContent = name ?? "";
-  $("group").hidden = !name;
+  $("group").textContent = group ?? "";
+  $("group").hidden = !group;
 }
 
 // Every library the user reaches, with what tells them apart: its id, the
@@ -360,7 +361,7 @@ async function createLibrary(event) {
   await loadLibraries();
   show(true);
   await loadFiles();
-  say(`Created ${id}.`);
+  say(`Created ${name}, ${id}.`);
 }
 
 async function loadFiles() {

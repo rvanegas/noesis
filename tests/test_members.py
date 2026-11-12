@@ -390,16 +390,34 @@ def test_a_member_who_does_not_pay_reads_and_nothing_more(client, filed, data, f
                       content=b"x").status_code == 200
 
 
-def test_the_connector_names_a_channel_s_library_by_the_channel_s_name(client, floor, monkeypatch):
+def test_the_connector_names_each_library_by_what_its_id_slugs(client, floor, data, monkeypatch):
     from noesis import mcp_server
     _made(client)
     monkeypatch.setattr(mcp_server, "_caller", lambda: "ann")
     monkeypatch.setattr(mcp_server, "_restricted", lambda ctx: False)
     monkeypatch.setattr(mcp_server, "_open_to", lambda ctx: ["ann/notes", f"thefloor/{LIB}"])
+    from noesis.service import name_library
+    name_library(data / "libraries/ann/notes", "Notes")
     said = mcp_server.guide(None)
-    # One's own library by its id, which is its name; the channel's by the
-    # name its handle is the slug of.
-    assert f'several libraries: ann/notes, thefloor/{LIB} ("Book Club")' in said
+    # Each by the name its id is the slug of: one's own by the name it was
+    # made with, the channel's by the channel's.
+    assert f'several libraries: ann/notes ("Notes"), thefloor/{LIB} ("Book Club")' in said
     assert "the tools take the id" in said
-    with pytest.raises(mcp_server.ToolError, match=f'one of ann/notes, thefloor/{LIB} \\("Book Club"\\)'):
+    with pytest.raises(mcp_server.ToolError, match=f'one of ann/notes \\("Notes"\\), thefloor/{LIB} \\("Book Club"\\)'):
         mcp_server._roots(None, None, many=False)
+
+
+def test_the_libraries_made_before_their_names_are_named_from_their_slugs(client, floor, data, capsys):
+    from scripts.name_libraries import main as name
+    from noesis.service import library_name
+    _made(client)
+    (data / "libraries/ann/my_old-notes").mkdir()
+    assert name([]) == 0 and library_name(data / "libraries/ann/notes") is None
+    assert name(["--apply"]) == 0
+    assert library_name(data / "libraries/ann/notes") == "Notes"
+    assert library_name(data / "libraries/ann/my_old-notes") == "My old notes"
+    capsys.readouterr()
+    assert name(["--apply"]) == 0 and capsys.readouterr().out == ""
+    # The Floor's are named by its channels.
+    listed = {l["id"]: l["name"] for l in client.get("/libraries", headers=ANN).json()["libraries"]}
+    assert listed == {"ann/my_old-notes": "My old notes", "ann/notes": "Notes", f"thefloor/{LIB}": "Book Club"}
