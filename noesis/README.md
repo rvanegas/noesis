@@ -464,6 +464,22 @@ server_token = "..."          # minted on the server by scripts/add_token.py
 local_root = "~/Documents/Writing/Chats"
 ```
 
+Each mirrored library has a table of its own, one token reaching all of yours:
+
+```toml
+library_path = "~/Documents/Writing/Chats"      # the default library
+server_url = "https://noesis.rvanegas.co"
+server_token = "..."
+
+[libraries."rodvandur/philosophy"]
+local_root = "~/Documents/Writing/Chats"
+
+[libraries."rodvandur/fiction"]
+local_root = "~/Documents/Writing/Fiction"
+```
+
+A command works in the mirror whose `local_root` is its library (`--lib`, `NOESIS_LIBRARY` or `library_path`), else in the one it is run inside. Here `noesis sync` syncs `philosophy` from anywhere, even inside `Fiction`; `noesis --lib ~/Documents/Writing/Fiction sync` syncs `fiction`. Without `library_path`, the directory a command is run in chooses.
+
 In a mirrored library each such command syncs the library with the server's copy, runs there with its output streaming here, and syncs the results back. `noesis sync` syncs alone. `check`, `validate`, `fix`, `new`, `edit` and `diff` stay local.
 
 Sync never merges. A file changed both here and on the server since they last agreed is a conflict: the server's version is saved beside yours as `<name>.server`, and a run will not start until it is settled. Delete the `.server` copy to keep yours (the next sync sends it), or replace yours with it.
