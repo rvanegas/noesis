@@ -12,6 +12,9 @@ An application's libraries are left alone, being named by its groups.
     docker compose exec -T noesis python scripts/name_libraries.py --apply
 
 Idempotent: a library that has its name keeps it.
+
+Run on the server 2026-11-11, before the deploy that reads the names, with
+these names but for rochelle/executive_assistance, named "Executive Assistance".
 """
 
 from __future__ import annotations
