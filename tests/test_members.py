@@ -388,3 +388,18 @@ def test_a_member_who_does_not_pay_reads_and_nothing_more(client, filed, data, f
     # Bob pays: more than reading is his.
     assert client.put(f"{base}/files/2026/x.document.md", headers={**BOB, "If-None-Match": "*"},
                       content=b"x").status_code == 200
+
+
+def test_the_connector_names_a_channel_s_library_by_the_channel_s_name(client, floor, monkeypatch):
+    from noesis import mcp_server
+    _made(client)
+    monkeypatch.setattr(mcp_server, "_caller", lambda: "ann")
+    monkeypatch.setattr(mcp_server, "_restricted", lambda ctx: False)
+    monkeypatch.setattr(mcp_server, "_open_to", lambda ctx: ["ann/notes", f"thefloor/{LIB}"])
+    said = mcp_server.guide(None)
+    # One's own library by its id, which is its name; the channel's by the
+    # name its handle is the slug of.
+    assert f'several libraries: ann/notes, thefloor/{LIB} ("Book Club")' in said
+    assert "the tools take the id" in said
+    with pytest.raises(mcp_server.ToolError, match=f'one of ann/notes, thefloor/{LIB} \\("Book Club"\\)'):
+        mcp_server._roots(None, None, many=False)

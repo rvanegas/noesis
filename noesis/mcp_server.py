@@ -13,7 +13,9 @@ signs the person in, or a minted noesis token sent as it is (Claude Code).
 address may narrow a request to some, `/mcp?libraries=<id>,<id>` — The
 Floor's per-channel selection, enforced here — and then a search spans every
 one open and labels each result. Without it, a person with several names them
-in the conversation, and guide and the errors tell Claude to ask.
+in the conversation, and guide and the errors tell Claude to ask. They list
+each by its id, and a group's by its name too (2026-11-11, `_named`): a
+person calls a channel's library by the channel's name, not its handle.
 
 Nothing here writes. edit_file is `noesis reply`'s alone, and append_turn is
 gone: claude.ai edits with its own documents, and a conversation reaches the
@@ -44,7 +46,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from noesis import library as lib
 from noesis import members
 from noesis import bearer
-from noesis.service import LibraryError, library_ids, library_root
+from noesis.service import LibraryError, library_ids, library_names, library_root
 
 
 INSTRUCTIONS = "\n\n".join([
@@ -163,6 +165,15 @@ def _open_to(ctx: Context | None) -> list[str]:
     return [i for i in ids if i in named]
 
 
+def _named(ids: list[str], who: str) -> str:
+    """Libraries as the model is told of them: each id, the thing a tool takes,
+    and a group's by the name its people call it too (library_names: a
+    channel's name, of which its handle is the slug). One's own library is
+    named by its id, which is the name its owner gave it."""
+    names = library_names(who) if who != "*" else {}
+    return ", ".join(f'{i} ("{names[i]}")' if names.get(i) else i for i in ids) or "none"
+
+
 def _restricted(ctx: Context | None) -> bool:
     request = getattr(ctx.request_context, "request", None) if ctx is not None else None
     return request is not None and "libraries" in request.query_params
@@ -176,16 +187,16 @@ def _roots(library: str | None, ctx: Context | None, many: bool) -> list[tuple[s
     if library is not None:
         if library not in ids:
             raise ToolError(f"not a library open to this conversation: {library!r}; "
-                            f"open: {', '.join(ids) or 'none'}")
+                            f"open: {_named(ids, who)}")
         ids = [library]
     elif not ids:
         raise ToolError("no library is open to this conversation" if _restricted(ctx)
                         else "this user has no library yet")
     elif len(ids) > 1 and not many:
-        raise ToolError(f"name the library: one of {', '.join(ids)} — the one a search gave")
+        raise ToolError(f"name the library: one of {_named(ids, who)} — the one a search gave")
     elif len(ids) > 1 and not _restricted(ctx):
         # claude.ai: the person chooses, in the conversation.
-        raise ToolError(f"this user keeps several libraries: {', '.join(ids)}. Use the ones they "
+        raise ToolError(f"this user keeps several libraries: {_named(ids, who)}. Use the ones they "
                         "named in this conversation, passing each as library; if they named "
                         "none, ask them which before searching")
     roots = []
@@ -264,16 +275,19 @@ def guide(ctx: Context) -> str:
         return INSTRUCTIONS
     open_ids = _open_to(ctx)
     if _restricted(ctx):
-        which = (f"This conversation may read these libraries: {', '.join(open_ids)}. "
+        which = (f"This conversation may read these libraries: {_named(open_ids, who)}. "
                  "list_documents and lookup_term search all of them and say which each "
                  "result is in; read_file takes that library."
                  if open_ids else "No library is open to this conversation.")
     elif len(open_ids) > 1:
-        which = (f"This user keeps several libraries: {', '.join(open_ids)}. Use only the ones "
+        which = (f"This user keeps several libraries: {_named(open_ids, who)}. Use only the ones "
                  "they name in the conversation, passing each as the tools' library; if they "
                  "have named none, ask which before searching.")
     else:
-        which = f"This user's library: {open_ids[0]}." if open_ids else "This user has no library yet."
+        which = f"This user's library: {_named(open_ids, who)}." if open_ids else "This user has no library yet."
+    if any(library_names(who).get(i) for i in open_ids):
+        which += (" A quoted name after a library's id is what its people call it, which is "
+                  "how the user may name it; the tools take the id.")
     # One library's voices where only one is open — in a channel's, the
     # caller's and the other members' (_heard) — else the caller's own names.
     if len(open_ids) == 1:
