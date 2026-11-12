@@ -221,3 +221,21 @@ def test_scratch_and_backups_stay_where_they_are(setup):
     (local / "x.chat.md~").write_text("a newer backup")
     (local / "x.chat.md.bak").write_text("a newer fix backup")
     assert _quiet(sync, client, local, LIB)[1] == ""
+
+
+def test_the_mirror_is_the_one_named_else_the_one_inside_else_library_path(tmp_path, monkeypatch):
+    from noesis.remote import mirror_for
+    chats, atheism = tmp_path / "Chats", tmp_path / "Atheism"
+    (atheism / "2026").mkdir(parents=True)
+    chats.mkdir()
+    config = AppConfig(server_url="u", server_token="t", library_path=chats,
+                       mirrors=(("ann/philosophy", chats), ("floor/atheism", atheism)))
+    monkeypatch.delenv("NOESIS_RUN_LOCAL", raising=False)
+    monkeypatch.delenv("NOESIS_LIBRARY", raising=False)
+    assert mirror_for(config, atheism)[0] == "floor/atheism"
+    assert mirror_for(config, atheism / "2026")[0] == "floor/atheism"
+    assert mirror_for(config, tmp_path)[0] == "ann/philosophy"
+    monkeypatch.setenv("NOESIS_LIBRARY", str(chats))
+    assert mirror_for(config, atheism / "2026")[0] == "ann/philosophy"
+    monkeypatch.setenv("NOESIS_LIBRARY", str(tmp_path))
+    assert mirror_for(config, atheism) is None

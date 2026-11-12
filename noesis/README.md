@@ -478,7 +478,7 @@ local_root = "~/Documents/Writing/Chats"
 local_root = "~/Documents/Writing/Fiction"
 ```
 
-A command works in the mirror whose `local_root` is its library (`--lib`, `NOESIS_LIBRARY` or `library_path`), else in the one it is run inside. Here `noesis sync` syncs `philosophy` from anywhere, even inside `Fiction`; `noesis --lib ~/Documents/Writing/Fiction sync` syncs `fiction`. Without `library_path`, the directory a command is run in chooses.
+A command works in the mirror `--lib` or `NOESIS_LIBRARY` names, else the one it is run in (or in a directory of), else `library_path`'s. Here `noesis sync` syncs `fiction` inside `Fiction` and `philosophy` anywhere else; `noesis --lib ~/Documents/Writing/Fiction sync` syncs `fiction` from anywhere.
 
 In a mirrored library each such command syncs the library with the server's copy, runs there with its output streaming here, and syncs the results back. `noesis sync` syncs alone. `check`, `validate`, `fix`, `new`, `edit` and `diff` stay local.
 

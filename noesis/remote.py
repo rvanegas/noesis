@@ -49,17 +49,24 @@ class RemoteError(RuntimeError):
 
 
 def mirror_for(config: AppConfig, cwd: Path) -> tuple[str, Path] | None:
-    """The mirrored library this run works in, if any: by --lib, else by cwd."""
+    """The mirrored library this run works in, if any: the one --lib or
+    NOESIS_LIBRARY names, else the one cwd is in, else library_path's."""
     if os.environ.get("NOESIS_RUN_LOCAL") or not (config.server_url and config.server_token):
         return None
-    for library_id, root in config.mirrors:
-        if config.library_path and config.library_path.resolve() == root:
-            return library_id, root
+    named = os.environ.get("NOESIS_LIBRARY", "").strip()
+    if named:
+        return _mirror_at(config, Path(named).expanduser().resolve())
     here = cwd.resolve()
     for library_id, root in config.mirrors:
         if here == root or root in here.parents:
             return library_id, root
+    if config.library_path:
+        return _mirror_at(config, config.library_path.resolve())
     return None
+
+
+def _mirror_at(config: AppConfig, root: Path) -> tuple[str, Path] | None:
+    return next(((library_id, r) for library_id, r in config.mirrors if r == root), None)
 
 
 # ---------------------------------------------------------------------------
