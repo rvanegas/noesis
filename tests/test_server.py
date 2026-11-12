@@ -364,3 +364,15 @@ def test_the_web_client_names_the_roxana_the_server_is_configured_with(client, m
     config.write_text('roxana_web_url = "https://roxana.example"\n')
     monkeypatch.setattr(noesis.config, "DEFAULT_CONFIG_PATH", config)
     assert '<meta name="roxana" content="https://roxana.example">' in client.get("/web/").text
+
+
+def test_a_user_renames_their_own_library_its_id_kept(client, data):
+    assert client.post("/libraries", headers=ANN, json={"name": "Drafts"}).status_code == 201
+    response = client.patch("/libraries/ann/drafts", headers=ANN, json={"name": "  Early   Drafts "})
+    assert response.json() == {"library": "ann/drafts", "name": "Early Drafts"}
+    listed = {l["id"]: l["name"] for l in client.get("/libraries", headers=ANN).json()["libraries"]}
+    assert listed["ann/drafts"] == "Early Drafts"
+    assert client.patch("/libraries/ann/drafts", headers=ANN, json={"name": "—"}).status_code == 400
+    service = {"Authorization": "Bearer service-token"}
+    assert client.patch("/libraries/ann/drafts", headers=service, json={"name": "Mine"}).status_code == 403
+    assert client.patch("/libraries/ann/nothing", headers=ANN, json={"name": "X"}).status_code == 404

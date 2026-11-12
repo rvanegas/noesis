@@ -14,6 +14,7 @@ run:
 - GET    /libraries                          the caller's libraries: id, name, users, documents
 - POST   /libraries {name}                   a new library of the caller's, its settings empty,
                                              its id the name's slug
+- PATCH  /libraries/{user}/{library} {name}  one's own library renamed, its id kept
 - GET    /libraries/{user}/{library}/files   {rel_path: sha256}
 - GET    …/files/{rel_path}                  the bytes, ETag their sha256, Last-Modified their mtime
 - HEAD   …/files/{rel_path}                  the same headers, without the bytes
@@ -79,7 +80,7 @@ from mcp.server.auth.provider import AccessToken
 from pydantic import BaseModel
 
 from noesis import service
-from noesis.service import LibraryError, create_library, library_ids, library_root, lock_for
+from noesis.service import LibraryError, create_library, library_ids, library_root, lock_for, rename_library
 
 # Written by ts deploy into the package before the image is built, so it is
 # baked in with the code it describes. Absent in a checkout, where the answer
@@ -511,6 +512,15 @@ def delete_file(
     from noesis import deletion
     deletion.trash(root, path)
     return Response(status_code=204)
+
+
+@app.patch("/libraries/{user}/{library}")
+def rename(body: NewLibrary, root: Path = Depends(library), who: str = Depends(caller)) -> dict:
+    try:
+        name = rename_library(root, who, body.name)
+    except LibraryError as exc:
+        raise HTTPException(exc.status, str(exc)) from None
+    return {"library": f"{_owner(root)}/{root.name}", "name": name}
 
 
 @app.delete("/libraries/{user}/{library}")

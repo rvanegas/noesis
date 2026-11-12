@@ -47,9 +47,16 @@
     </div>
 
     <section id="libraries" class="panel" hidden>
-      <div class="heading"><h2>Libraries</h2><button class="quiet" data-close>Close</button></div>
+      <div class="heading"><h2>Libraries</h2><span><button id="rename-library" class="quiet" hidden>Rename</button><button class="quiet" data-close>Close</button></span></div>
       <ul id="library-list" class="libraries"></ul>
     </section>
+
+    <form id="rename-library-form" class="panel" hidden>
+      <h2>Rename library</h2>
+      <label>Name<input id="library-new-name" required autocomplete="off"></label>
+      <p class="hint">Its id, <code id="library-id"></code>, stays as it is.</p>
+      <div class="actions"><button>Rename</button><button type="button" class="quiet" data-close>Cancel</button></div>
+    </form>
 
     <form id="create-library" class="panel" hidden>
       <h2>New library</h2>

@@ -94,10 +94,8 @@ def create_library(who: str, name: str) -> str:
     found by its slug; its id."""
     if who == "*":
         raise LibraryError(400, "a service has no libraries of its own")
-    name = " ".join(name.split())
+    name = _library_name(name)
     slug = slug_of(name)
-    if not slug:
-        raise LibraryError(400, "a library's name needs a letter or a digit")
     from noesis import accounts
     most = accounts.limits().libraries
     if accounts.is_free(who) and len(library_ids(who)) >= most:
@@ -111,6 +109,25 @@ def create_library(who: str, name: str) -> str:
         (root / filename).write_text(skeleton, encoding="utf-8")
     name_library(root, name)
     return f"{who}/{slug}"
+
+
+def _library_name(name: str) -> str:
+    name = " ".join(name.split())
+    if not slug_of(name):
+        raise LibraryError(400, "a library's name needs a letter or a digit")
+    return name
+
+
+def rename_library(root: Path, who: str, name: str) -> str:
+    """A person's library called something else, its id kept: a mirror, a
+    connector and The Floor know it by the id. An application's is named by
+    its group, which the application renames. The name it now has."""
+    from noesis import members
+    if root.parent.name != who or members.keeper(who) is not None:
+        raise LibraryError(403, "only its owner renames a library")
+    name = _library_name(name)
+    name_library(root, name)
+    return name
 
 
 def name_library(root: Path, name: str) -> None:

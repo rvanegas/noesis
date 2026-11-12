@@ -421,3 +421,9 @@ def test_the_libraries_made_before_their_names_are_named_from_their_slugs(client
     # The Floor's are named by its channels.
     listed = {l["id"]: l["name"] for l in client.get("/libraries", headers=ANN).json()["libraries"]}
     assert listed == {"ann/my_old-notes": "My old notes", "ann/notes": "Notes", f"thefloor/{LIB}": "Book Club"}
+
+
+def test_a_channel_s_library_is_renamed_by_renaming_the_channel(client, floor):
+    _made(client)
+    assert client.patch(f"/libraries/thefloor/{LIB}", headers=ANN, json={"name": "Mine"}).status_code == 403
+    assert client.patch(f"/libraries/thefloor/{LIB}", headers=FLOOR, json={"name": "Mine"}).status_code == 403

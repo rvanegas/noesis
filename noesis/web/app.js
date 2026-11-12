@@ -297,6 +297,7 @@ function pickLibrary() {
     item.append(button);
     return item;
   }));
+  $("rename-library").hidden = library.split("/")[0] !== user;
   $("libraries").hidden = false;
   $("library").setAttribute("aria-expanded", "true");
   $("libraries").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -333,6 +334,34 @@ async function saveNames(event) {
   names = (await response.json()).names;
   closePanel("names");
   say(names.length ? `You are Prompt and ${names.join(", ")} in your chats.` : "You are Prompt in your chats.");
+}
+
+// One's own library only: a group's is named by its group. The id stays,
+// since a mirror, a connector and The Floor know the library by it.
+function pickNewName() {
+  closePanel("libraries");
+  $("library-new-name").value = current()?.name || library.split("/")[1];
+  $("library-id").textContent = library;
+  $("rename-library-form").hidden = false;
+  $("library-new-name").select();
+}
+
+async function renameLibrary(event) {
+  event.preventDefault();
+  const name = $("library-new-name").value.trim();
+  const response = await api(`/libraries/${library}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) {
+    say(`${name}: ${await detail(response)}`);
+    return;
+  }
+  const renamed = (await response.json()).name;
+  closePanel("rename-library-form");
+  await loadLibraries();
+  say(`Renamed ${library} ${renamed}.`);
 }
 
 function pickLibraryName() {
@@ -847,6 +876,8 @@ function wire() {
   $("library").addEventListener("click", pickLibrary);
   $("new-library").addEventListener("click", pickLibraryName);
   $("create-library").addEventListener("submit", guard(createLibrary));
+  $("rename-library").addEventListener("click", pickNewName);
+  $("rename-library-form").addEventListener("submit", guard(renameLibrary));
   $("your-names").addEventListener("click", pickNames);
   $("names").addEventListener("submit", guard(saveNames));
   $("first-library-form").addEventListener("submit", guard(createLibrary));
