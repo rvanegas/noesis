@@ -433,3 +433,14 @@ def update_references_section(text: str, refs: list[str]) -> str:
     base = text.rstrip()
     refs_content = "\n".join(refs)
     return f"{base}\n\n{heading_marker} References\n\n{refs_content}\n"
+
+
+def rename_speakers(text: str, names: dict[str, str]) -> str:
+    """The chat with each speaker heading in `names` renamed to its value;
+    every other heading, and every line under one, as it was."""
+    out, at = [], 0
+    for match in HEADING_RE.finditer(text):
+        if (name := match.group(2)) in names:
+            out += [text[at:match.start(2)], names[name]]
+            at = match.end(2)
+    return "".join(out) + text[at:]

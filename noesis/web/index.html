@@ -12,7 +12,6 @@
 <body>
 <header class="bar">
   <h1><span class="brand">noesis</span><button id="library" aria-haspopup="true" aria-expanded="false" aria-controls="libraries" hidden><span id="library-title"></span><span class="chevron" aria-hidden="true"></span></button></h1>
-  <button id="your-names" class="quiet" hidden>Your names</button>
   <button id="sign-out" class="quiet" hidden>Sign out</button>
 </header>
 
@@ -61,13 +60,14 @@
       <div class="actions"><button>Create</button><button type="button" class="quiet" data-close>Cancel</button></div>
     </form>
 
-    <form id="names" class="panel" hidden>
-      <h2>Your names</h2>
-      <p class="hint">The headings in your chats that are you, besides <code>Prompt</code>: in a chat from
-        The Floor, the name you spoke under. Everywhere else in a chat is someone else, Claude or another person.
-        Indexing and Claude’s reading of your library go by these.</p>
-      <label>One per line<textarea id="names-list" rows="3" spellcheck="false" autocapitalize="off"></textarea></label>
-      <div class="actions"><button>Save</button><button type="button" class="quiet" data-close>Cancel</button></div>
+    <form id="voices" class="panel" hidden>
+      <h2>Speakers in <span id="voices-name"></span></h2>
+      <p class="hint">A chat’s lines are yours under <code>Prompt</code> and your display name; every other
+        speaker is someone else, Claude or another person. Indexing and Claude’s reading of your library go by
+        this. Rename a speaker to make their lines yours, or someone else’s.</p>
+      <p id="voices-none" class="hint" hidden>Nobody speaks in this chat but Prompt and Claude.</p>
+      <div id="voices-list"></div>
+      <div class="actions"><button id="voices-save">Rename</button><button type="button" class="quiet" data-close>Cancel</button></div>
     </form>
 
     <form id="import" class="panel" hidden>
@@ -86,8 +86,8 @@
         own words there, and everybody else’s their own.</p>
       <label>To<select id="copy-to"></select></label>
       <fieldset id="copy-who" hidden>
-        <legend>None of your names is in this chat. Which of these speakers are you? Leave them all unticked
-          if you were not in it.</legend>
+        <legend>Your display name is not in this chat. Which of these speakers are you? The copy names them
+          as you. Leave them all unticked if you were not in it.</legend>
         <div id="copy-speakers"></div>
       </fieldset>
       <div class="actions"><button>Copy</button><button type="button" class="quiet" data-close>Cancel</button></div>
@@ -129,6 +129,7 @@
         <button id="file-claude" hidden>Draft its document in Claude</button>
         <label class="button" id="file-document" hidden>Import its document<input id="document-pick" type="file" accept=".md,.markdown,.txt" hidden></label>
         <button id="file-copy" hidden>Copy to your library</button>
+        <button id="file-voices" hidden>Speakers</button>
         <button id="file-edit">Edit</button>
         <button id="file-pdf" class="quiet">Make PDF</button>
         <button id="file-download" class="quiet">Download</button>

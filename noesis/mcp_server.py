@@ -24,7 +24,7 @@ write depended on Claude remembering to make it.
 
 Files come back as they are. A chat whose headings go beyond Prompt and the
 model's comes after one line saying whose voice each heading is: the
-library owner's by the names they keep (accounts.speaker_names), the
+library owner's by their display name (members.voices), the
 model's, anyone else's. In a channel's library the user is whoever reads,
 and each other member is named as one, speaking for themselves (_heard).
 Without it a chat of several people says nothing of which of them is the
@@ -215,7 +215,7 @@ def _root(library: str | None, ctx: Context | None = None) -> Path:
 
 def _heard(owner: str, library: str, reader: str) -> tuple[set[str], set[str]]:
     """The headings that are the reader's own, and those of a channel's other
-    members: in a person's library the owner's names are the user's, and in a
+    members: in a person's library the owner's display name is the user's, and in a
     channel's only the reader's are, each other member being their own voice."""
     from noesis.config import PROMPT_HEADING
     group = members.speakers(owner, library)
@@ -268,7 +268,6 @@ def guide(ctx: Context) -> str:
     noesis tools. How the library is organized, which of the user's libraries to
     use, how to find and cite its documents, and which voices in a chat are
     the user's."""
-    from noesis import accounts
     from noesis.config import PROMPT_HEADING
     who = _caller()
     if who == "*":
@@ -289,11 +288,11 @@ def guide(ctx: Context) -> str:
         which += (" A quoted name after a library's id is what its people call it, which is "
                   "how the user may name it; the tools take the id.")
     # One library's voices where only one is open — in a channel's, the
-    # caller's and the other members' (_heard) — else the caller's own names.
+    # caller's and the other members' (_heard) — else the caller's display name.
     if len(open_ids) == 1:
         mine, fellows = _heard(*open_ids[0].split("/", 1), who)
     else:
-        mine, fellows = {PROMPT_HEADING, *accounts.speaker_names(who)}, set()
+        mine, fellows = {PROMPT_HEADING, members.display_name(who)}, set()
     names = ", ".join(f"## {n}" for n in (PROMPT_HEADING, *sorted(mine - {PROMPT_HEADING})))
     said = (f"{INSTRUCTIONS}\n\n{which}\n\nIn this user's chats, the sections headed {names} are the "
             "user's own words. ")

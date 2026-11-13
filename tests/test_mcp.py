@@ -254,7 +254,6 @@ def test_the_floor_files_a_conversation_and_nothing_else(library, live, monkeypa
     imported = httpx.post(f"{url}/libraries/ann/philosophy/import?filename=lunch.md", headers=bearer,
                           content=b"Said at lunch.\n", timeout=60)
     assert imported.status_code == 200 and '"exit_code": 0' in imported.text, imported.text
-    assert httpx.put(f"{url}/me/names", headers=bearer, json={"names": ["Ann"]}).json()["names"] == ["Ann"]
     assert httpx.post(f"{url}/libraries/bob/notes/import?filename=a.md", headers=bearer,
                       content=b"x").status_code in (403, 404)
     assert httpx.get(f"{url}/libraries", headers=bearer).status_code == 401
@@ -264,7 +263,6 @@ def test_the_floor_files_a_conversation_and_nothing_else(library, live, monkeypa
                      headers={**bearer, "If-None-Match": "*"}, content=b"x").status_code == 401
     # Without the scope, neither.
     reader = auth_tokens.bearer("ann", scopes=["noesis:read"], client="claude1")
-    assert httpx.put(f"{url}/me/names", headers=reader, json={"names": ["Ann"]}).status_code == 401
     assert httpx.get(f"{url}/me", headers=reader).status_code == 200
 
 
@@ -272,27 +270,25 @@ FLOOR = ("\n# Lunch\n2026-10-30\n\n## Ann\n\nMine.\n\n## Bea\n\nHers.\n\n"
          "## Claude\n\nThe model's.\n\n## Related\n\n| *Essay*\n")
 
 
-def test_a_chat_of_several_people_says_whose_voice_each_heading_is(library):
-    from noesis import accounts
+def test_a_chat_of_several_people_says_whose_voice_each_heading_is(library, monkeypatch):
+    from noesis import members
     root, url = library
     (root / "2026" / "2026-10-30-lunch.chat.md").write_text(FLOOR)
-    accounts.set_speaker_names("ann", ["Ann"])
-    try:
-        voices = "Voices: ## Ann is the user; ## Claude is a model; ## Bea is someone else.\n"
+    shown = {"ann": "Ann"}                                    # her display name at auth
+    monkeypatch.setattr(members, "display_name", lambda user: shown.get(user, user))
+    voices = "Voices: ## Ann is the user; ## Claude is a model; ## Bea is someone else.\n"
 
-        def read(name):  # the file, after the lines naming it and its companions
-            head, body = text(call(url, "ann", "read_file", {"name": name})).split("\n\n", 1)
-            assert head.startswith(name.rsplit("/", 1)[-1].split(".")[0])
-            return body
-        assert read("2026-10-30-lunch.chat.md") == voices + FLOOR
-        assert read("2026/2026-10-30-lunch.chat.md") == voices + FLOOR
-        assert "the sections headed ## Prompt, ## Ann are the user's own words" in text(call(url, "ann", "guide", {}))
-        # Prompt and a model need no saying; nor does anything but a chat.
-        assert read("2025-04-25-old-roman.chat.md") == CHAT
-        assert read("2026-10-27-essay.document.md") == DOC
-        accounts.set_speaker_names("ann", [])
-        assert read("2026-10-30-lunch.chat.md").startswith(
-            "Voices: no heading is the user; ## Claude is a model; ## Ann, ## Bea are other people.\n")
-        assert call(url, "ann", "read_file", {"name": "../../bob/x.chat.md"}).is_error
-    finally:
-        accounts.set_speaker_names("ann", [])
+    def read(name):  # the file, after the lines naming it and its companions
+        head, body = text(call(url, "ann", "read_file", {"name": name})).split("\n\n", 1)
+        assert head.startswith(name.rsplit("/", 1)[-1].split(".")[0])
+        return body
+    assert read("2026-10-30-lunch.chat.md") == voices + FLOOR
+    assert read("2026/2026-10-30-lunch.chat.md") == voices + FLOOR
+    assert "the sections headed ## Prompt, ## Ann are the user's own words" in text(call(url, "ann", "guide", {}))
+    # Prompt and a model need no saying; nor does anything but a chat.
+    assert read("2025-04-25-old-roman.chat.md") == CHAT
+    assert read("2026-10-27-essay.document.md") == DOC
+    shown["ann"] = "Ann Example"                          # renamed since
+    assert read("2026-10-30-lunch.chat.md").startswith(
+        "Voices: no heading is the user; ## Claude is a model; ## Ann, ## Bea are other people.\n")
+    assert call(url, "ann", "read_file", {"name": "../../bob/x.chat.md"}).is_error

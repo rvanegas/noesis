@@ -186,10 +186,10 @@ def libraries_of(user: str) -> dict[str, str | None]:
 
 
 def voices(owner: str, library: str) -> tuple[str, ...]:
-    """The headings that are the library's owner: a person's own names, and none
+    """The headings, besides Prompt, that are the library's owner: a person's
+    display name (since 2026-11-13, when the names noesis kept went), and none
     of a group's, whose members are each their own voice (speakers)."""
-    from noesis import accounts
-    return accounts.speaker_names(owner) if keeper(owner) is None else ()
+    return (display_name(owner),) if keeper(owner) is None else ()
 
 
 def display_name(user: str) -> str:
@@ -217,15 +217,14 @@ def display_name(user: str) -> str:
 
 def speakers(owner: str, library: str) -> tuple[Speaker, ...]:
     """A group's members, each by the name the application gives them (else
-    their user name) and their headings: that name and the names they keep
-    here. None for a person's library."""
-    from noesis import accounts
+    their user name), which is the heading they speak under. None for a
+    person's library."""
     if keeper(owner) is None:
         return ()
     found = group(owner, library)
     return tuple(
         Speaker(member.user, member.name or member.user,
-                tuple(dict.fromkeys(h for h in (member.name or member.user, *accounts.speaker_names(member.user)) if h)))
+                (member.name or member.user,))
         for member in (found.members if found else ()))
 
 

@@ -205,19 +205,56 @@ def test_run_refuses(client, argv):
     assert client.post(f"{BASE}/run", headers=ANN, json={"argv": argv}).status_code in (400, 422)
 
 
-@pytest.mark.parametrize("names, status", [(["Mary Ann"], 200), (["Ann,Bo"], 400), (["Ann\nBo"], 400)])
-def test_a_user_name_may_have_spaces_not_commas(client, names, status):
-    assert client.put("/me/names", headers=ANN, json={"names": names}).status_code == status
+LUNCH = ("\n# Lunch\n2026-10-30\n\n## Annie\n\nMine.\n\n## Bea\n\nHers.\n\n## Claude\n\nThe model's.\n\n"
+         "## Related\n\n| *Essay*\n")
 
 
-def test_names_are_kept_with_the_user(client):
-    assert client.get("/me", headers=ANN).json()["names"] == []
-    saved = client.put("/me/names", headers=ANN, json={"names": [" Ann ", "Prompt", "Ann", "Mary Ann"]})
-    assert saved.json() == {"names": ["Ann", "Mary Ann"]}
-    assert client.get("/me", headers=ANN).json()["names"] == ["Ann", "Mary Ann"]
-    assert client.get("/me", headers={"Authorization": "Bearer bob-token"}).json()["names"] == []
-    service = {"Authorization": "Bearer service-token"}
-    assert client.put("/me/names", headers=service, json={"names": ["X"]}).status_code == 400
+@pytest.fixture
+def lunch(data, monkeypatch):
+    """A chat of several people, and Ann's display name at auth."""
+    from noesis import members
+    monkeypatch.setattr(members, "display_name", lambda user: {"ann": "Ann Example"}.get(user, user))
+    (data / "libraries/ann/philosophy/2026").mkdir()
+    path = data / "libraries/ann/philosophy/2026/2026-10-30-lunch.chat.md"
+    path.write_text(LUNCH)
+    (data / "libraries/ann/philosophy/2026/2026-10-31-tea.chat.md").write_text(
+        "\n# Tea\n2026-10-31\n\n## Cy\n\nTea?\n\n## Ann Example\n\nYes.\n")
+    return path
+
+
+def test_a_chat_s_speakers_are_offered_with_the_caller_s_name_and_the_library_s_latest(client, lunch):
+    offered = client.get(f"{BASE}/voices", headers=ANN, params={"file": "2026/2026-10-30-lunch.chat.md"})
+    # Prompt and the model are nobody's to rename; the caller's own name is offered apart.
+    assert offered.json() == {"voices": ["Annie", "Bea"], "self": "Ann Example", "recent": ["Cy", "Annie", "Bea"]}
+    assert client.get(f"{BASE}/voices", headers=ANN, params={"file": "2025/2025-04-25-old-roman.chat.md"}
+                      ).json()["voices"] == []
+    assert client.get("/libraries/bob/notes/voices", headers=ANN, params={"file": "x.chat.md"}).status_code == 403
+
+
+def test_renaming_a_chat_s_speakers_keeps_their_lines(client, lunch):
+    rel = "2026/2026-10-30-lunch.chat.md"
+    match = {"If-Match": f'"{_sha(LUNCH.encode())}"'}
+    post = lambda names, headers=match: client.post(f"{BASE}/voices", headers={**ANN, **headers},
+                                                   json={"file": rel, "names": names})
+    assert post({"Annie": "Ann Example"}, {}).status_code == 428
+    assert post({"Annie": "Ann Example"}, {"If-Match": '"stale"'}).status_code == 412
+    for bad in ({"Claude": "Ann"}, {"Nobody": "Ann"}, {"Annie": "Ann, Jr."}, {"Annie": "Related"},
+                {"Annie": "x" * 81}, {"Annie": ""}):
+        assert post(bad).status_code == 400, bad
+    assert lunch.read_text() == LUNCH
+    renamed = post({"Annie": "Ann Example", "Bea": "Beatrice Lee"})
+    assert renamed.status_code == 200
+    assert lunch.read_text() == LUNCH.replace("## Annie", "## Ann Example").replace("## Bea", "## Beatrice Lee")
+    assert renamed.headers["ETag"] == f'"{_sha(lunch.read_bytes())}"'
+    assert client.post(f"{BASE}/voices", headers=ANN, json={"file": "2025/2025-04-25-old-roman.chat.md",
+                                                           "names": {}}).status_code == 428
+    assert client.post(f"{BASE}/voices", headers={**ANN, **match},
+                       json={"file": "x.document.md", "names": {}}).status_code == 404
+
+
+def test_names_are_no_longer_kept(client):
+    assert "names" not in client.get("/me", headers=ANN).json()
+    assert client.put("/me/names", headers=ANN, json={"names": ["Ann"]}).status_code in (404, 405)
 
 
 def test_a_run_knows_the_owners_names_whoever_starts_it(client, monkeypatch):
@@ -232,10 +269,9 @@ def test_a_run_knows_the_owners_names_whoever_starts_it(client, monkeypatch):
     monkeypatch.setattr(server.asyncio, "create_subprocess_exec", spy)
     from noesis import members
     monkeypatch.setattr(members, "display_name", lambda user: {"ann": "Ann Example"}.get(user, user))
-    client.put("/me/names", headers=ANN, json={"names": ["Ann", "Mary Ann"]})
     for who in (ANN, {"Authorization": "Bearer service-token"}):
         client.post(f"{BASE}/run", headers=who, json={"argv": ["check", "old-roman"]})
-    assert [e["NOESIS_USER_NAMES"] for e in envs] == ["Ann,Mary Ann", "Ann,Mary Ann"]
+    assert [e["NOESIS_USER_NAMES"] for e in envs] == ["Ann Example", "Ann Example"]  # her display name
     assert [e["NOESIS_MEMBERS"] for e in envs] == ["[]", "[]"]              # a person's library has none
     # Its owner instead, by the display name auth keeps, whose stances an argument records.
     assert [json.loads(e["NOESIS_OWNER"]) for e in envs] == [{"user": "ann", "name": "Ann Example"}] * 2

@@ -18,12 +18,9 @@ What they may do here is noesis's, kept per user name:
   raises add.
 - **Storage:** a free account keeps a few libraries, a bounded total, files
   of a bounded size and of the types noesis reads.
-- **Speaker names** (speaker_names): the chat headings, besides "Prompt",
-  that are a user's own voice. Every run in their libraries and every MCP
-  read of them labels voices by these.
 
 A person who deletes their account at auth is deleted here too, and their
-plan, spend and names go thirty days later (deletion.py, which keeps who and
+plan and spend go thirty days later (deletion.py, which keeps who and
 when in `deleted`).
 
 Kept in $NOESIS_DATA_DIR/accounts.db (SQLite, mode 600), which `noesis` itself
@@ -34,9 +31,7 @@ gives them a plan or a raise; without one, they are free (or the operator's).
 
 from __future__ import annotations
 
-import json
 import os
-import re
 import sqlite3
 import time
 from contextlib import contextmanager
@@ -52,10 +47,6 @@ PLANS = (FREE, UNLIMITED)
 # What a free account may upload: the types noesis reads (assets.py). What
 # /import takes is cmd_import.IMPORTABLE.
 FREE_TYPES = frozenset({".md", ".markdown", ".txt", ".rtf", ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp"})
-
-# A name is a speaker heading, so any words; NOESIS_USER_NAMES is comma-separated.
-SPEAKER_NAME_RE = re.compile(r"^[^\s,](?:[^,\n\r]*[^\s,])?$")
-MOST_SPEAKER_NAMES = 20
 
 
 class AllowanceExhausted(RuntimeError):
@@ -111,7 +102,6 @@ CREATE TABLE IF NOT EXISTS spend (
     usd REAL NOT NULL DEFAULT 0,
     PRIMARY KEY (user, month)
 );
-CREATE TABLE IF NOT EXISTS names (user TEXT PRIMARY KEY, names TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS deleted (user TEXT PRIMARY KEY, at REAL NOT NULL);
 """
 
@@ -206,39 +196,10 @@ def is_free(user: str) -> bool:
 
 
 def rename(old: str, new: str) -> None:
-    """A user's plan, spend and speaker names, under a new name (scripts/rename_user.py)."""
+    """A user's plan and spend, under a new name (scripts/rename_user.py)."""
     with connect() as db:
-        for table in ("accounts", "spend", "names"):
+        for table in ("accounts", "spend"):
             db.execute(f"UPDATE {table} SET user = ? WHERE user = ?", (new, old))
-
-
-# ---------------------------------------------------------------------------
-# Speaker names
-# ---------------------------------------------------------------------------
-
-def speaker_names(user: str) -> tuple[str, ...]:
-    """The chat headings that are this user's own voice, besides "Prompt"."""
-    with connect() as db:
-        row = db.execute("SELECT names FROM names WHERE user = ?", (user,)).fetchone()
-    return tuple(json.loads(row[0])) if row else ()
-
-
-def set_speaker_names(user: str, names: list[str]) -> tuple[str, ...]:
-    """Replaces a user's speaker names (none clears them); the names kept."""
-    from noesis.config import PROMPT_HEADING
-    kept = tuple(dict.fromkeys(n.strip() for n in names if n.strip() and n.strip() != PROMPT_HEADING))
-    bad = [n for n in kept if len(n) > 80 or not SPEAKER_NAME_RE.match(n)]
-    if bad:
-        raise ValueError(f"a name is at most 80 characters, with no comma or line break: {bad}")
-    if len(kept) > MOST_SPEAKER_NAMES:
-        raise ValueError(f"at most {MOST_SPEAKER_NAMES} names")
-    with connect() as db:
-        if kept:
-            db.execute("INSERT INTO names (user, names) VALUES (?, ?) "
-                       "ON CONFLICT (user) DO UPDATE SET names = excluded.names", (user, json.dumps(kept)))
-        else:
-            db.execute("DELETE FROM names WHERE user = ?", (user,))
-    return kept
 
 
 # ---------------------------------------------------------------------------

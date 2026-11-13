@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""What people may spend and store at noesis: list them, change a plan, allowance or names, restore the deleted.
+"""What people may spend and store at noesis: list them, change a plan or allowance, restore the deleted.
 
 An operator task (SERVER.md, Phase 6), run in the container. Who a person is,
 their address, and disabling them, are auth's (its scripts/accounts.py).
@@ -8,7 +8,6 @@ their address, and disabling them, are auth's (its scripts/accounts.py).
     docker compose run --rm noesis python scripts/accounts.py plan ann unlimited
     docker compose run --rm noesis python scripts/accounts.py raise ann 5
     docker compose run --rm noesis python scripts/accounts.py raised
-    docker compose run --rm noesis python scripts/accounts.py names rodvandur Rodrigo "Rodrigo Vanegas"
     docker compose run --rm noesis python scripts/accounts.py deleted
     docker compose run --rm noesis python scripts/accounts.py restore ann
 
@@ -16,9 +15,7 @@ their address, and disabling them, are auth's (its scripts/accounts.py).
 month's spend. `raise` adds dollars to a free account's monthly allowance,
 kept every month until changed; a negative amount takes back, never below
 the default; `raised` lists the accounts whose allowance is not the default
-(ts cap, from the Mac). `names` sets the chat headings, besides Prompt, that
-are a user's own voice (the user alone prints them; --clear clears them).
-`deleted` lists the people who deleted their account at auth, each with the
+(ts cap, from the Mac). `deleted` lists the people who deleted their account at auth, each with the
 day their libraries go for good (deletion.py); `restore` brings one back
 within that window (their account at auth is auth's operator's to restore).
 """
@@ -42,10 +39,6 @@ def main(argv: list[str] | None = None) -> int:
     more.add_argument("user")
     more.add_argument("usd", type=float, help="dollars a month; negative takes back")
     sub.add_parser("raised", help="the accounts whose allowance is not the default")
-    names = sub.add_parser("names", help="the chat headings that are a user's own voice")
-    names.add_argument("user")
-    names.add_argument("names", nargs="*", help="none prints them; --clear clears them")
-    names.add_argument("--clear", action="store_true")
     sub.add_parser("deleted", help="the people deleted, and when each is removed for good")
     sub.add_parser("restore", help="undo a deletion within its window").add_argument("user")
     args = parser.parse_args(argv)
@@ -86,14 +79,6 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             raise SystemExit(f"✗ {exc}") from None
         print(f"✓ {args.user} restored")
-        return 0
-    if args.command == "names":
-        try:
-            if args.names or args.clear:
-                accounts.set_speaker_names(args.user, args.names)
-        except ValueError as exc:
-            raise SystemExit(f"✗ {exc}") from None
-        print(f"{args.user}: " + ", ".join(["Prompt", *accounts.speaker_names(args.user)]))
         return 0
     try:
         if args.command == "plan":

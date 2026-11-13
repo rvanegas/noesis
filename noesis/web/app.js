@@ -54,7 +54,6 @@ let files = {};              // {rel_path: sha256}
 let open = null;             // {path, sha, blob, modified}
 let running = false;
 let exitCode = 0;            // the last run's, -1 if it never finished
-let names = [];              // the chat headings, besides Prompt, that are the user
 let user = null;             // who is signed in, whose own libraries are "<user>/…"
 let libraries = [];          // [{id, name, users, documents}], as /libraries gives them
 
@@ -213,7 +212,6 @@ function show(signedIn) {
   $("first-library").hidden = !signedIn || hasLibrary;
   $("signed-out").hidden = signedIn;
   $("sign-out").hidden = !signedIn;
-  $("your-names").hidden = !signedIn || !hasLibrary;
   $("library").hidden = !signedIn || !hasLibrary;
   if (!signedIn) $("usage").hidden = true;
 }
@@ -230,7 +228,6 @@ async function loadUsage() {
   const response = await api("/me");
   if (!response.ok) return;
   const me = await response.json();
-  names = me.names;
   user = me.user;
   const usage = $("usage");
   usage.hidden = me.plan !== "free";
@@ -306,29 +303,6 @@ async function chooseLibrary(id) {
   showLibrary();
   closePanel("file");
   await loadFiles();
-}
-
-// The chat headings that are the user's own voice, kept with their account.
-function pickNames() {
-  $("names-list").value = names.join("\n");
-  $("names").hidden = false;
-  $("names-list").focus();
-}
-
-async function saveNames(event) {
-  event.preventDefault();
-  const response = await api("/me/names", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ names: $("names-list").value.split("\n").map((n) => n.trim()).filter(Boolean) }),
-  });
-  if (!response.ok) {
-    say(`Your names: ${await detail(response)}`);
-    return;
-  }
-  names = (await response.json()).names;
-  closePanel("names");
-  say(names.length ? `You are Prompt and ${names.join(", ")} in your chats.` : "You are Prompt in your chats.");
 }
 
 // One's own library only: a group's is named by its group. The id stays,
@@ -514,6 +488,7 @@ async function openFile(path) {
   $("file-pdf").hidden = !markdown || setting || !sha;
   $("file-delete").hidden = !!note || setting;
   $("file-copy").hidden = !/\.(chat|document)\.md$/.test(path) || !sha || !ownLibraries().length;
+  $("file-voices").hidden = !path.endsWith(".chat.md") || !sha;
   $("file-delete").textContent = "Delete";
   $("file").hidden = false;
   $("file").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -628,8 +603,8 @@ async function save(event) {
 
 // A chat or a document into another library of the user's own — from a
 // channel's library at The Floor above all, whose transcripts are nobody's —
-// as theirs: the server adds the name they go by there to their names, and
-// asks which speaker they are when none of their names is in the chat.
+// as theirs: the server renames the speaker they were there to their display
+// name, and asks which speaker they are when it cannot tell.
 function ownLibraries() {
   return libraries.map((l) => l.id).filter((id) => id !== library && id.startsWith(`${user}/`));
 }
@@ -679,6 +654,85 @@ async function copyFile(event) {
       return true;
     },
   });
+}
+
+// A chat's lines are the user's under their display name, so a chat in which
+// they spoke as someone else, or a guest whose name came out wrong, is put
+// right here: each speaker kept, made the user's, given a name spoken under
+// lately in this library, or another.
+const KEEP = "", OTHER = "\u0000other";
+
+async function pickVoices() {
+  const response = await api(libraryPath(`/voices?file=${encodeURIComponent(open.path)}`));
+  if (!response.ok) {
+    say(`${open.path}: ${await detail(response)}`);
+    return;
+  }
+  const offered = await response.json();
+  $("voices-name").textContent = open.path.split("/").pop();
+  $("voices-none").hidden = offered.voices.length > 0;
+  $("voices-list").replaceChildren(...offered.voices.map((voice) => {
+    const row = document.createElement("fieldset");
+    row.className = "voice";
+    row.dataset.voice = voice;
+    const legend = document.createElement("legend");
+    legend.textContent = voice;
+    const choice = document.createElement("select");
+    choice.setAttribute("aria-label", `${voice} becomes`);
+    choice.append(new Option(`${voice}, as it is`, KEEP));
+    if (voice !== offered.self) choice.append(new Option(`You (${offered.self})`, offered.self));
+    const recent = offered.recent.filter((name) => name !== voice);
+    if (recent.length) {
+      const group = document.createElement("optgroup");
+      group.label = "Spoken under lately";
+      group.append(...recent.map((name) => new Option(name, name)));
+      choice.append(group);
+    }
+    choice.append(new Option("Other…", OTHER));
+    const other = document.createElement("input");
+    other.hidden = true;
+    other.placeholder = "Name";
+    other.setAttribute("aria-label", `${voice}'s new name`);
+    other.autocomplete = "off";
+    choice.addEventListener("change", () => {
+      other.hidden = choice.value !== OTHER;
+      other.required = !other.hidden;
+      if (!other.hidden) other.focus();
+    });
+    row.append(legend, choice, other);
+    return row;
+  }));
+  $("voices-save").hidden = !offered.voices.length;
+  $("voices").hidden = false;
+  $("voices").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function saveVoices(event) {
+  event.preventDefault();
+  const names = {};
+  for (const row of $("voices-list").children) {
+    const [choice, other] = row.querySelectorAll("select, input");
+    const name = choice.value === OTHER ? other.value.trim() : choice.value;
+    if (name && name !== row.dataset.voice) names[row.dataset.voice] = name;
+  }
+  if (!Object.keys(names).length) {
+    closePanel("voices");
+    return;
+  }
+  const path = open.path;
+  const response = await api(libraryPath("/voices"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "If-Match": `"${open.sha}"` },
+    body: JSON.stringify({ file: path, names }),
+  });
+  if (!response.ok) {
+    say(`${path}: ${response.status === 412 ? "it changed on the server; close it and open it again" : await detail(response)}.`);
+    return;
+  }
+  closePanel("voices");
+  say(`Renamed in ${path}: ${Object.entries(names).map(([was, now]) => `${was} → ${now}`).join(", ")}.`);
+  await loadFiles();
+  await openFile(path);
 }
 
 let importing = null;
@@ -874,8 +928,6 @@ function wire() {
   $("create-library").addEventListener("submit", guard(createLibrary));
   $("rename-library").addEventListener("click", pickNewName);
   $("rename-library-form").addEventListener("submit", guard(renameLibrary));
-  $("your-names").addEventListener("click", pickNames);
-  $("names").addEventListener("submit", guard(saveNames));
   $("first-library-form").addEventListener("submit", guard(createLibrary));
   $("filter").addEventListener("input", renderFiles);
   $("index").addEventListener("click", guard(() => run(["index"])));
@@ -896,6 +948,8 @@ function wire() {
   $("import").addEventListener("submit", guard(importFile));
   $("document-pick").addEventListener("change", guard(importDocument));
   $("file-copy").addEventListener("click", pickCopy);
+  $("file-voices").addEventListener("click", guard(pickVoices));
+  $("voices").addEventListener("submit", guard(saveVoices));
   $("copy").addEventListener("submit", guard(copyFile));
   $("file-claude").addEventListener("click", showDraft);
   $("draft-copy").addEventListener("click", guard(copyDraft));

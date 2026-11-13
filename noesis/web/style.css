@@ -118,6 +118,9 @@ label.check { display: inline-flex; align-items: center; gap: .4rem; }
 label select { display: block; width: 100%; margin-top: .2rem; }
 fieldset { border: 1px solid var(--line); border-radius: 6px; padding: .5rem .7rem; margin: 0; }
 #copy-speakers { display: flex; flex-wrap: wrap; gap: .3rem 1rem; margin-top: .4rem; }
+#voices-list { display: grid; gap: .5rem; }
+.voice { display: grid; gap: .4rem; }
+.voice legend { font-weight: 600; overflow-wrap: anywhere; padding: 0 .2rem; }
 
 .toolbar, .actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
 

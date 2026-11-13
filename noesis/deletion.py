@@ -14,7 +14,7 @@ hand, which nothing in a client can.
   (`DELETE /users/<user>`, server.py) and is deleted here (`delete_user`):
   their libraries move to `$NOESIS_DATA_DIR/deleted/<user>/`, and their
   tokens are refused from then on (bearer.py). Thirty days later the
-  libraries, their trash, and their plan, spend and speaker names go
+  libraries, their trash, and their plan and spend go
   (`sweep`). `scripts/accounts.py deleted` lists and restores. A user with a
   minted users.toml token is the operator's, and is reported rather than
   swept.
@@ -161,7 +161,7 @@ def sweep(now: float | None = None) -> list[str]:
             if (base / user).exists():
                 shutil.rmtree(base / user)
         with accounts.connect() as db:
-            for table in ("accounts", "spend", "names", "deleted"):
+            for table in ("accounts", "spend", "deleted"):
                 db.execute(f"DELETE FROM {table} WHERE user = ?", (user,))
         done.append(f"user {user}")
     return done

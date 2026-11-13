@@ -183,22 +183,19 @@ def test_spending_is_metered_per_library_and_read_by_the_application(client, flo
     assert client.get("/applications/spending", headers=ANN).status_code == 403
 
 
-def test_each_member_is_their_own_voice_and_none_is_the_library_s(client, floor):
+def test_each_member_is_their_own_voice_and_none_is_the_library_s(client, floor, monkeypatch):
     from noesis.config import Speaker
     groups, _ = floor
     groups[LIB]["members"].append({"user": "bob", "pro": True, "name": "Bob, Jr."})
     groups[LIB]["members"].append({"user": "cy", "pro": False, "name": None})
-    accounts.set_speaker_names("ann", ["Ann"])
-    try:
-        assert members.voices("thefloor", LIB) == ()
-        assert members.speakers("thefloor", LIB) == (
-            Speaker("ann", "Ann Example", ("Ann Example", "Ann")),
-            Speaker("bob", "Bob, Jr.", ("Bob, Jr.",)),
-            Speaker("cy", "cy", ("cy",)))                               # no display name: the user name
-        assert members.voices("ann", "notes") == ("Ann",)
-        assert members.speakers("ann", "notes") == ()
-    finally:
-        accounts.set_speaker_names("ann", [])
+    monkeypatch.setattr(members, "display_name", lambda user: {"ann": "Ann"}.get(user, user))
+    assert members.voices("thefloor", LIB) == ()
+    assert members.speakers("thefloor", LIB) == (
+        Speaker("ann", "Ann Example", ("Ann Example",)),
+        Speaker("bob", "Bob, Jr.", ("Bob, Jr.",)),
+        Speaker("cy", "cy", ("cy",)))                                   # no display name: the user name
+    assert members.voices("ann", "notes") == ("Ann",)                   # a person's: their display name
+    assert members.speakers("ann", "notes") == ()
 
 
 CHANNEL = ("\n# Lunch\n2026-10-30\n\n## Ann Example\n\nMine.\n\n## Bob\n\nHis.\n\n"
@@ -316,23 +313,27 @@ def filed(client, floor, data, monkeypatch):
     _made(client)
     (data / "libraries/thefloor" / LIB / "2026").mkdir()
     (data / "libraries/thefloor" / LIB / "2026/2026-10-30-lunch.chat.md").write_text(CHANNEL)
-    yield f"/libraries/thefloor/{LIB}/copy"
-    accounts.set_speaker_names("ann", [])
-    accounts.set_speaker_names("bob", [])
+    SHOWN.clear()
+    SHOWN.update(ann="Ann Example", bob="Bob")
+    monkeypatch.setattr(members, "display_name", lambda user: SHOWN.get(user, user))
+    return f"/libraries/thefloor/{LIB}/copy"
+
+
+SHOWN: dict[str, str] = {}                                        # display names at auth, for `filed`
 
 
 def test_a_member_copies_a_channel_s_chat_and_its_lines_become_theirs(client, filed, data):
     response = client.post(filed, headers=ANN, json={"file": "2026/2026-10-30-lunch.chat.md", "to": "notes"})
     assert list(_copied(response)["changed"]) == ["2026/2026-10-30-lunch.chat.md"]
-    assert "Mine." in (data / "libraries/ann/notes/2026/2026-10-30-lunch.chat.md").read_text()
-    # The name The Floor gives her is now one of hers, so her library reads her lines as hers.
-    assert accounts.speaker_names("ann") == ("Ann Example",)
+    assert (data / "libraries/ann/notes/2026/2026-10-30-lunch.chat.md").read_text() == CHANNEL
+    # She spoke under her display name, so her library reads her lines as hers.
     assert members.voices("ann", "notes") == ("Ann Example",)
 
 
 def test_a_copier_none_of_whose_names_is_in_the_chat_is_asked(client, filed, data, floor):
     groups, _ = floor
     groups[LIB]["members"][0]["name"] = "Ann"                         # renamed since
+    SHOWN["ann"] = "Ann"
     members._cache.clear()
     body = {"file": "2026/2026-10-30-lunch.chat.md", "to": "notes"}
     asked = client.post(filed, headers=ANN, json=body)
@@ -342,16 +343,20 @@ def test_a_copier_none_of_whose_names_is_in_the_chat_is_asked(client, filed, dat
     # Somebody else's heading is never taken because it is close; only what the chat holds.
     assert client.post(filed, headers=ANN, json={**body, "names": ["Annie"]}).status_code == 400
     _copied(client.post(filed, headers=ANN, json={**body, "names": ["Ann Example"]}))
-    assert accounts.speaker_names("ann") == ("Ann Example",)
+    # The speaker she says she was is named as she is now, in her copy alone.
+    copied = (data / "libraries/ann/notes/2026/2026-10-30-lunch.chat.md").read_text()
+    assert copied == CHANNEL.replace("## Ann Example", "## Ann")
+    assert "## Ann Example" in (data / "libraries/thefloor" / LIB / "2026/2026-10-30-lunch.chat.md").read_text()
 
 
 def test_a_copier_who_was_not_in_it_says_so_and_takes_no_name(client, filed, data, floor):
     groups, _ = floor
     groups[LIB]["members"][0]["name"] = "Ann"
+    SHOWN["ann"] = "Ann"
     members._cache.clear()
     body = {"file": "2026/2026-10-30-lunch.chat.md", "to": "notes", "names": []}
     _copied(client.post(filed, headers=ANN, json=body))
-    assert accounts.speaker_names("ann") == ()
+    assert (data / "libraries/ann/notes/2026/2026-10-30-lunch.chat.md").read_text() == CHANNEL
 
 
 def test_a_copy_goes_only_into_the_copier_s_own_library(client, filed, data):

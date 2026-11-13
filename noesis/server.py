@@ -4,8 +4,8 @@ Every route but /healthz and the web client's pages needs a bearer token
 (bearer.py): a minted one, which /data/users.toml maps by its SHA-256 to a
 user, or to "*" for a service (the nightly index); or an access token from
 auth (`auth.rvanegas.co`, where people sign in) carrying `noesis:api` (the
-web client's). One carrying `noesis:import` (The Floor) reaches /import and
-PUT /me/names alone; an application's own token carrying `noesis:keep` makes
+web client's). One carrying `noesis:import` (The Floor) reaches /import
+alone; an application's own token carrying `noesis:keep` makes
 it the owner of the libraries it keeps (members.py).
 A user reaches only their own libraries,
 /data/libraries/<user>/<library>. A library is files to sync and commands to
@@ -24,11 +24,13 @@ run:
 - POST   …/import?filename=…[&only=…&replace=true&document_of=…]   the body is the file; as /run
 - POST   …/copy {file, to[, names]}          a chat or document into the caller's own library `to`,
                                              their lines theirs; as /import
+- GET    …/voices?file=…                     a chat's speakers, the caller's display name, and
+                                             the names spoken under in the library's latest chats
+- POST   …/voices {file, names}              If-Match: "<sha>"; the chat's speakers renamed
 - GET    /me                                 the caller's account here: plan, spend, storage,
-                                             libraries, names, and the client the token was
+                                             libraries, and the client the token was
                                              issued to (any of auth's tokens for a person;
                                              who they are is auth's own /me)
-- PUT    /me/names {names}                   the headings that are the caller's voice in chats
 - DELETE /users/{user}                       auth's alone (scope noesis:erase): the person deleted
                                              their account, and their libraries go (deletion.py)
 
@@ -36,8 +38,8 @@ run:
 file arguments are names, which noesis resolves across the library. Its output
 streams as it is written (reply prints tokens without newlines), and the
 last event says which files the run changed or deleted. A run knows the
-library owner's voice by the names they keep here (accounts.speaker_names),
-in NOESIS_USER_NAMES, whoever starts it: the owner, or the nightly index; a
+library owner's voice by their display name at auth (members.voices), in
+NOESIS_USER_NAMES, whoever starts it: the owner, or the nightly index; a
 channel's library has no owner's voice but its members', each their own, in
 NOESIS_MEMBERS (members.speakers). One run at a time
 per library; while it runs, writes to the library get 409. The run belongs
@@ -67,6 +69,7 @@ import codecs
 import hashlib
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -284,25 +287,8 @@ def me(token: AccessToken = Depends(anyone)) -> dict:
         "libraries": library_ids(who),
         "library_names": service.library_names(who),
         "storage_bytes": limits.storage_bytes if free else None,
-        "names": list(accounts.speaker_names(who)),
         "client": token.client_id,
     }
-
-
-class SpeakerNames(BaseModel):
-    names: list[str]
-
-
-@app.put("/me/names")
-def put_names(body: SpeakerNames, who: str = Depends(filer)) -> dict:
-    """The chat headings, besides "Prompt", that are the caller's own voice."""
-    from noesis import accounts
-    if who == "*":
-        raise HTTPException(400, "a service speaks in no chats")
-    try:
-        return {"names": list(accounts.set_speaker_names(who, body.names))}
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from None
 
 
 class NewLibrary(BaseModel):
@@ -658,13 +644,14 @@ async def copy_file(body: Copy, root: Path = Depends(library), who: str = Depend
     import, as the caller's: since 2026-11-10, for The Floor's channel
     libraries above all (members.py), whose transcripts belong to nobody.
 
-    **The copier's lines become theirs.** A chat is read by its owner's names
-    (accounts.speaker_names), so the copy adds to them the heading the caller
-    goes by in the source: in a group's library, the name the application
-    gives them. Where none of the chat's people is the caller by either, it
-    asks (409, `speakers`) rather than guessing, and is called again with
-    `names`, the ones they chose, or none."""
-    from noesis import accounts, members
+    **The copier's lines become theirs.** A chat is read by its owner's
+    display name (members.voices), so the copy renames to it the heading the
+    caller goes by in the source: in a group's library, the name the
+    application gives them. Where none of the chat's people is the caller by
+    either, it asks (409, `speakers`) rather than guessing, and is called
+    again with `names`, the ones they chose, or none."""
+    from noesis import members
+    from noesis.transcript import rename_speakers
     from noesis.library import role_of
     source = _readable(root, body.file)
     if role_of(source.name) not in ("chat", "document"):
@@ -680,26 +667,100 @@ async def copy_file(body: Copy, root: Path = Depends(library), who: str = Depend
         raise HTTPException(400, "it is already in that library")
     data = source.read_bytes()
     if role_of(source.name) == "chat":
-        people = _people(data.decode("utf-8", errors="replace"))
-        names = accounts.speaker_names(who)
+        text = data.decode("utf-8", errors="replace")
+        people = _people(text)
+        me = await asyncio.to_thread(members.display_name, who)
         group = await asyncio.to_thread(members.speakers, _owner(root), root.name)
         theirs = {h for m in group if m.user == who for h in m.headings}
-        known = [h for h in people if h in names or h in theirs]
+        known = [h for h in people if h == me or h in theirs]
         if body.names is not None:
             if unknown := [n for n in body.names if n not in people]:
                 raise HTTPException(400, f"not a speaker in this chat: {unknown}")
             known = list(dict.fromkeys([*known, *body.names]))
         elif people and not known:
             raise HTTPException(409, {"message": "which of these speakers are you?", "speakers": people})
-        if added := [h for h in known if h not in names]:
-            try:
-                accounts.set_speaker_names(who, [*names, *added])
-            except ValueError as exc:
-                raise HTTPException(400, str(exc)) from None
+        if renamed := {h: me for h in known if h != me}:
+            data = rename_speakers(text, renamed).encode()
 
     async def read() -> bytes:
         return data
     return await _import(target, source.name, read, [])
+
+
+# A heading is a line, and NOESIS_USER_NAMES is comma-separated: any words but those.
+SPEAKER_NAME_RE = re.compile(r"^[^\s,](?:[^,\n\r]*[^\s,])?$")
+# How many of the library's latest chats a renaming offers the speakers of.
+RECENT_CHATS = 20
+
+
+def _chat(root: Path, rel_path: str) -> Path:
+    from noesis.library import role_of
+    path = _readable(root, rel_path)
+    if role_of(path.name) != "chat":
+        raise HTTPException(400, "only a chat has speakers")
+    return path
+
+
+def _recent_speakers(root: Path) -> list[str]:
+    """The speakers of the library's latest chats, latest first: those of The
+    Floor's segments above all, which arrive as chats under their speakers' names."""
+    from noesis.library import role_of
+    chats = sorted((p for p in root.rglob("*.chat.md") if role_of(p.name) == "chat"
+                    and not any(part.startswith(".") for part in p.relative_to(root).parts)),
+                   key=lambda p: p.name, reverse=True)[:RECENT_CHATS]
+    return list(dict.fromkeys(h for p in chats for h in _people(p.read_text(errors="replace"))))
+
+
+@app.get("/libraries/{user}/{library}/voices")
+async def voices(file: str, root: Path = Depends(library), who: str = Depends(caller)) -> dict:
+    """What renaming a chat's speakers offers (since 2026-11-13): each of its
+    speakers, the caller's own name (their display name, under which a chat
+    is theirs, members.voices), and the names spoken under lately here."""
+    from noesis import members
+    if who == "*":
+        raise HTTPException(400, "a service speaks in no chats")
+    path = _chat(root, file)
+    me = await asyncio.to_thread(members.display_name, who)
+    recent = await asyncio.to_thread(_recent_speakers, root)
+    return {"voices": _people(path.read_text(errors="replace")), "self": me,
+            "recent": [h for h in recent if h != me]}
+
+
+class Voices(BaseModel):
+    file: str
+    # Each speaker renamed, by its heading now; those left out stay as they are.
+    names: dict[str, str]
+
+
+@app.post("/libraries/{user}/{library}/voices")
+def rename_voices(body: Voices, root: Path = Depends(library), who: str = Depends(caller),
+                  if_match: str | None = Header(default=None)) -> Response:
+    """A chat's speakers renamed, its lines under each as they were: how a
+    person makes a chat's lines theirs, or a guest's someone's."""
+    from noesis.library import _STRUCTURAL_HEADINGS
+    from noesis.transcript import rename_speakers
+    path = _chat(root, body.file)
+    _paying(root, who)
+    _writable(root)
+    if if_match is None:
+        raise HTTPException(428, 'If-Match: "<sha256>" is required')
+    if _sha256(path) != _unquote(if_match):
+        raise HTTPException(412, "the file has changed")
+    text = path.read_text(errors="replace")
+    people = _people(text)
+    if unknown := [n for n in body.names if n not in people]:
+        raise HTTPException(400, f"not a speaker in this chat: {unknown}")
+    names = {old: new.strip() for old, new in body.names.items() if new.strip() != old}
+    bad = [n for n in names.values() if len(n) > 80 or not SPEAKER_NAME_RE.match(n) or n in _STRUCTURAL_HEADINGS]
+    if bad:
+        raise HTTPException(400, f"a speaker's name is at most 80 characters, with no comma or line break, "
+                                 f"and is not a section's: {bad}")
+    data = rename_speakers(text, names).encode()
+    _storable(root, path.name, len(data), path.stat().st_size)
+    tmp = path.with_name(f".{path.name}.put")
+    tmp.write_bytes(data)
+    tmp.replace(path)
+    return Response(status_code=200, headers={"ETag": _etag(hashlib.sha256(data).hexdigest())})
 
 
 def _stream(root: Path, argv: list[str], lock: asyncio.Lock, cleanup=None,

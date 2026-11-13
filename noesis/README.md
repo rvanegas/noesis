@@ -59,8 +59,7 @@ wrap_width = 100
 
 # Your name as a section heading, treated as your own voice beside "Prompt",
 # which always is. NOESIS_USER_NAMES (comma-separated) overrides it for one run.
-# On the server your names are kept with you instead (Your names, in the web
-# client), and this is not sent.
+# On the server your voice is your display name instead, and this is not sent.
 user_names = ["YourName"]
 
 # Section headings treated as LLM voice.

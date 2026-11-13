@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Rename a user everywhere noesis keeps the name: libraries, plan, spend and speaker names.
+"""Rename a user everywhere noesis keeps the name: libraries, plan and spend.
 
 An operator task, for a person who must be known by another name. The name
 is auth's first: rename the account there (dianoia-auth's scripts/rename_user.py),
-then here. The name lives in accounts.db (plan, spend, speaker names) and in
+then here. The name lives in accounts.db (plan, spend) and in
 the libraries' directory, /data/libraries/<user>/, and so in every library
 id, `<user>/<library>`. **Nothing tells The Floor**: rename the person there
 to match (its bin/rename-users), and they choose their channels' libraries

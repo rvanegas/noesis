@@ -89,7 +89,7 @@ def test_only_auths_own_token_deletes_a_person(client):
 
 
 def test_a_deleted_person_is_refused_at_once_and_swept_after_thirty_days(client, data):
-    accounts.set_speaker_names("bob", ["Bob"])
+    accounts.charge("bob", 0.25)
     bob = auth_tokens.bearer("bob")
     assert client.get("/libraries", headers=bob).json()["libraries"][0]["id"] == "bob/notes"
     client.delete("/users/bob", headers=_erase("bob"))
@@ -100,7 +100,7 @@ def test_a_deleted_person_is_refused_at_once_and_swept_after_thirty_days(client,
     assert deletion.sweep(when + 29 * DAY) == [] and deletion.is_deleted("bob")
     assert deletion.sweep(when + 31 * DAY) == ["user bob"]
     assert not (data / "deleted/bob").exists() and not deletion.is_deleted("bob")
-    assert accounts.speaker_names("bob") == ()
+    assert accounts.spent("bob") == 0
 
 
 def test_a_deleted_person_is_restored_within_the_window(client, data):

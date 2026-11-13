@@ -207,21 +207,6 @@ def test_the_accounts_script_raises(data):
     assert "zedd" in listed and "+$5.00 = $6.00" in listed and "yann" not in listed
 
 
-def test_speaker_names_are_any_users_and_replaced_whole(data):
-    assert accounts.speaker_names("rod") == ()
-    assert accounts.set_speaker_names("rod", ["Rodrigo", "Prompt", " Rodrigo ", "Rodrigo Vanegas"]) == (
-        "Rodrigo", "Rodrigo Vanegas")
-    assert accounts.speaker_names("rod") == ("Rodrigo", "Rodrigo Vanegas")
-    assert accounts.speaker_names("ann") == ()
-    accounts.set_speaker_names("rod", ["Rod"])
-    assert accounts.speaker_names("rod") == ("Rod",)
-    accounts.set_speaker_names("rod", [])
-    assert accounts.speaker_names("rod") == ()
-    for bad in (["a,b"], ["x" * 81], [f"n{i}" for i in range(accounts.MOST_SPEAKER_NAMES + 1)]):
-        with pytest.raises(ValueError):
-            accounts.set_speaker_names("rod", bad)
-
-
 def test_the_libraries_report(data):
     import json
     spec = importlib.util.spec_from_file_location("libraries_script", REPO / "scripts" / "libraries.py")
@@ -259,7 +244,6 @@ def test_the_operator_renames_a_user_everywhere_noesis_keeps_the_name(data):
     old = "freeyourtime"
     (data / "libraries" / old / "notes").mkdir(parents=True)
     accounts.set_plan(old, accounts.FREE)
-    accounts.set_speaker_names(old, ["Rochelle"])
     accounts.charge(old, 0.25)
     out = io.StringIO()
     with redirect_stdout(out):
@@ -271,5 +255,35 @@ def test_the_operator_renames_a_user_everywhere_noesis_keeps_the_name(data):
     with redirect_stdout(io.StringIO()):
         script.main([old, "rochelle", "--apply"])
     assert accounts.account(old) is None and accounts.account("rochelle").plan == accounts.FREE
-    assert accounts.speaker_names("rochelle") == ("Rochelle",) and accounts.spent("rochelle") == 0.25
+    assert accounts.spent("rochelle") == 0.25
     assert (data / "libraries" / "rochelle" / "notes").is_dir() and not (data / "libraries" / old).exists()
+
+
+def test_the_names_people_kept_become_their_display_name_in_their_own_chats(data, monkeypatch):
+    import sqlite3
+    from noesis import members
+    script = _script("migrate_names")
+    with sqlite3.connect(data / "accounts.db") as db:
+        db.execute("CREATE TABLE names (user TEXT PRIMARY KEY, names TEXT NOT NULL)")
+        db.execute("INSERT INTO names VALUES ('ann', '[\"Annie\", \"Ann Example\"]'), ('bob', '[\"Bobby\"]')")
+    monkeypatch.setattr(members, "display_name", lambda user: {"ann": "Ann Example"}.get(user, user))
+    chat = "\n# Lunch\n2026-10-30\n\n## Annie\n\nMine.\n\n## Bobby\n\nHis.\n"
+    notes = data / "libraries/ann/notes"
+    (notes / "2026").mkdir()
+    (notes / "2026/2026-10-30-lunch.chat.md").write_text(chat)
+    (notes / "2026/2026-10-30-lunch.document.md").write_text("\n# Lunch\n2026-10-30\n\n## Annie\n\nProse.\n")
+    with redirect_stdout(io.StringIO()):
+        script.main([])
+    assert (notes / "2026/2026-10-30-lunch.chat.md").read_text() == chat           # a plan changes nothing
+    out = io.StringIO()
+    with redirect_stdout(out):
+        script.main(["--apply"])
+    assert (notes / "2026/2026-10-30-lunch.chat.md").read_text() == chat.replace("## Annie", "## Ann Example")
+    assert "## Annie" in (notes / "2026/2026-10-30-lunch.document.md").read_text()  # a chat's alone
+    # Bob has no display name at auth: left, and the table kept for him.
+    assert "bob: auth gives no display name" in out.getvalue() and "The table stays, for bob" in out.getvalue()
+    monkeypatch.setattr(members, "display_name", lambda user: {"ann": "Ann Example", "bob": "Bob"}.get(user, user))
+    with redirect_stdout(io.StringIO()):
+        script.main(["--apply"])
+    with sqlite3.connect(data / "accounts.db") as db:
+        assert not db.execute("SELECT 1 FROM sqlite_master WHERE name = 'names'").fetchone()
