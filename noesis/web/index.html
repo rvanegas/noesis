@@ -11,9 +11,7 @@
 </head>
 <body>
 <header class="bar">
-  <h1>noesis</h1>
-  <button id="library" class="quiet" aria-haspopup="true" aria-expanded="false" hidden></button>
-  <button id="new-library" class="quiet" hidden>New library</button>
+  <h1><span class="brand">noesis</span><button id="library" aria-haspopup="true" aria-expanded="false" aria-controls="libraries" hidden><span id="library-title"></span><span class="chevron" aria-hidden="true"></span></button></h1>
   <button id="your-names" class="quiet" hidden>Your names</button>
   <button id="sign-out" class="quiet" hidden>Sign out</button>
 </header>
@@ -40,14 +38,13 @@
   </section>
 
   <section id="signed-in" hidden>
-    <h2 id="group" hidden></h2>
     <div class="toolbar">
       <label class="button">Import<input id="import-pick" type="file" accept=".md,.markdown,.txt,.zip,.json" hidden></label>
       <button id="index">Index</button>
     </div>
 
     <section id="libraries" class="panel" hidden>
-      <div class="heading"><h2>Libraries</h2><span><button id="rename-library" class="quiet" hidden>Rename</button><button class="quiet" data-close>Close</button></span></div>
+      <div class="heading"><h2>Libraries</h2><span><button id="new-library" class="quiet">New library</button><button id="rename-library" class="quiet" hidden>Rename</button><button class="quiet" data-close>Close</button></span></div>
       <ul id="library-list" class="libraries"></ul>
     </section>
 

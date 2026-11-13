@@ -213,7 +213,6 @@ function show(signedIn) {
   $("first-library").hidden = !signedIn || hasLibrary;
   $("signed-out").hidden = signedIn;
   $("sign-out").hidden = !signedIn;
-  $("new-library").hidden = !signedIn || !hasLibrary;
   $("your-names").hidden = !signedIn || !hasLibrary;
   $("library").hidden = !signedIn || !hasLibrary;
   if (!signedIn) $("usage").hidden = true;
@@ -250,7 +249,7 @@ async function loadLibraries() {
   }
   const remembered = recall(localStorage, LIBRARY_KEY);
   library = libraries.some((l) => l.id === remembered) ? remembered : libraries[0].id;
-  showGroup();
+  showLibrary();
   return true;
 }
 
@@ -258,16 +257,12 @@ function current() {
   return libraries.find((l) => l.id === library);
 }
 
-// The bar's button names the chosen library by the name its id only slugs;
-// a group's library (The Floor's channel) is headed by its group's name too,
-// or by who else is in it when the group has no name.
-function showGroup() {
+// The bar is headed by the chosen library, by the name its id only slugs (a
+// group's library by its group's name), and its button opens the others.
+function showLibrary() {
   const name = current()?.name;
-  const group = library?.split("/")[0] !== user ? name : null;
-  $("library").textContent = name || library;
+  $("library-title").textContent = name || library;
   $("library").title = library;
-  $("group").textContent = group ?? "";
-  $("group").hidden = !group;
 }
 
 // Every library the user reaches, with what tells them apart: its id, the
@@ -308,7 +303,7 @@ async function chooseLibrary(id) {
   if (id === library) return;
   library = id;
   store(localStorage, LIBRARY_KEY, library);
-  showGroup();
+  showLibrary();
   closePanel("file");
   await loadFiles();
 }
@@ -365,6 +360,7 @@ async function renameLibrary(event) {
 }
 
 function pickLibraryName() {
+  closePanel("libraries");
   $("library-name").value = "";
   $("create-library").hidden = false;
   $("library-name").focus();

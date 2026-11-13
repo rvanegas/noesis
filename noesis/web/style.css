@@ -49,12 +49,29 @@ body {
   z-index: 1;
 }
 
-.bar h1 { font-size: 1.1rem; margin: 0; margin-right: auto; }
+.bar h1 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: start;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 1.1rem;
+  line-height: 1.2;
+}
+
+.bar button { white-space: nowrap; }
+
+/* With a library chosen, the bar is headed by it, noesis a small line above. */
+.bar h1:has(#library:not([hidden])) .brand {
+  font-size: .75rem;
+  font-weight: 500;
+  color: var(--muted);
+}
 
 main { max-width: 56rem; margin: 0 auto; padding: 1rem; }
 
 h2 { font-size: 1rem; margin: 0; overflow-wrap: anywhere; }
-#group { margin-bottom: .75rem; }
 
 button, .button, select, input, textarea {
   font: inherit;
@@ -118,6 +135,7 @@ fieldset { border: 1px solid var(--line); border-radius: 6px; padding: .5rem .7r
 .panel .actions { margin-bottom: 0; }
 
 .heading { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; }
+.heading > span { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .4rem; }
 
 pre {
   margin: 0;
@@ -164,7 +182,35 @@ button.file {
 
 button.file:hover, button.file:focus-visible { background: var(--code-bg); }
 
-#library { max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#library {
+  max-width: 100%;
+  margin-left: -.3rem;
+  padding: .1rem .3rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-weight: 700;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+#library:hover, #library:focus-visible, #library[aria-expanded="true"] { background: var(--code-bg); }
+
+/* A caret that turns over while the list of libraries is open. */
+.chevron {
+  display: inline-block;
+  width: .45rem;
+  height: .45rem;
+  margin: 0 .2rem .2rem .45rem;
+  border-right: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  transform: rotate(45deg);
+  transition: transform .15s;
+}
+
+#library[aria-expanded="true"] .chevron { margin-bottom: 0; transform: rotate(-135deg); }
 
 .libraries { list-style: none; margin: 0; padding: 0; }
 .libraries li + li { border-top: 1px solid var(--line); }
