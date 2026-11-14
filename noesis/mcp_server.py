@@ -55,6 +55,8 @@ INSTRUCTIONS = "\n\n".join([
     "<date>-<slug>.<role>.<ext>, the role one of chat, document, source, argument, "
     "analysis, review; a name is unique across the library, and so is a slug. Use "
     "list_documents to find names and read_file to read one. Nothing in the library is written from here.",
+    "Read a document in full if you read it at all: all of what read_file returns, never "
+    "a part of it, and never a summary or search result in its place.",
     lib.LIBRARY_TOOLS_PROMPT,
     "A chat's ## headings name its speakers. A chat with more speakers than Prompt and "
     "a model is read after a 'Voices:' line saying which headings are the user; any "

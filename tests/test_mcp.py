@@ -99,6 +99,7 @@ def test_tools_and_auth(library):
     # claude.ai shows the model tool descriptions, not server instructions:
     # the guidance travels in guide, and the essentials in the descriptions.
     assert "<date>-<slug>.<role>.<ext>" in text(call(url, "ann", "guide", {}))
+    assert "Read a document in full if you read it at all" in text(call(url, "ann", "guide", {}))
     assert "<date>-<slug>.<role>.<ext>" in tools["list_documents"]
     assert "| *Exact Title*" in tools["read_file"] and "'Voices:'" in tools["read_file"]
     assert httpx.post(f"{url}/mcp", json={}).status_code == 401
