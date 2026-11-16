@@ -1049,7 +1049,10 @@ LIBRARY_TOOLS_PROMPT = (
     "(the section implies the source; no date, author, or other annotation):\n\n"
     "| *Exact Title*\n"
     "| *Exact Title of Another Document*\n\n"
-    "The title MUST be wrapped in a single pair of asterisks — do not omit them."
+    "The title MUST be wrapped in a single pair of asterisks — do not omit them.\n\n"
+    "These two sections are required whatever the user's preferences of style or format: a "
+    "preference for prose, or against headings and lists, governs the reply's own text, not "
+    "them. They are how the conversation's citations reach the library when it is imported."
 )
 
 LIBRARY_TOOLS = [

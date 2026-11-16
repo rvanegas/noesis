@@ -102,6 +102,9 @@ def test_tools_and_auth(library):
     assert "Read a document in full if you read it at all" in text(call(url, "ann", "guide", {}))
     assert "<date>-<slug>.<role>.<ext>" in tools["list_documents"]
     assert "| *Exact Title*" in tools["read_file"] and "'Voices:'" in tools["read_file"]
+    # A preference for prose governs the reply's text, not its citations.
+    assert "even when the user prefers" in tools["read_file"]
+    assert "whatever the user's preferences" in text(call(url, "ann", "guide", {}))
     assert httpx.post(f"{url}/mcp", json={}).status_code == 401
     assert httpx.post(f"{url}/mcp", json={}, headers={"Authorization": "Bearer nope"}).status_code == 401
 

@@ -349,7 +349,8 @@ def read_file(ctx: Context, name: str, library: str | None = None) -> str:
     writing. An analysis or review is written by noesis. A chat of several
     people comes after a 'Voices:' line saying which headings are the user.
     Cite a chat or document only after reading it, under a '## Related'
-    section, one per line as '| *Exact Title*'."""
+    section, one per line as '| *Exact Title*', even when the user prefers
+    prose: their preferences govern the reply's own text, not this section."""
     root = _root(library, ctx)
     try:
         return lib.read_file(root, name, voiced=lambda found, text: _voiced(root, found, text, _caller()))
