@@ -296,3 +296,17 @@ def test_a_chat_of_several_people_says_whose_voice_each_heading_is(library, monk
     assert read("2026-10-30-lunch.chat.md").startswith(
         "Voices: no heading is the user; ## Claude is a model; ## Ann, ## Bea are other people.\n")
     assert call(url, "ann", "read_file", {"name": "../../bob/x.chat.md"}).is_error
+
+
+def test_list_documents_names_what_is_not_yet_indexed(library):
+    root, url = library
+    listed = text(call(url, "ann", "list_documents", {}))
+    assert "2026-10-27-essay.document.md — Essay\n" in listed + "\n"
+    assert "2025-04-25-old-roman.chat.md — Old Roman (not yet indexed)" in listed
+    assert "(not yet indexed)" not in text(call(url, "ann", "list_documents", {"query": "prose"}))
+    assert "Old Roman (not yet indexed)" in text(call(url, "ann", "list_documents", {"query": "roman"}))
+
+
+def test_list_documents_says_a_library_is_empty(library):
+    _, url = library
+    assert text(call(url, "bob", "list_documents", {})) == "This library has no chats or documents yet."

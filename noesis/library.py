@@ -66,6 +66,15 @@ def _terms_state_path(library_path: Path) -> Path:
 def _relations_state_path(library_path: Path) -> Path:
     return library_state_dir(library_path) / "relations.json"
 
+
+def _write(path: Path, text: str) -> None:
+    """Write an index file whole or not at all: the MCP tools read the index
+    while it is written, at any hour (the server indexes after every change),
+    and read a half-written one as empty."""
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+
 _REFS_SECTION_RE = re.compile(r"^## References\s*$", re.MULTILINE)
 _RELATED_SECTION_RE = re.compile(r"^## Related\s*$", re.MULTILINE)
 _NEXT_H2_RE = re.compile(r"^## ", re.MULTILINE)
@@ -224,7 +233,7 @@ def write_manifest(library_path: Path, entries: list[DocEntry], timestamp: datet
             lines.append(_wrap_line(_md_escape(e.summary), initial_indent="  ", subsequent_indent="  "))
         lines.append("")
         lines.append("---")
-    (library_path / MANIFEST_FILENAME).write_text("\n".join(lines), encoding="utf-8")
+    _write(library_path / MANIFEST_FILENAME, "\n".join(lines))
 
 
 def parse_keys_md(library_path: Path) -> tuple[dict[str, str], set[str], set[str]]:
@@ -343,7 +352,7 @@ def write_index(library_path: Path, entries: list[DocEntry]) -> list[str]:
     data = {
         "terms": {t: files for t, files in sorted(inverted.items(), key=lambda x: x[0].casefold())},
     }
-    _terms_state_path(library_path).write_text(json.dumps(data, indent=2), encoding="utf-8")
+    _write(_terms_state_path(library_path), json.dumps(data, indent=2))
 
     # Markdown mirror
     relations = load_relations(library_path)
@@ -371,7 +380,7 @@ def write_index(library_path: Path, entries: list[DocEntry]) -> list[str]:
             lines.append(_wrap_line("Related: " + joined, initial_indent="  ", subsequent_indent="    "))
         lines.append("")
         lines.append("---")
-    (library_path / INDEX_FILENAME).write_text("\n".join(lines), encoding="utf-8")
+    _write(library_path / INDEX_FILENAME, "\n".join(lines))
 
     # Report irrelevant KEYS.md entries.
     indexed_terms = {t.casefold() for t in inverted}
@@ -400,7 +409,7 @@ def write_refs(library_path: Path, entries: list[DocEntry]) -> None:
             lines.append(f"  {_md_escape(rel_path)} — {_md_escape(title)}")
         lines.append("")
         lines.append("---")
-    (library_path / REFERENCES_FILENAME).write_text("\n".join(lines), encoding="utf-8")
+    _write(library_path / REFERENCES_FILENAME, "\n".join(lines))
 
 
 def _parse_indexed_at(value: object) -> float:
@@ -465,7 +474,7 @@ def _save_state(library_path: Path, entries_by_path: dict[str, DocEntry]) -> Non
     data = {
         "entries": [_entry_to_dict(e) for e in entries_by_path.values()],
     }
-    _manifest_state_path(library_path).write_text(json.dumps(data, indent=2), encoding="utf-8")
+    _write(_manifest_state_path(library_path), json.dumps(data, indent=2))
 
 
 def load_entries(library_path: Path) -> list[DocEntry]:
@@ -518,7 +527,7 @@ def save_relations(library_path: Path, relations: dict[str, list[str]]) -> None:
     """Write the relations map to the relations state file."""
     _relations_state_path(library_path).parent.mkdir(parents=True, exist_ok=True)
     data = {"relations": relations}
-    _relations_state_path(library_path).write_text(json.dumps(data, indent=2), encoding="utf-8")
+    _write(_relations_state_path(library_path), json.dumps(data, indent=2))
 
 
 def prune_relations(library_path: Path, removed_terms: set[str]) -> None:
@@ -537,7 +546,7 @@ def prune_relations(library_path: Path, removed_terms: set[str]) -> None:
     for term in list(relations):
         relations[term] = [r for r in relations[term] if r not in removed_terms]
     data["relations"] = relations
-    _relations_state_path(library_path).write_text(json.dumps(data, indent=2), encoding="utf-8")
+    _write(_relations_state_path(library_path), json.dumps(data, indent=2))
 
 
 def _sanitize_term(term: str) -> tuple[str, str | None]:
@@ -604,7 +613,7 @@ def write_related(library_path: Path, entries: list[DocEntry]) -> list[str]:
             lines.append(f"  <- {_md_escape(src)} — {_md_escape(title_by_path.get(src, src))}")
         lines.append("")
         lines.append("---")
-    (library_path / RELATED_FILENAME).write_text("\n".join(lines), encoding="utf-8")
+    _write(library_path / RELATED_FILENAME, "\n".join(lines))
     return warnings
 
 
@@ -797,13 +806,22 @@ def resolve_title_among(titles: dict[str, str], title: str) -> str | None:
 
 def _chats_and_documents(library_path: Path) -> list[Path]:
     """The library's chats and documents, outside its records and dot directories."""
-    found = []
-    for path in sorted(library_path.rglob("*.md")):
-        rel = path.relative_to(library_path)
-        if (role_of(path.name) in INDEXED_ROLES and not any(p.startswith(".") for p in rel.parts)
-                and not _UNSORTED_DIRS.intersection(rel.parts[:-1])):
-            found.append(path)
-    return found
+    return [path for path in sorted(library_path.rglob("*.md"))
+            if _indexed_file(path.relative_to(library_path).parts)]
+
+
+def _indexed_file(parts: tuple[str, ...]) -> bool:
+    return (role_of(parts[-1]) in INDEXED_ROLES and parts[-1].endswith(".md")
+            and not any(p.startswith(".") for p in parts)
+            and not _UNSORTED_DIRS.intersection(parts[:-1]))
+
+
+def changes_index(rel_path: str) -> bool:
+    """Whether a change to the file at rel_path (relative to the library)
+    changes its index: a chat's or a document's that the index reads, or
+    KEYS.md's, which canonicalizes its terms."""
+    parts = tuple(rel_path.split("/"))
+    return parts == (KEYS_FILENAME,) or _indexed_file(parts)
 
 
 def library_titles(library_path: Path) -> dict[str, str]:
@@ -813,6 +831,17 @@ def library_titles(library_path: Path) -> dict[str, str]:
         path.relative_to(library_path).as_posix():
             _extract_title(path.read_text(encoding="utf-8", errors="replace"), path.stem)
         for path in _chats_and_documents(library_path)
+    }
+
+
+def unindexed_titles(library_path: Path) -> dict[str, str]:
+    """{rel_path: title} of the chats and documents the index does not yet
+    hold: those changed since it last ran, which the server indexes next."""
+    indexed = _load_state(library_path)
+    return {
+        rel: _extract_title(path.read_text(encoding="utf-8", errors="replace"), path.stem)
+        for path in _chats_and_documents(library_path)
+        if (rel := path.relative_to(library_path).as_posix()) not in indexed
     }
 
 
@@ -1153,4 +1182,4 @@ def move_documents(library_path: Path, moves: dict[Path, Path]) -> None:
         for files in data.get("terms", {}).values():
             for f in files:
                 f["rel_path"] = rel.get(f["rel_path"], f["rel_path"])
-        terms_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        _write(terms_path, json.dumps(data, indent=2))

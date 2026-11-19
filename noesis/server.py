@@ -44,6 +44,8 @@ channel's library has no owner's voice but its members', each their own, in
 NOESIS_MEMBERS (members.speakers). One run at a time
 per library; while it runs, writes to the library get 409. The run belongs
 to the server, not the request: a client that goes away does not cut it short.
+A run or write that changes the library's index is followed by an index in
+the background, which runs and writes wait for rather than get 409 (_index).
 
 /import is how a conversation from elsewhere enters a library without a
 client's own copy of it (a claude.ai export, saveai.net Markdown, any text;
@@ -410,10 +412,35 @@ def _paying(root: Path, who: str) -> None:
         raise HTTPException(403, "only a member who pays does more than read this library")
 
 
-def _writable(root: Path) -> None:
-    lock = service.locks.get(root)
-    if lock is not None and lock.locked():
-        raise HTTPException(409, "a run is in progress in this library")
+async def _claim(root: Path) -> asyncio.Lock:
+    """The library's lock, once nothing but the background index holds it: a
+    run refuses (409), but the index, which may follow any change, is waited
+    for, or it would refuse the next import (The Floor's arrive in bursts)."""
+    lock = lock_for(root)
+    while lock.locked():
+        if (done := _indexing.get(root)) is None:
+            raise HTTPException(409, "a run is in progress in this library")
+        await done.wait()
+    return lock
+
+
+@asynccontextmanager
+async def _writing(root: Path):
+    """The library held for a write, which a run cannot start in the middle of."""
+    lock = await _claim(root)
+    await lock.acquire()
+    try:
+        yield
+    finally:
+        lock.release()
+
+
+def _changed(root: Path, path: Path) -> None:
+    """A file written or deleted by a route: its library is indexed again if
+    that changes the index."""
+    from noesis.library import changes_index
+    if changes_index(path.relative_to(root).as_posix()):
+        _index_soon(root)
 
 
 @app.get("/libraries/{user}/{library}/files")
@@ -461,28 +488,27 @@ async def write_file(
 ) -> Response:
     path = _file(root, rel_path)
     _paying(root, who)
-    _writable(root)
-    if if_none_match is not None:
-        if if_none_match.strip() != "*":
-            raise HTTPException(400, "If-None-Match takes only *")
-        if path.exists():
-            raise HTTPException(412, "the file already exists")
-    elif if_match is not None:
-        if not path.is_file() or _sha256(path) != _unquote(if_match):
-            raise HTTPException(412, "the file has changed")
-    else:
+    if if_none_match is not None and if_none_match.strip() != "*":
+        raise HTTPException(400, "If-None-Match takes only *")
+    if if_none_match is None and if_match is None:
         raise HTTPException(428, 'If-Match: "<sha256>" to replace, If-None-Match: * to create')
     data = await request.body()
-    _storable(root, path.name, len(data), path.stat().st_size if path.is_file() else 0)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.put")
-    tmp.write_bytes(data)
-    tmp.replace(path)
+    async with _writing(root):
+        if if_none_match is not None and path.exists():
+            raise HTTPException(412, "the file already exists")
+        if if_none_match is None and (not path.is_file() or _sha256(path) != _unquote(if_match)):
+            raise HTTPException(412, "the file has changed")
+        _storable(root, path.name, len(data), path.stat().st_size if path.is_file() else 0)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f".{path.name}.put")
+        tmp.write_bytes(data)
+        tmp.replace(path)
+    _changed(root, path)
     return Response(status_code=200, headers={"ETag": _etag(hashlib.sha256(data).hexdigest())})
 
 
 @app.delete("/libraries/{user}/{library}/files/{rel_path:path}")
-def delete_file(
+async def delete_file(
     rel_path: str,
     root: Path = Depends(library),
     who: str = Depends(caller),
@@ -490,13 +516,14 @@ def delete_file(
 ) -> Response:
     path = _file(root, rel_path)
     _paying(root, who)
-    _writable(root)
     if if_match is None:
         raise HTTPException(428, 'If-Match: "<sha256>" is required')
-    if not path.is_file() or _sha256(path) != _unquote(if_match):
-        raise HTTPException(412, "the file has changed")
     from noesis import deletion
-    deletion.trash(root, path)
+    async with _writing(root):
+        if not path.is_file() or _sha256(path) != _unquote(if_match):
+            raise HTTPException(412, "the file has changed")
+        deletion.trash(root, path)
+    _changed(root, path)
     return Response(status_code=204)
 
 
@@ -510,15 +537,15 @@ def rename(body: NewLibrary, root: Path = Depends(library), who: str = Depends(c
 
 
 @app.delete("/libraries/{user}/{library}")
-def delete_library(root: Path = Depends(library), who: str = Depends(caller)) -> Response:
+async def delete_library(root: Path = Depends(library), who: str = Depends(caller)) -> Response:
     """An application's library, deleted whole by the application (members.py):
     The Floor's, thirty days after its channel was deleted. Nobody else deletes a
     library here — a person's goes by the operator's hand."""
     from noesis import members
     if members.keeper(who) is None or _owner(root) != who:
         raise HTTPException(403, "only the application whose library it is")
-    _writable(root)
-    shutil.rmtree(root)
+    async with _writing(root):
+        shutil.rmtree(root)
     return Response(status_code=204)
 
 
@@ -559,9 +586,7 @@ async def run_command(run: Run, root: Path = Depends(library),
                       who: str = Depends(caller)) -> StreamingResponse:
     _check_run(run)
     _paying(root, who)
-    lock = lock_for(root)
-    if lock.locked():
-        raise HTTPException(409, "a run is in progress in this library")
+    lock = await _claim(root)
     _may_run(root, run.argv[0])
     await lock.acquire()
     return _stream(root, run.argv, lock, who=who)
@@ -603,9 +628,7 @@ async def import_file(
 async def _import(root: Path, filename: str, body, options: list[str]) -> StreamingResponse:
     """`noesis import` on `await body()`, staged outside the library while it runs."""
     from noesis.cmd_import import IMPORTABLE
-    lock = lock_for(root)
-    if lock.locked():
-        raise HTTPException(409, "a run is in progress in this library")
+    lock = await _claim(root)
     _may_run(root, "import")
     await lock.acquire()
     try:
@@ -733,17 +756,23 @@ class Voices(BaseModel):
 
 
 @app.post("/libraries/{user}/{library}/voices")
-def rename_voices(body: Voices, root: Path = Depends(library), who: str = Depends(caller),
+async def rename_voices(body: Voices, root: Path = Depends(library), who: str = Depends(caller),
                   if_match: str | None = Header(default=None)) -> Response:
     """A chat's speakers renamed, its lines under each as they were: how a
     person makes a chat's lines theirs, or a guest's someone's."""
-    from noesis.library import _STRUCTURAL_HEADINGS
-    from noesis.transcript import rename_speakers
     path = _chat(root, body.file)
     _paying(root, who)
-    _writable(root)
     if if_match is None:
         raise HTTPException(428, 'If-Match: "<sha256>" is required')
+    async with _writing(root):
+        sha = _rename_voices(root, path, body, if_match)
+    _changed(root, path)
+    return Response(status_code=200, headers={"ETag": _etag(sha)})
+
+
+def _rename_voices(root: Path, path: Path, body: Voices, if_match: str) -> str:
+    from noesis.library import _STRUCTURAL_HEADINGS
+    from noesis.transcript import rename_speakers
     if _sha256(path) != _unquote(if_match):
         raise HTTPException(412, "the file has changed")
     text = path.read_text(errors="replace")
@@ -760,7 +789,7 @@ def rename_voices(body: Voices, root: Path = Depends(library), who: str = Depend
     tmp = path.with_name(f".{path.name}.put")
     tmp.write_bytes(data)
     tmp.replace(path)
-    return Response(status_code=200, headers={"ETag": _etag(hashlib.sha256(data).hexdigest())})
+    return hashlib.sha256(data).hexdigest()
 
 
 def _stream(root: Path, argv: list[str], lock: asyncio.Lock, cleanup=None,
@@ -785,8 +814,13 @@ def _stream(root: Path, argv: list[str], lock: asyncio.Lock, cleanup=None,
 
 
 async def _execute(root: Path, argv: list[str], events: asyncio.Queue,
-                   lock: asyncio.Lock, cleanup=None, who: str | None = None) -> None:
+                   lock: asyncio.Lock | None, cleanup=None, who: str | None = None) -> None:
+    """noesis run in the library, which the caller holds; lock, if given, let go after."""
     from noesis import accounts
+    from noesis.library import changes_index
+    if argv[0] == "index":
+        # What changed before this index is in it.
+        _stale.discard(root)
     try:
         before = await asyncio.to_thread(tree_hashes, root)
         # No editor either: a run has nobody at a terminal, and `new` opens what
@@ -833,14 +867,81 @@ async def _execute(root: Path, argv: list[str], events: asyncio.Queue,
         done = {"exit_code": exit_code, "changed": changed, "deleted": sorted(before.keys() - after.keys())}
         if argv[0] == "import":
             done["titles"] = await asyncio.to_thread(_titles, root, changed)
+        if argv[0] != "index" and any(map(changes_index, [*changed, *done["deleted"]])):
+            _index_soon(root)
         await events.put(("done", done))
     except Exception as exc:  # the stream must end, whatever happened
         await events.put(("error", {"message": str(exc)}))
     finally:
         if cleanup is not None:
             cleanup()
-        lock.release()
+        if lock is not None:
+            lock.release()
         await events.put(None)
+
+
+# ---------------------------------------------------------------------------
+# The background index (since 2026-11-18)
+# ---------------------------------------------------------------------------
+# Every change that would change a library's index (library.changes_index)
+# marks it stale, and an index follows once the change lets go of the
+# library, the changes made meanwhile folded into one more. A run or write
+# that finds it waits (_claim). What it is refused (402, a free slot) or
+# fails at, ts nightly-index catches.
+
+_stale: set[Path] = set()
+_indexers: dict[Path, asyncio.Task] = {}
+# The libraries whose lock the background index holds, each with what is set
+# when it lets go.
+_indexing: dict[Path, asyncio.Event] = {}
+
+
+def _index_soon(root: Path) -> None:
+    _stale.add(root)
+    if root not in _indexers:
+        _indexers[root] = asyncio.create_task(_index(root))
+
+
+async def _index(root: Path) -> None:
+    try:
+        await _index_while_stale(root)
+    finally:
+        # With no await since the last look at _stale: a change after it
+        # finds no indexer here, and starts one.
+        _indexers.pop(root, None)
+
+
+async def _index_while_stale(root: Path) -> None:
+    from noesis import accounts
+    lock = lock_for(root)
+    while root in _stale:
+        await lock.acquire()
+        _indexing[root] = asyncio.Event()
+        try:
+            # An index run, or the library deleted, while this one waited.
+            if root not in _stale or not root.is_dir():
+                _stale.discard(root)
+                continue
+            _stale.discard(root)
+            _may_run(root, "index")
+            free = accounts.is_free(_metered(root)) and asyncio.current_task()
+            if free:
+                _free_runs.add(free)
+            events: asyncio.Queue = asyncio.Queue()
+            try:
+                await _execute(root, ["index"], events, None)
+            finally:
+                _free_runs.discard(free)
+            said = [event for _ in range(events.qsize()) if (event := events.get_nowait())]
+            last = said[-1] if said else ("error", {})
+            if last[0] != "done" or last[1].get("exit_code"):
+                output = "".join(p.get("text", "") for k, p in said if k == "output").strip()
+                print(f"index: {root}: {last[1].get('message') or output[-500:]}", file=sys.stderr)
+        except HTTPException as exc:
+            print(f"index: {root}: {exc.detail}", file=sys.stderr)
+        finally:
+            lock.release()
+            _indexing.pop(root).set()
 
 
 def run_serve(host: str, port: int) -> int:

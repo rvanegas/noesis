@@ -34,6 +34,7 @@ user.
 from __future__ import annotations
 
 import os
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -309,19 +310,31 @@ def guide(ctx: Context) -> str:
 
 @_tool
 def list_documents(ctx: Context, query: str = "", library: str | None = None) -> str:
-    """List the library's indexed documents: name and title, newest first. With a
+    """List the library's chats and documents: name and title, newest first. With a
     query, only those whose title, summary or index terms match it, best first.
+    One marked "not yet indexed" was added or changed moments ago: lookup_term does not find it yet, but read_file reads it.
     Files are named <date>-<slug>.<role>.<ext> (role: chat, document, source, argument, analysis or review; e.g. 2026-06-29-the-eleatic-critique.chat.md), kept in a folder per year, and a name is unique across the library. Call guide first if you have not."""
     roots = _roots(library, ctx, many=True)
     lines = []
+    empty = True
     for lib_id, root in roots:
         entries = lib.load_entries(root)
+        waiting = lib.unindexed_titles(root)
+        empty = empty and not entries and not waiting
         if query:
             entries = lib.search_library(entries, query)
-        else:
-            entries = sorted(entries, key=lambda e: Path(e.rel_path).name, reverse=True)
+            tokens = set(re.findall(r"\w+", query.lower()))
+            waiting = {rel: title for rel, title in waiting.items()
+                       if any(t in f"{rel} {title}".lower() for t in tokens)}
         where = f" [{lib_id}]" if len(roots) > 1 else ""
-        lines += [f"{Path(e.rel_path).name} — {e.title}{where}" for e in entries[:200]]
+        found = [(Path(e.rel_path).name, e.title, "") for e in entries]
+        found += [(Path(rel).name, title, " (not yet indexed)") for rel, title in waiting.items()]
+        if not query:
+            found.sort(key=lambda f: f[0], reverse=True)
+        lines += [f"{name} — {title}{note}{where}" for name, title, note in found[:200]]
+    if empty:
+        return "This library has no chats or documents yet." if len(roots) == 1 \
+            else "These libraries have no chats or documents yet."
     return "\n".join(lines) if lines else "No documents found."
 
 

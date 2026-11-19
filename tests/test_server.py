@@ -412,3 +412,103 @@ def test_a_user_renames_their_own_library_its_id_kept(client, data):
     service = {"Authorization": "Bearer service-token"}
     assert client.patch("/libraries/ann/drafts", headers=service, json={"name": "Mine"}).status_code == 403
     assert client.patch("/libraries/ann/nothing", headers=ANN, json={"name": "X"}).status_code == 404
+
+
+# The background index (since 2026-11-18): after every change that changes the index.
+
+def test_a_write_that_changes_the_index_indexes_the_library(client, data, indexed):
+    root = data / "libraries/ann/philosophy"
+    create = {**ANN, "If-None-Match": "*"}
+    assert client.put(f"{BASE}/files/2026/2026-01-02-paper.source.md", headers=create, content=b"x").status_code == 200
+    assert client.put(f"{BASE}/files/notes.txt", headers=create, content=b"x").status_code == 200
+    assert indexed == []
+    assert client.put(f"{BASE}/files/2026/2026-01-02-essay.document.md", headers=create, content=b"x").status_code == 200
+    assert indexed == [root]
+    assert client.put(f"{BASE}/files/KEYS.md", headers=create, content=b"## Alias\n").status_code == 200
+    assert indexed == [root, root]
+    rel = "2025/2025-04-25-old-roman.chat.md"
+    assert client.delete(f"{BASE}/files/{rel}", headers={**ANN, "If-Match": f'"{_sha(CHAT.encode())}"'}).status_code == 204
+    assert indexed == [root, root, root]
+
+
+def test_a_run_that_changes_the_index_indexes_the_library(client, data, indexed):
+    root = data / "libraries/ann/philosophy"
+    client.post(f"{BASE}/run", headers=ANN, json={"argv": ["check", "old-roman"]})
+    client.post(f"{BASE}/run", headers=ANN, json={"argv": ["index", "--refs-only"]})
+    assert indexed == []
+    events = _events(client.post(f"{BASE}/import", headers=ANN, params={"filename": "notes.md"},
+                                 content=b"# Notes\n\nA paragraph.\n").text)
+    assert events[-1][1]["exit_code"] == 0
+    assert indexed == [root]
+
+
+def test_renaming_speakers_indexes_the_library(client, lunch, indexed):
+    client.post(f"{BASE}/voices", headers={**ANN, "If-Match": f'"{_sha(LUNCH.encode())}"'},
+                json={"file": "2026/2026-10-30-lunch.chat.md", "names": {"Annie": "Ann Example"}})
+    assert indexed == [lunch.parent.parent]
+
+
+def test_a_run_or_write_waits_for_the_background_index_but_not_for_a_run(data):
+    import asyncio
+    from fastapi import HTTPException
+    from noesis import service
+    root = data / "libraries/ann/philosophy"
+
+    async def go():
+        lock = service.lock_for(root)
+        await lock.acquire()
+        with pytest.raises(HTTPException) as refused:
+            await server._claim(root)
+        assert refused.value.status_code == 409
+        server._indexing[root] = asyncio.Event()
+        claim = asyncio.create_task(server._claim(root))
+        await asyncio.sleep(0.01)
+        assert not claim.done()
+        lock.release()
+        server._indexing.pop(root).set()
+        assert await claim is lock and not lock.locked()
+
+    try:
+        asyncio.run(go())
+    finally:
+        service.locks.clear()
+
+
+def test_the_background_index_folds_changes_made_while_it_waits(data, monkeypatch):
+    import asyncio
+    from noesis import service
+    root = data / "libraries/ann/philosophy"
+    runs = []
+
+    async def execute(root_, argv, events, lock, cleanup=None, who=None):
+        runs.append(argv)
+        await events.put(("done", {"exit_code": 0, "changed": {}, "deleted": []}))
+        await events.put(None)
+
+    monkeypatch.setattr(server, "_execute", execute)
+    monkeypatch.setattr(server, "_may_run", lambda root, command: None)
+
+    async def go():
+        lock = service.lock_for(root)
+        await lock.acquire()  # a run, changing the library three times
+        for _ in range(3):
+            server._stale.add(root)
+        indexing = asyncio.create_task(server._index(root))
+        await asyncio.sleep(0.01)
+        lock.release()
+        await indexing
+        assert runs == [["index"]] and not lock.locked() and root not in server._indexing
+        # An index run meanwhile leaves the waiting one nothing to do.
+        await lock.acquire()
+        server._stale.add(root)
+        indexing = asyncio.create_task(server._index(root))
+        server._stale.discard(root)
+        lock.release()
+        await indexing
+        assert runs == [["index"]]
+
+    try:
+        asyncio.run(go())
+    finally:
+        service.locks.clear()
+        server._stale.clear()

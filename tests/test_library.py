@@ -312,3 +312,22 @@ def test_render_manifest_includes_all_entries():
     assert "b.md" in text
     assert "Alpha" in text
     assert "Beta" in text
+
+
+def test_what_changes_the_index():
+    from noesis.library import changes_index
+    assert changes_index("2026/2026-01-02-essay.document.md")
+    assert changes_index("2026/2026-01-02-talk.chat.md")
+    assert changes_index("KEYS.md")
+    for rel in ("2026/2026-01-02-paper.source.md", "2026/2026-01-02-essay.argument.md", "INDEX.md",
+                "SYSTEM_PROMPT.md", "REVISIONS/2026-01-02-essay--1.document.md", "2026/2026-01-02-talk.chat.pdf",
+                "notes/KEYS.md"):
+        assert not changes_index(rel), rel
+
+
+def test_index_files_are_written_whole(tmp_path):
+    from noesis.library import _write
+    (tmp_path / "INDEX.md").write_text("old")
+    _write(tmp_path / "INDEX.md", "new")
+    assert (tmp_path / "INDEX.md").read_text() == "new"
+    assert [p.name for p in tmp_path.iterdir()] == ["INDEX.md"]
