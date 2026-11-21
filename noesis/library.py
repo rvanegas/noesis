@@ -1048,6 +1048,15 @@ def read_file(library_path: Path, query: str, exclude: str | None = None,
         if not text:
             return "\n".join([*head, "It is an EPUB with no text in it."])
         return "\n".join(head) + "\n\n" + text
+    if found.suffix.lower() == ".pdf":
+        from noesis.pdf_text import NotAPdf, pdf_text
+        try:
+            text = pdf_text(found)
+        except NotAPdf:
+            return "\n".join([*head, "It is a PDF that could not be read."])
+        if not text:
+            return "\n".join([*head, "It is a PDF with no text layer, a scan perhaps; it can be linked from a chat, not read here."])
+        return "\n".join(head) + "\n\n" + text
     try:
         text = found.read_text(encoding="utf-8")
     except UnicodeDecodeError:

@@ -445,7 +445,7 @@ noesis import draft.md --document-of 2026/2026-05-01-on-names.chat.md   # a chat
 |---|---|
 | claude.ai's data export (Settings → Privacy → Export data), the zip or its `conversations.json` | one `<date>-<slug>.chat.md` per conversation, its turns exactly as exported, along the branch shown last when messages were edited; attachments and tool calls noted as `\| [attachment: …]` / `\| [tool: …]` |
 | a saveai.net (AI Chat Exporter) Markdown export | a `.chat.md` |
-| a PDF or an EPUB | a source, `<date>-<slug>.source.pdf` (or `.epub`), its bytes as they are: the slug is its file name's, the date the one that name begins with, else the file's; not indexed, being someone else's writing; an EPUB `read_file` reads as its text, chapter by chapter in its spine's order (`epub.py`), a PDF not yet; refused when it is not what its extension says |
+| a PDF or an EPUB | a source, `<date>-<slug>.source.pdf` (or `.epub`), its bytes as they are: the slug is its file name's, the date the one that name begins with, else the file's; not indexed, being someone else's writing; `read_file` reads an EPUB as its text, chapter by chapter in its spine's order (`epub.py`), and a PDF as its text layer, page by page (`pdf_text.py`, by pypdf), a scan having none; refused when it is not what its extension says |
 | any other text | a `.document.md`, its text as it is |
 
 Headings inside a turn are promoted to `###`, as `reply` does. Each chat or document is checked (`check` for a chat, the global checks for a document) before it is written. A file that already exists is skipped, and so is a source when its stem already has one; `--replace` overwrites it. A source may share its stem with a chat or document, as theirs.

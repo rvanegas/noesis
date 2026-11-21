@@ -179,8 +179,50 @@ def test_read_file_undated_files_by_name(tmp_path):
 
 def test_read_file_not_text(tmp_path):
     _stem_files(tmp_path, roles=("document",))
-    (tmp_path / "2026" / "2026-06-29-the-eleatic-critique.source.pdf").write_bytes(b"%PDF\xff\xfe")
-    assert "not text" in read_file(tmp_path, "2026-06-29-the-eleatic-critique.source.pdf")
+    (tmp_path / "2026" / "parmenides.png").write_bytes(b"\x89PNG\r\n\x1a\n\xff\xfe")
+    assert "not text" in read_file(tmp_path, "parmenides.png")
+
+
+def _pdf(path, pages):
+    """A minimal PDF, a line of Helvetica on each page; empty strings make blank pages."""
+    objects = [b"<< /Type /Catalog /Pages 2 0 R >>", None,
+               b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+    kids = []
+    for line in pages:
+        stream = f"BT /F1 12 Tf 72 720 Td ({line}) Tj ET".encode("latin-1") if line else b""
+        objects.append(b"<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream))
+        content = len(objects)
+        objects.append(b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                       b"/Resources << /Font << /F1 3 0 R >> >> /Contents %d 0 R >>" % content)
+        kids.append(len(objects))
+    objects[1] = b"<< /Type /Pages /Kids [%s] /Count %d >>" % (
+        b" ".join(b"%d 0 R" % k for k in kids), len(kids))
+    out, offsets = bytearray(b"%PDF-1.4\n"), []
+    for number, body in enumerate(objects, 1):
+        offsets.append(len(out))
+        out += b"%d 0 obj\n%s\nendobj\n" % (number, body)
+    xref = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objects) + 1)
+    out += b"".join(b"%010d 00000 n \n" % o for o in offsets)
+    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objects) + 1, xref)
+    path.write_bytes(bytes(out))
+
+
+def test_read_file_reads_a_pdf_source_page_by_page(tmp_path):
+    _stem_files(tmp_path, roles=("document",))
+    _pdf(tmp_path / "2026" / "2026-06-29-the-eleatic-critique.source.pdf", ["First page", "", "Third page"])
+    head, body = read_file(tmp_path, "2026-06-29-the-eleatic-critique.source.pdf").split("\n\n", 1)
+    assert "the source: third-party material" in head
+    assert body == "First page\n\nThird page"
+
+
+def test_read_file_a_pdf_without_text_or_broken(tmp_path):
+    _stem_files(tmp_path, roles=("document",))
+    folder = tmp_path / "2026"
+    _pdf(folder / "2026-06-29-the-eleatic-critique.source.pdf", [""])
+    assert "no text layer" in read_file(tmp_path, "2026-06-29-the-eleatic-critique.source.pdf")
+    (folder / "2026-06-29-the-eleatic-critique.source.pdf").write_bytes(b"%PDF\xff\xfe")
+    assert read_file(tmp_path, "2026-06-29-the-eleatic-critique.source.pdf").endswith("a PDF that could not be read.")
 
 
 def test_read_file_excludes_the_chat_being_replied_to(tmp_path):
