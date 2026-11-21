@@ -48,8 +48,8 @@ A run or write that changes the library's index is followed by an index in
 the background, which runs and writes wait for rather than get 409 (_index).
 
 /import is how a conversation from elsewhere enters a library without a
-client's own copy of it (a claude.ai export, saveai.net Markdown, any text;
-nothing else, cmd_import.IMPORTABLE): the upload is kept outside the
+client's own copy of it (a claude.ai export, saveai.net Markdown, any text),
+and a PDF or EPUB as a source (nothing else, cmd_import.IMPORTABLE): the upload is kept outside the
 library, `noesis import` writes from it into the year directories, and it is
 deleted when the run ends.
 
@@ -614,7 +614,7 @@ async def import_file(
             raise HTTPException(404, f"no chat {document_of!r} in this library")
     from noesis.cmd_import import IMPORTABLE
     if Path(filename).suffix.lower() not in IMPORTABLE:
-        raise HTTPException(415, f"import takes Markdown or text, or claude.ai's export ({', '.join(sorted(IMPORTABLE))})")
+        raise HTTPException(415, f"import takes Markdown or text, claude.ai's export, or a PDF or EPUB ({', '.join(sorted(IMPORTABLE))})")
     options = []
     if only:
         options += ["--only", only]

@@ -330,8 +330,19 @@ def test_import_takes_a_name_not_a_path(client, filename):
     assert client.post(f"{BASE}/import", headers=ANN, params={"filename": filename}, content=b"x").status_code == 400
 
 
-def test_import_takes_only_text_and_claude_exports(client):
-    for filename in ["paper.pdf", "photo.png", "notes.rtf"]:
+def test_import_a_pdf_as_a_source(client, data):
+    response = client.post(f"{BASE}/import", headers=ANN, params={"filename": "parfit2011.pdf"},
+                           content=b"%PDF-1.4\n\xff")
+    events = _events(response.text)
+    assert events[-1][0] == "done" and events[-1][1]["exit_code"] == 0
+    changed = list(events[-1][1]["changed"])
+    assert len(changed) == 1 and changed[0].endswith("-parfit2011.source.pdf")
+    assert events[-1][1]["titles"] == {}
+    assert (data / "libraries/ann/philosophy" / changed[0]).read_bytes() == b"%PDF-1.4\n\xff"
+
+
+def test_import_takes_only_text_claude_exports_and_sources(client):
+    for filename in ["paper.docx", "photo.png", "notes.rtf"]:
         response = client.post(f"{BASE}/import", headers=ANN, params={"filename": filename}, content=b"x")
         assert response.status_code == 415
 

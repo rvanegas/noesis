@@ -654,7 +654,7 @@ def build_parser() -> argparse.ArgumentParser:
         "import",
         help="Turn conversations from elsewhere into library files (claude.ai export, saveai.net, or a document).",
     )
-    import_parser.add_argument("files", nargs="+", help="A claude.ai export (zip or conversations.json), saveai.net Markdown, or any text file.")
+    import_parser.add_argument("files", nargs="+", help="A claude.ai export (zip or conversations.json), saveai.net Markdown, any text file, or a PDF or EPUB (kept as a source).")
     import_parser.add_argument("--only", metavar="NAME", help="From a claude.ai export, only the conversation with this name or uuid.")
     import_parser.add_argument("--replace", action="store_true", help="Overwrite a file the import would otherwise skip as existing.")
     import_parser.add_argument("--document-of", metavar="CHAT", help="Import one Markdown or text file as this chat's document: <stem>.document.md beside it (a path in the library).")

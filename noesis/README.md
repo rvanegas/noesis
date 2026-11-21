@@ -437,6 +437,7 @@ noesis import ~/Downloads/data-2026-10-27.zip                 # every claude.ai 
 noesis import conversations.json --only "Being and Seeming"   # one, by name or uuid
 noesis import 2026-08-03-verbal-disputes.md                   # a saveai.net export
 noesis import notes-on-quine.md                               # anything else: a .document.md
+noesis import parfit2011.pdf                                  # a source, kept as it is
 noesis import draft.md --document-of 2026/2026-05-01-on-names.chat.md   # a chat's document
 ```
 
@@ -444,9 +445,10 @@ noesis import draft.md --document-of 2026/2026-05-01-on-names.chat.md   # a chat
 |---|---|
 | claude.ai's data export (Settings → Privacy → Export data), the zip or its `conversations.json` | one `<date>-<slug>.chat.md` per conversation, its turns exactly as exported, along the branch shown last when messages were edited; attachments and tool calls noted as `\| [attachment: …]` / `\| [tool: …]` |
 | a saveai.net (AI Chat Exporter) Markdown export | a `.chat.md` |
-| anything else | a `.document.md`, its text as it is |
+| a PDF or an EPUB | a source, `<date>-<slug>.source.pdf` (or `.epub`), its bytes as they are: the slug is its file name's, the date the one that name begins with, else the file's; not indexed, being someone else's writing; refused when it is not what its extension says |
+| any other text | a `.document.md`, its text as it is |
 
-Headings inside a turn are promoted to `###`, as `reply` does. Each file is checked (`check` for a chat, the global checks for a document) before it is written. A file that already exists is skipped; `--replace` overwrites it.
+Headings inside a turn are promoted to `###`, as `reply` does. Each chat or document is checked (`check` for a chat, the global checks for a document) before it is written. A file that already exists is skipped, and so is a source when its stem already has one; `--replace` overwrites it. A source may share its stem with a chat or document, as theirs.
 
 `--document-of` brings in one text as a chat's document, `<stem>.document.md` beside the chat, as `noesis new --edit` pairs them: the position a conversation came to, written elsewhere (with Claude in claude.ai, or in an editor), from which `argue` then extracts the argument. It keeps its own `# Title` if it has one, else takes the chat's, and takes the chat's date. In the web client, a chat without a document offers *Import its document*.
 

@@ -1,6 +1,7 @@
 // noesis's web client: keeps a library on noesis's server without the CLI.
 // Writing is done elsewhere: a chat or document enters by Import, a source
-// only by the CLI's sync, and a reply only from the CLI. Here the user's files
+// by Import as a PDF or EPUB and otherwise only by the CLI's sync, and a
+// reply only from the CLI. Here the user's files
 // are checked, fixed, indexed, downloaded and deleted; only the settings are
 // edited in place.
 //

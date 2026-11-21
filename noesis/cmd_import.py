@@ -20,9 +20,14 @@
   or speaker labels (`Prompt:`), its title and date as written.
 - A zip that is not claude.ai's: each `.txt` and `.md` inside, as on its own.
 - Any other text: a `.document.md`, its text as it is.
+- A PDF or an EPUB: a source, `<date>-<slug>.source.pdf` (or `.epub`), its
+  bytes as they are; named from its file name, a dated one (`2026-10-19-x.pdf`)
+  keeping its date, else dated by the file. Someone else's writing, so never a
+  document, and never indexed. One that is not what its extension says is
+  refused.
 
-Nothing else is imported (IMPORTABLE): a source reaches the library by the
-CLI's sync alone.
+Nothing else is imported (IMPORTABLE); a source in another format reaches the
+library by the CLI's sync alone.
 
 Files go where their names put them, this year's directory of the library
 (or the current directory outside one). Each is checked before it takes its
@@ -52,17 +57,20 @@ from noesis.text_utils import _upgrade_reply_headings
 from noesis.transcript import collect_citations, with_citations
 
 
-# What import reads: text, and claude.ai's export (its zip or json).
-IMPORTABLE = frozenset({".md", ".markdown", ".txt", ".zip", ".json"})
+# What import reads: text, claude.ai's export (its zip or json), and the
+# sources it keeps as they are (SOURCES).
+SOURCES = frozenset({".pdf", ".epub"})
+IMPORTABLE = frozenset({".md", ".markdown", ".txt", ".zip", ".json"}) | SOURCES
 
 
 @dataclass
 class Imported:
     title: str
     date: str
-    role: str  # "chat" or "document"
-    body: str  # everything after the title and date
+    role: str  # "chat", "document" or "source"
+    body: str | bytes  # everything after the title and date; a source's is its bytes
     untitled: bool = False  # the title is a hint, and one is to be given
+    ext: str = ".md"
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +229,7 @@ _PROMPT_SECTION_RE = re.compile(rf"^## {PROMPT_HEADING}\s*$", re.MULTILINE)
 def _stem(name: PurePath) -> str:
     """The name without its extension and role: `x.chat.md` is `x`."""
     stem = name.stem
-    return stem.rsplit(".", 1)[0] if PurePath(stem).suffix in (".chat", ".document") else stem
+    return stem.rsplit(".", 1)[0] if PurePath(stem).suffix in (".chat", ".document", ".source") else stem
 
 
 def _headed(text: str, name: PurePath, date: str, role: str) -> Imported:
@@ -262,8 +270,10 @@ def _file_date(path: Path) -> str:
 def read_sources(path: Path, only: str | None) -> list[Imported]:
     """What one input file holds, as library files to be."""
     if path.suffix.lower() not in IMPORTABLE:
-        raise ValueError(f"{path.name}: import takes Markdown or text, or claude.ai's export "
-                         f"({', '.join(sorted(IMPORTABLE))})")
+        raise ValueError(f"{path.name}: import takes Markdown or text, claude.ai's export, "
+                         f"or a PDF or EPUB ({', '.join(sorted(IMPORTABLE))})")
+    if path.suffix.lower() in SOURCES:
+        return [as_source(path.read_bytes(), path.name, _file_date(path))]
     if path.suffix.lower() == ".zip":
         with zipfile.ZipFile(path) as archive:
             name = next((n for n in archive.namelist() if n.endswith("conversations.json")), None)
@@ -284,6 +294,32 @@ def read_sources(path: Path, only: str | None) -> list[Imported]:
             raise ValueError(f"{path.name}: not claude.ai's conversations.json")
         return _from_conversations(conversations, only)
     return [_from_text(text, path, _file_date(path))]
+
+
+def _is_epub(data: bytes) -> bool:
+    """A zip whose `mimetype` says it is an EPUB, as the format requires."""
+    import io
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            return archive.read("mimetype").strip() == b"application/epub+zip"
+    except (zipfile.BadZipFile, KeyError):
+        return False
+
+
+def as_source(data: bytes, filename: str, date: str) -> Imported:
+    """A PDF or EPUB as it is, its slug from its file name and its date from
+    that name when dated."""
+    name = PurePath(filename)
+    ext = name.suffix.lower()
+    if ext == ".pdf" and not data.startswith(b"%PDF-"):
+        raise ValueError(f"{filename}: not a PDF")
+    if ext == ".epub" and not _is_epub(data):
+        raise ValueError(f"{filename}: not an EPUB")
+    stem = _stem(name)
+    dated = _DATED_STEM_RE.match(stem)
+    if dated:
+        date, stem = dated[1], dated[2]
+    return Imported(stem, date, "source", data, ext=ext)
 
 
 def _from_text(text: str, name: PurePath, date: str) -> Imported:
@@ -508,17 +544,32 @@ def run_import(paths: list[Path], only: str | None = None, replace: bool = False
                         continue
                     item = with_fields(item, title=title, untitled=False)
             stem = f"{item.date}-{slugify(item.title)}"
-            item, text, problems, demoted = settle(item, stem)
-            target = here / f"{stem}.{item.role}.md"
+            if item.role == "source":
+                # A source is someone else's, as it came: nothing to check or repair.
+                text, problems, demoted = item.body, [], None
+                if not slugify(item.title):
+                    print(f"failed   {source.name}: no name to take a slug from")
+                    failed += 1
+                    continue
+            else:
+                item, text, problems, demoted = settle(item, stem)
+            target = here / f"{stem}.{item.role}{item.ext}"
             if problems:
                 print(f"failed   {target.name}: {problems[0]}")
                 failed += 1
                 continue
-            if stem in taken and not (replace and target.exists()):
+            if item.role == "source":
+                # Beside the chat or document of its stem, as its source; but one source a stem.
+                other = next((p for p in here.glob(f"{stem}.source.*") if p.name != target.name), None)
+                if other is not None or (target.exists() and not replace):
+                    print(f"skipped  {target.name} (exists{f' as {other.name}' if other else ''})")
+                    skipped += 1
+                    continue
+            elif stem in taken and not (replace and target.exists()):
                 print(f"skipped  {target.name} (exists{'' if target.exists() else ' under another role'})")
                 skipped += 1
                 continue
-            holder = titled.get(slugify(item.title))
+            holder = None if item.role == "source" else titled.get(slugify(item.title))
             if holder and not (in_library and holder == target.relative_to(library).as_posix()):
                 print(f"failed   {target.name}: the title \"{item.title}\" is {Path(holder).name}'s")
                 failed += 1
@@ -529,11 +580,15 @@ def run_import(paths: list[Path], only: str | None = None, replace: bool = False
                 continue
             here.mkdir(parents=True, exist_ok=True)
             tmp = target.with_name(f".{target.name}.import")
-            tmp.write_text(text, encoding="utf-8")
+            if isinstance(text, bytes):
+                tmp.write_bytes(text)
+            else:
+                tmp.write_text(text, encoding="utf-8")
             tmp.replace(target)
             taken.add(stem)
             if in_library:
-                titled[slugify(item.title)] = target.relative_to(library).as_posix()
+                if item.role != "source":
+                    titled[slugify(item.title)] = target.relative_to(library).as_posix()
                 slugged[slugify(item.title)] = stem
             print(f"imported {target.relative_to(library) if in_library else target.name}"
                   + (f" (as a chat, {demoted})" if demoted else ""))

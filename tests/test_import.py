@@ -123,8 +123,9 @@ def test_a_document_is_repaired(library):
     assert doc.read_text() == "\n# Plain\n2026-02-03\n\nA line, x and\n**Prompt:**\nin it.\n"
 
 
-@pytest.mark.parametrize("name, body", [("paper.pdf", b"%PDF-1.4"), ("data.json", b'{"a": 1}')])
-def test_only_text_and_claude_exports_are_imported(library, capsys, name, body):
+@pytest.mark.parametrize("name, body", [("data.json", b'{"a": 1}'), ("paper.docx", b"PK"),
+                                        ("paper.pdf", b"not a pdf"), ("book.epub", b"PK not a zip")])
+def test_only_text_claude_exports_and_sources_are_imported(library, capsys, name, body):
     src = library.parent / name
     src.write_bytes(body)
     assert main(["import", str(src)]) == 1
@@ -376,3 +377,58 @@ def test_a_slug_another_date_has_is_asked_for_again(library, titles):
     src.write_text(FLOOR)
     assert main(["import", str(src)]) == 0
     assert (library / "2026" / "2026-10-30-kant-reads-bach.chat.md").exists()
+
+
+def _epub(path):
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("mimetype", "application/epub+zip")
+        z.writestr("OEBPS/content.opf", "<package/>")
+    return path.read_bytes()
+
+
+def test_a_pdf_is_a_source_as_it_is(library, capsys):
+    src = library.parent / "Parfit 2011.pdf"
+    src.write_bytes(b"%PDF-1.7\n\xff\xfe")
+    assert main(["import", str(src)]) == 0
+    imported = list(library.rglob("*.source.pdf"))
+    assert len(imported) == 1 and imported[0].name.endswith("-parfit-2011.source.pdf")
+    assert imported[0].read_bytes() == src.read_bytes()
+    assert not list(library.rglob("*.md"))
+    assert "1 imported" in capsys.readouterr().out
+
+
+def test_an_epub_keeps_the_date_its_name_has(library):
+    src = library.parent / "2025-03-04-reasons-and-persons.epub"
+    data = _epub(src)
+    assert main(["import", str(src)]) == 0
+    assert (library / "2025" / "2025-03-04-reasons-and-persons.source.epub").read_bytes() == data
+
+
+def test_a_source_joins_its_stems_document_but_is_one(library, capsys):
+    (library / "2026").mkdir()
+    doc = library / "2026" / "2026-01-01-on-names.document.md"
+    doc.write_text("\n# On Names\n2026-01-01\n\nMine.\n")
+    src = library.parent / "2026-01-01-on-names.pdf"
+    src.write_bytes(b"%PDF-1.4")
+    assert main(["import", str(src)]) == 0
+    assert (library / "2026" / "2026-01-01-on-names.source.pdf").exists()
+    epub = library.parent / "2026-01-01-on-names.epub"
+    _epub(epub)
+    capsys.readouterr()
+    assert main(["import", str(epub), "--replace"]) == 0
+    assert "exists as 2026-01-01-on-names.source.pdf" in capsys.readouterr().out
+    assert not (library / "2026" / "2026-01-01-on-names.source.epub").exists()
+    src.write_bytes(b"%PDF-1.5")
+    assert main(["import", str(src)]) == 0
+    assert (library / "2026" / "2026-01-01-on-names.source.pdf").read_bytes() == b"%PDF-1.4"
+    assert main(["import", str(src), "--replace"]) == 0
+    assert (library / "2026" / "2026-01-01-on-names.source.pdf").read_bytes() == b"%PDF-1.5"
+
+
+def test_a_source_with_a_slug_another_date_has_fails(library, capsys):
+    (library / "2026").mkdir()
+    (library / "2026" / "2026-01-01-on-names.chat.md").write_text("\n# On Names\n2026-01-01\n")
+    src = library.parent / "2026-05-02-on-names.pdf"
+    src.write_bytes(b"%PDF-1.4")
+    assert main(["import", str(src)]) == 1
+    assert "the slug on-names is 2026-01-01-on-names's" in capsys.readouterr().out
