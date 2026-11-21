@@ -331,3 +331,43 @@ def test_index_files_are_written_whole(tmp_path):
     _write(tmp_path / "INDEX.md", "new")
     assert (tmp_path / "INDEX.md").read_text() == "new"
     assert [p.name for p in tmp_path.iterdir()] == ["INDEX.md"]
+
+
+def _epub(path, chapters, order=None):
+    """A minimal EPUB: chapters by id, in the spine's `order` (their own by default)."""
+    import zipfile
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("mimetype", "application/epub+zip")
+        z.writestr("META-INF/container.xml",
+                   '<?xml version="1.0"?><container version="1.0" '
+                   'xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles>'
+                   '<rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>'
+                   '</rootfiles></container>')
+        items = "".join(f'<item id="{c}" href="text/{c}.xhtml" media-type="application/xhtml+xml"/>' for c in chapters)
+        spine = "".join(f'<itemref idref="{c}"/>' for c in (order or list(chapters)))
+        z.writestr("OEBPS/content.opf",
+                   '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0">'
+                   f'<manifest>{items}</manifest><spine>{spine}</spine></package>')
+        for c, body in chapters.items():
+            z.writestr(f"OEBPS/text/{c}.xhtml",
+                       f'<html xmlns="http://www.w3.org/1999/xhtml"><head><title>T</title>'
+                       f'<style>p {{}}</style></head><body>{body}</body></html>')
+
+
+def test_read_file_reads_an_epub_source_in_its_spines_order(tmp_path):
+    _stem_files(tmp_path, roles=("document",))
+    _epub(tmp_path / "2026" / "2026-06-29-the-eleatic-critique.source.epub",
+          {"one": "<h1>Capítulo 1</h1><p>Las  hormigas&nbsp;trabajan.</p>", "two": "<p>Segundo<br/>capítulo.</p>"},
+          order=["two", "one"])
+    text = read_file(tmp_path, "2026/2026-06-29-the-eleatic-critique.source.epub")
+    head, body = text.split("\n\n", 1)
+    assert "the source: third-party material" in head
+    assert "2026-06-29-the-eleatic-critique.document.md (document)" in head
+    assert body == "Segundo\n\ncapítulo.\n\nCapítulo 1\n\nLas hormigas trabajan."
+    assert "<style>" not in text and "T\n" not in text
+
+
+def test_read_file_an_epub_that_is_not_one(tmp_path):
+    _stem_files(tmp_path, roles=("document",))
+    (tmp_path / "2026" / "2026-06-29-the-eleatic-critique.source.epub").write_bytes(b"PK\x03\x04 broken")
+    assert read_file(tmp_path, "2026-06-29-the-eleatic-critique.source.epub").endswith("an EPUB that could not be read.")

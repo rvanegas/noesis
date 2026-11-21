@@ -1039,6 +1039,15 @@ def read_file(library_path: Path, query: str, exclude: str | None = None,
     if companions:
         head.append("Its companions, each read by its name: "
                     + ", ".join(f"{p.name} ({role_of(p.name) or 'file'})" for p in companions) + ".")
+    if found.suffix.lower() == ".epub":
+        from noesis.epub import NotAnEpub, epub_text
+        try:
+            text = epub_text(found)
+        except NotAnEpub:
+            return "\n".join([*head, "It is an EPUB that could not be read."])
+        if not text:
+            return "\n".join([*head, "It is an EPUB with no text in it."])
+        return "\n".join(head) + "\n\n" + text
     try:
         text = found.read_text(encoding="utf-8")
     except UnicodeDecodeError:
