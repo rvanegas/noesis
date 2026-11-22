@@ -32,22 +32,63 @@ def data(tmp_path, monkeypatch):
 
 
 ANN = {"Authorization": "Bearer ann-token"}
+
+
+def _free(monkeypatch, user):
+    """An operator's user on the free plan, which nothing in production can be."""
+    plan_of = accounts.plan_of
+    monkeypatch.setattr(accounts, "plan_of", lambda who: accounts.FREE if who == user else plan_of(who))
 ROD = {"Authorization": "Bearer rod-token"}
 
 
-def test_operators_users_are_unlimited_until_given_a_plan(data):
+def test_the_operators_users_and_those_auth_marks_are_unlimited(data, monkeypatch):
     # rod holds a minted token: the operator's.
     assert accounts.plan_of("rod") == accounts.UNLIMITED and accounts.account("rod") is None
-    accounts.set_plan("rod", accounts.FREE)
-    assert accounts.is_free("rod")
-    # Anybody else signed in at auth is free until given a plan.
+    # Anybody else signed in at auth is free unless auth marks them unlimited.
     assert accounts.is_free("newcomer") and accounts.account("newcomer") is None
-    accounts.set_plan("newcomer", accounts.UNLIMITED)
-    assert not accounts.is_free("newcomer")
+    monkeypatch.setattr(accounts, "unlimited_users", lambda: frozenset({"newcomer"}))
+    assert not accounts.is_free("newcomer") and not accounts.is_free("NewComer")
     # A group library's own meter is its application's to divide, never capped here.
     assert accounts.plan_of("thefloor/lunch") == accounts.UNLIMITED
     with pytest.raises(ValueError):
-        accounts.set_plan("Not A Name", accounts.FREE)
+        accounts.raise_allowance("Not A Name", 1)
+
+
+def test_auth_says_who_is_unlimited_and_its_last_answer_stands_when_it_cannot(data, monkeypatch):
+    import json
+    from noesis import bearer
+    answers = [{"users": ["Ann", "bob"]}]
+    asked = []
+
+    def urlopen(request, timeout):
+        asked.append((request.full_url, request.headers["Authorization"]))
+        if not answers:
+            raise OSError("auth is down")
+        return io.BytesIO(json.dumps(answers.pop()).encode())
+    monkeypatch.setattr(bearer, "own_token", lambda scope: "own")
+    monkeypatch.setattr("urllib.request.urlopen", urlopen)
+    monkeypatch.setattr(accounts, "_unlimited", None)
+    assert accounts.unlimited_users() == {"ann", "bob"}
+    assert accounts.unlimited_users() == {"ann", "bob"} and len(asked) == 1     # kept a minute
+    assert asked[0] == (f"{bearer.auth_url()}/unlimited", "Bearer own")
+    assert not accounts.is_free("ann")
+    monkeypatch.setattr(accounts, "_unlimited", None)                          # the minute passes; auth is down
+    assert accounts.unlimited_users() == {"ann", "bob"} and len(asked) == 2    # its last answer, from disk
+    (data / "unlimited.json").unlink()
+    assert accounts.unlimited_users() == frozenset()                           # never answered: nobody
+
+
+def test_the_plan_each_row_kept_goes(data):
+    import sqlite3
+    db = sqlite3.connect(data / "accounts.db")
+    db.executescript("""
+        CREATE TABLE accounts (user TEXT PRIMARY KEY, plan TEXT NOT NULL DEFAULT 'free',
+                               created_at REAL NOT NULL, extra_usd REAL NOT NULL DEFAULT 0);
+        INSERT INTO accounts VALUES ('liliana', 'unlimited', 1.0, 0), ('ann', 'free', 2.0, 1.5);
+    """)
+    db.close()
+    assert accounts.accounts() == [accounts.Account("liliana", 1.0, 0.0), accounts.Account("ann", 2.0, 1.5)]
+    assert accounts.is_free("liliana")                                         # auth's mark, not the row's
 
 
 def test_a_free_account_spends_its_allowance_and_then_stops(data, monkeypatch):
@@ -90,7 +131,7 @@ def test_cost_at_list_price():
 
 def test_a_free_account_stores_within_its_limits(data, monkeypatch):
     monkeypatch.setenv("NOESIS_FREE_STORAGE_MB", "0.01")  # 10 KiB
-    accounts.set_plan("ann", accounts.FREE)
+    _free(monkeypatch, "ann")  # a minted token's user, made free for the test
     client = TestClient(server.app)
     put = lambda path, body: client.put(f"/libraries/ann/notes/files/{path}", headers={**ANN, "If-None-Match": "*"},
                                         content=body)
@@ -114,7 +155,7 @@ def test_a_free_account_stores_within_its_limits(data, monkeypatch):
 def test_a_free_accounts_spending_run_needs_allowance(data, monkeypatch):
     # The run's subprocess imports this checkout's noesis.
     monkeypatch.setenv("PYTHONPATH", str(REPO))
-    accounts.set_plan("ann", accounts.FREE)
+    _free(monkeypatch, "ann")  # a minted token's user, made free for the test
     accounts.charge("ann", 5)
     client = TestClient(server.app)
     refused = client.post("/libraries/ann/notes/run", headers=ANN, json={"argv": ["index"]})
@@ -128,18 +169,22 @@ def test_a_free_accounts_spending_run_needs_allowance(data, monkeypatch):
     assert me["plan"] == "free" and me["spent_usd"] == 5 and me["storage_bytes"] == 50 * 1024 * 1024
 
 
-def test_the_accounts_script(data):
+def test_the_accounts_script(data, monkeypatch):
     spec = importlib.util.spec_from_file_location("accounts_script", REPO / "scripts" / "accounts.py")
     script = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(script)
+    monkeypatch.setattr(accounts, "unlimited_users", lambda: frozenset({"yann"}))
     out = io.StringIO()
     with redirect_stdout(out):
-        script.main(["plan", "zedd", "free"])
+        script.main(["raise", "zedd", "0"])
+        script.main(["raise", "yann", "0"])
         script.main(["list"])
-    listed = out.getvalue()
-    assert "rod" in listed and "unlimited" in listed and "zedd" in listed
+    listed = {line.split()[0]: line.split()[1] for line in out.getvalue().splitlines() if not line.startswith("✓")}
+    assert listed == {"ann": "unlimited", "rod": "unlimited", "yann": "unlimited", "zedd": "free"}
     with pytest.raises(SystemExit):
-        script.main(["plan", "Not A Name", "free"])
+        script.main(["plan", "zedd", "unlimited"])  # auth's now
+    with pytest.raises(SystemExit):
+        script.main(["raise", "Not A Name", "1"])
     with pytest.raises(SystemExit):
         script.main(["link", "rod@example.com", "rod"])  # auth's now
 
@@ -183,7 +228,7 @@ def test_the_operator_raises_one_accounts_allowance(data, monkeypatch):
     with pytest.raises(ValueError, match="only \\$3.00"):
         accounts.raise_allowance("zedd", -4)
     client = TestClient(server.app)
-    accounts.set_plan("ann", accounts.FREE)
+    _free(monkeypatch, "ann")  # a minted token's user, made free for the test
     accounts.raise_allowance("ann", 2.5)
     assert client.get("/me", headers=ANN).json()["allowance_usd"] == pytest.approx(3.5)
 
@@ -207,7 +252,7 @@ def test_the_accounts_script_raises(data):
     assert "zedd" in listed and "+$5.00 = $6.00" in listed and "yann" not in listed
 
 
-def test_the_libraries_report(data):
+def test_the_libraries_report(data, monkeypatch):
     import json
     spec = importlib.util.spec_from_file_location("libraries_script", REPO / "scripts" / "libraries.py")
     script = importlib.util.module_from_spec(spec)
@@ -220,7 +265,7 @@ def test_the_libraries_report(data):
     (notes / ".noesis" / "manifest.json").write_text(json.dumps({"entries": [
         {"rel_path": "2026/2026-10-30-a.document.md", "title": "A", "word_count": 1,
          "summary": "", "terms": [], "refs": [], "related": []}]}))
-    accounts.set_plan("ann", accounts.FREE)
+    _free(monkeypatch, "ann")  # a minted token's user, made free for the test
     out = io.StringIO()
     with redirect_stdout(out):
         script.main([])
@@ -243,7 +288,7 @@ def test_the_operator_renames_a_user_everywhere_noesis_keeps_the_name(data):
     script = _script("rename_user")
     old = "freeyourtime"
     (data / "libraries" / old / "notes").mkdir(parents=True)
-    accounts.set_plan(old, accounts.FREE)
+    accounts.raise_allowance(old, 0)
     accounts.charge(old, 0.25)
     out = io.StringIO()
     with redirect_stdout(out):
@@ -254,7 +299,7 @@ def test_the_operator_renames_a_user_everywhere_noesis_keeps_the_name(data):
             script.main(bad)
     with redirect_stdout(io.StringIO()):
         script.main([old, "rochelle", "--apply"])
-    assert accounts.account(old) is None and accounts.account("rochelle").plan == accounts.FREE
+    assert accounts.account(old) is None and accounts.account("rochelle") is not None
     assert accounts.spent("rochelle") == 0.25
     assert (data / "libraries" / "rochelle" / "notes").is_dir() and not (data / "libraries" / old).exists()
 

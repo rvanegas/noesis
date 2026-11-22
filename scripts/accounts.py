@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
-"""What people may spend and store at noesis: list them, change a plan or allowance, restore the deleted.
+"""What people may spend and store at noesis: list them, change an allowance, restore the deleted.
 
 An operator task (SERVER.md, Phase 6), run in the container. Who a person is,
 their address, and disabling them, are auth's (its scripts/accounts.py).
 
     docker compose run --rm noesis python scripts/accounts.py list
-    docker compose run --rm noesis python scripts/accounts.py plan ann unlimited
     docker compose run --rm noesis python scripts/accounts.py raise ann 5
     docker compose run --rm noesis python scripts/accounts.py raised
     docker compose run --rm noesis python scripts/accounts.py deleted
     docker compose run --rm noesis python scripts/accounts.py restore ann
 
-`list` is every user with libraries here or a plan of their own, with this
-month's spend. `raise` adds dollars to a free account's monthly allowance,
+`list` is every user with libraries here or a raise, with their plan and this
+month's spend. Who is unlimited is auth's mark, set there by its operator
+(dianoia-auth's `scripts/accounts.py unlimited`), and The Floor reads the same
+one; noesis keeps no plan of its own since 2026-11-22. `raise` adds dollars to a free account's monthly allowance,
 kept every month until changed; a negative amount takes back, never below
 the default; `raised` lists the accounts whose allowance is not the default
 (ts cap, from the Mac). `deleted` lists the people who deleted their account at auth, each with the
@@ -32,9 +33,6 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("list", help="every account, with this month's spend")
-    plan = sub.add_parser("plan", help="change an account's plan")
-    plan.add_argument("user")
-    plan.add_argument("plan", choices=accounts.PLANS)
     more = sub.add_parser("raise", help="add dollars to an account's monthly allowance")
     more.add_argument("user")
     more.add_argument("usd", type=float, help="dollars a month; negative takes back")
@@ -62,7 +60,7 @@ def main(argv: list[str] | None = None) -> int:
         if not raised:
             print("no account's allowance is raised")
         for found in raised:
-            plan = "" if found.plan == accounts.FREE else f"  ({found.plan}: not limited)"
+            plan = "" if accounts.is_free(found.user) else "  (unlimited: not limited)"
             print(f"{found.user:<24} +${found.extra_usd:.2f} = "
                   f"${accounts.allowance(found.user):.2f}, ${accounts.spent(found.user):.2f} spent{plan}")
         return 0
@@ -81,15 +79,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"✓ {args.user} restored")
         return 0
     try:
-        if args.command == "plan":
-            accounts.set_plan(args.user, args.plan)
-        elif args.command == "raise":
-            mine = accounts.raise_allowance(args.user, args.usd)
-            print(f"✓ {args.user}: ${mine:.2f} a month")
-            return 0
+        mine = accounts.raise_allowance(args.user, args.usd)
     except (ValueError, accounts.sqlite3.IntegrityError) as exc:
         raise SystemExit(f"✗ {exc}") from None
-    print(f"✓ {args.command} {args.user}")
+    print(f"✓ {args.user}: ${mine:.2f} a month")
     return 0
 
 

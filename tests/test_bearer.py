@@ -104,9 +104,9 @@ def test_sign_ins_data_is_left_to_auth(data):
     with redirect_stdout(out):
         script.main(["--apply"])
     assert "keeper: thefloor at https://floor.example" in out.getvalue()
-    assert accounts.account("ann") == accounts.Account("ann", "unlimited", 1.0, 2.5)
+    assert accounts.account("ann") == accounts.Account("ann", 1.0, 2.5)
     assert sqlite3.connect(data / "accounts.db").execute("SELECT usd FROM spend WHERE user = 'ann'").fetchone() == (0.5,)
-    accounts.set_plan("newcomer", accounts.FREE)  # the new table takes a row without an address
+    accounts.raise_allowance("newcomer", 0)  # the new table takes a row without an address
     tables = {r[0] for r in sqlite3.connect(data / "accounts.db").execute("SELECT name FROM sqlite_master")}
     assert not tables & {"reservations", "sends"}
     assert members.keeper("thefloor").url == "https://floor.example"

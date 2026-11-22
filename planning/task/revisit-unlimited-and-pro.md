@@ -1,33 +1,20 @@
 # Revisit unlimited and Pro
 
-Noted 2026-11-10. Four designations say what somebody may do, in two
-projects, and nothing joins them: noesis's plan, `free` or `unlimited`
-(`accounts.plan_of`), set by hand with `scripts/accounts.py plan`; and The
-Floor's Pro, bought in the app or marked by hand (`transcripts_unlimited`,
-Pro too since 2026-11-10, The Floor's `isPro`). noesis learns of Pro only as
-a channel member's `pro`, which says who pays for a channel's library
-(`members.py`), never as a person's own standing.
+Noted 2026-11-10; narrowed 2026-11-22. **Unlimited is settled**: it is one
+mark, kept at auth by user name and read by noesis and The Floor alike, so
+unlimited in one is unlimited in both (dianoia-auth's
+`planning/decision/2026-11-22-unlimited-is-one-mark-kept-here.md`). noesis's
+own plan column and The Floor's `transcripts_unlimited` went with it. A
+channel whose member is unlimited is funded too, since The Floor counts the
+mark as Pro when it answers who pays (`Group.funded`).
 
-What it cost on 2026-11-10: Liliana, made `unlimited` here by hand, was
-refused Extract argument in her channel's library, since only The Floor's
-`pro` counted there; `server._paying` now takes a plan set on the account as
-paying too. Asked to make her "Pro" meant noesis's `unlimited`, and setting
-The Floor's mark first was the wrong thing done.
-
-Decided then, not built: **Pro at The Floor, bought or marked, should make
-somebody `unlimited` at noesis.** The likely shape is noesis asking, as it
-asks who belongs (`members.py`): a route of The Floor's, say `GET
-/noesis/users/<user>` answering `pro`, kept a minute, failing to the plan
-kept here; recorded among the calls between services. Open:
-
-- Whether the reverse holds: does `unlimited` here make anybody Pro at The
-  Floor, or is noesis's plan only noesis's?
-- Whether one word should name both, and which project owns it, rather than
-  each keeping its own and copying.
-- What paying means in a channel's library once the two are joined: funding
-  (`Group.funded`) still counts only The Floor's `pro`, so a channel whose
-  only member is `unlimited` here may act and not spend.
-- `plan_of` making every holder of a minted token `unlimited`, which is why
-  `_paying` reads the account's own row instead.
+What is left is **Pro bought at The Floor**, the App Store subscription.
+Decided 2026-11-10, not built: it should make somebody `unlimited` at noesis.
+noesis hears of it today only as a channel member's `pro`, which says who pays
+for a channel's library (`members.py`), never as a person's own standing. The
+likely shape is noesis asking, as it asks who belongs: a route of The Floor's,
+say `GET /noesis/users/<user>` answering `pro`, kept a minute; recorded among
+the calls between services. Open: whether a subscription belongs at auth with
+the mark instead, so that every application reads one answer.
 
 The Floor's side is its `planning/task/revisit-unlimited-and-pro.md`.

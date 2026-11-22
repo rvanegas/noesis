@@ -370,7 +370,7 @@ def test_a_copy_goes_only_into_the_copier_s_own_library(client, filed, data):
                        json={"file": "x.chat.md", "to": "notes"}).status_code == 403
 
 
-def test_a_member_who_does_not_pay_reads_and_nothing_more(client, filed, data, floor):
+def test_a_member_who_does_not_pay_reads_and_nothing_more(client, filed, data, floor, monkeypatch):
     groups, _ = floor
     groups[LIB]["members"][0]["pro"] = False
     members._cache.clear()
@@ -386,10 +386,10 @@ def test_a_member_who_does_not_pay_reads_and_nothing_more(client, filed, data, f
     assert client.post(f"{base}/run", headers=ANN, json={"argv": ["check", "lunch"]}).status_code == 403
     assert client.post(f"{base}/import", headers=ANN, params={"filename": "x.md"}, content=b"x").status_code == 403
     # Unlimited here, she does more than read, whatever the application says.
-    accounts.set_plan("ann", accounts.UNLIMITED)
+    monkeypatch.setattr(accounts, "unlimited_users", lambda: frozenset({"ann"}))
     assert client.put(f"{base}/files/2026/y.document.md", headers={**ANN, "If-None-Match": "*"},
                       content=b"x").status_code == 200
-    accounts.set_plan("ann", accounts.FREE)
+    monkeypatch.setattr(accounts, "unlimited_users", frozenset)
     # Bob pays: more than reading is his.
     assert client.put(f"{base}/files/2026/x.document.md", headers={**BOB, "If-None-Match": "*"},
                       content=b"x").status_code == 200

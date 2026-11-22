@@ -4,10 +4,13 @@ Who a person is is auth's (`auth.rvanegas.co`, since 2026-11-08): they sign
 in there, and noesis knows them by the user name in its tokens (bearer.py).
 What they may do here is noesis's, kept per user name:
 
-- **A plan.** Anybody signed in is on the free plan until the operator says
-  otherwise (scripts/accounts.py); a user with a minted users.toml token (the
-  Mac's CLI, the nightly service) and an application keeping libraries are
-  the operator's, unlimited. The meter runs for everyone.
+- **A plan**, `free` or `unlimited`, which noesis no longer keeps: a person
+  is unlimited when auth says so (since 2026-11-22, auth's
+  `planning/decision/2026-11-22-unlimited-is-one-mark-kept-here.md`), the
+  one mark The Floor reads too, set there by the operator; a user with a
+  minted users.toml token (the Mac's CLI, the nightly service) and an
+  application keeping libraries are the operator's, unlimited; anybody else
+  is free. The meter runs for everyone.
 - **Model use** is metered in dollars, per user and calendar month (UTC):
   every Anthropic call by its tokens at list price, every dianoia call at a
   flat rate. A free account has a small monthly allowance, and all free
@@ -26,11 +29,12 @@ when in `deleted`).
 Kept in $NOESIS_DATA_DIR/accounts.db (SQLite, mode 600), which `noesis` itself
 writes to from a run: the server names the library's owner in NOESIS_ACCOUNT,
 and the model clients charge that user. A user has a row once the operator
-gives them a plan or a raise; without one, they are free (or the operator's).
+gives them a raise.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import time
@@ -42,7 +46,6 @@ from noesis import service
 
 FREE = "free"
 UNLIMITED = "unlimited"
-PLANS = (FREE, UNLIMITED)
 
 # What a free account may upload: the types noesis reads (assets.py). What
 # /import takes is cmd_import.IMPORTABLE.
@@ -55,9 +58,8 @@ class AllowanceExhausted(RuntimeError):
 
 @dataclass(frozen=True)
 class Account:
-    """A user the operator has given a plan or a raise."""
+    """A user the operator has given a raise."""
     user: str
-    plan: str
     created_at: float
     extra_usd: float = 0.0
 
@@ -92,7 +94,6 @@ def limits() -> Limits:
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS accounts (
     user TEXT PRIMARY KEY,
-    plan TEXT NOT NULL DEFAULT 'free',
     created_at REAL NOT NULL,
     extra_usd REAL NOT NULL DEFAULT 0
 );
@@ -121,12 +122,15 @@ def connect():
     try:
         db.execute("PRAGMA journal_mode=WAL")
         db.executescript(_SCHEMA)
+        # The plan each row kept until 2026-11-22, when auth's mark replaced it.
+        if any(row[1] == "plan" for row in db.execute("PRAGMA table_info(accounts)")):
+            db.execute("ALTER TABLE accounts DROP COLUMN plan")
         yield db
     finally:
         db.close()
 
 
-_COLUMNS = "user, plan, created_at, extra_usd"
+_COLUMNS = "user, created_at, extra_usd"
 
 
 def account(user: str) -> Account | None:
@@ -141,18 +145,10 @@ def accounts() -> list[Account]:
 
 
 def _row(db: sqlite3.Connection, user: str) -> None:
-    """A user's row, made on the free plan if it had none."""
+    """A user's row, made if it had none."""
     if not service.NAME_RE.match(user):
         raise ValueError(f"not a user name: {user!r}")
-    db.execute("INSERT OR IGNORE INTO accounts (user, plan, created_at) VALUES (?, ?, ?)", (user, FREE, time.time()))
-
-
-def set_plan(user: str, plan: str) -> None:
-    if plan not in PLANS:
-        raise ValueError(f"a plan is one of {', '.join(PLANS)}")
-    with connect() as db:
-        _row(db, user)
-        db.execute("UPDATE accounts SET plan = ? WHERE user = ?", (plan, user))
+    db.execute("INSERT OR IGNORE INTO accounts (user, created_at) VALUES (?, ?)", (user, time.time()))
 
 
 def raise_allowance(user: str, usd: float) -> float:
@@ -179,16 +175,56 @@ def allowance(user: str) -> float:
     return limits().allowance_usd + (found.extra_usd if found else 0.0)
 
 
+# How long auth's answer is believed: a mark set or taken there reaches noesis
+# within this, and a session's checks ask once.
+UNLIMITED_TTL = 60
+
+_unlimited: tuple[float, frozenset[str]] | None = None
+
+
+def _unlimited_path() -> Path:
+    return service.data_dir() / "unlimited.json"
+
+
+def unlimited_users() -> frozenset[str]:
+    """The people auth says are unlimited (`GET /unlimited`, noesis's own token),
+    kept a minute. When auth cannot be asked, its last answer, kept on disk so a
+    run's process and a restart have it too; none ever, nobody."""
+    global _unlimited
+    now = time.monotonic()
+    if _unlimited is not None and _unlimited[0] > now:
+        return _unlimited[1]
+    import urllib.request
+    from noesis import bearer
+    try:
+        token = bearer.own_token("thefloor:members")
+        request = urllib.request.Request(f"{bearer.auth_url()}/unlimited",
+                                         headers={"Authorization": f"Bearer {token}"})
+        with urllib.request.urlopen(request, timeout=10) as response:
+            users = frozenset(str(u).lower() for u in json.loads(response.read().decode())["users"])
+    except (OSError, ValueError, KeyError, TypeError):
+        try:
+            return frozenset(json.loads(_unlimited_path().read_text(encoding="utf-8")))
+        except (OSError, ValueError, TypeError):
+            return frozenset()
+    _unlimited = (now + UNLIMITED_TTL, users)
+    path = _unlimited_path()
+    try:
+        tmp = path.with_name(".unlimited.json.tmp")
+        tmp.write_text(json.dumps(sorted(users)), encoding="utf-8")
+        tmp.replace(path)
+    except OSError:
+        pass
+    return users
+
+
 def plan_of(user: str) -> str:
-    """A user's plan: its row's; else unlimited for the operator's (a minted token, an application
-    keeping libraries, a group library's own meter, `<owner>/<library>`); else free."""
-    found = account(user)
-    if found is not None:
-        return found.plan
+    """A user's plan: unlimited where auth marks them, or for the operator's (a minted token, an
+    application keeping libraries, a group library's own meter, `<owner>/<library>`); else free."""
     from noesis import members
     if "/" in user or user in service.token_users() or members.keeper(user) is not None:
         return UNLIMITED
-    return FREE
+    return UNLIMITED if user.lower() in unlimited_users() else FREE
 
 
 def is_free(user: str) -> bool:
