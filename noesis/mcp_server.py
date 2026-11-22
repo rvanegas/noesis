@@ -312,9 +312,11 @@ def guide(ctx: Context) -> str:
 
 @_tool
 def list_documents(ctx: Context, query: str = "", library: str | None = None) -> str:
-    """List the library's chats and documents: name and title, newest first. With a
-    query, only those whose title, summary or index terms match it, best first.
+    """List the library's chats and documents, and its books and papers (an EPUB or PDF
+    source): name and title, newest first. With a query, only those whose title,
+    summary or index terms match it, best first; a book or paper by its name alone.
     One marked "not yet indexed" was added or changed moments ago: lookup_term does not find it yet, but read_file reads it.
+    One marked "read in parts" is a book or paper: read_file gives its outline, then a part by its number.
     Files are named <date>-<slug>.<role>.<ext> (role: chat, document, source, argument, analysis or review; e.g. 2026-06-29-the-eleatic-critique.chat.md), kept in a folder per year, and a name is unique across the library. Call guide first if you have not."""
     roots = _roots(library, ctx, many=True)
     lines = []
@@ -322,15 +324,19 @@ def list_documents(ctx: Context, query: str = "", library: str | None = None) ->
     for lib_id, root in roots:
         entries = lib.load_entries(root)
         waiting = lib.unindexed_titles(root)
-        empty = empty and not entries and not waiting
+        books = lib.books_and_papers(root)
+        empty = empty and not entries and not waiting and not books
         if query:
             entries = lib.search_library(entries, query)
             tokens = set(re.findall(r"\w+", query.lower()))
             waiting = {rel: title for rel, title in waiting.items()
                        if any(t in f"{rel} {title}".lower() for t in tokens)}
+            books = {rel: title for rel, title in books.items()
+                     if any(t in f"{rel} {title}".lower() for t in tokens)}
         where = f" [{lib_id}]" if len(roots) > 1 else ""
         found = [(Path(e.rel_path).name, e.title, "") for e in entries]
         found += [(Path(rel).name, title, " (not yet indexed)") for rel, title in waiting.items()]
+        found += [(Path(rel).name, title, " (read in parts)") for rel, title in books.items()]
         if not query:
             found.sort(key=lambda f: f[0], reverse=True)
         lines += [f"{name} — {title}{note}{where}" for name, title, note in found[:200]]

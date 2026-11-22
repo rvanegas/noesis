@@ -326,6 +326,19 @@ def test_list_documents_names_what_is_not_yet_indexed(library):
     assert "Old Roman (not yet indexed)" in text(call(url, "ann", "list_documents", {"query": "roman"}))
 
 
+def test_list_documents_names_books_and_papers(library):
+    root, url = library
+    (root / "2026" / "2026-11-01-tiempo-de-hormigas.source.epub").write_bytes(b"PK")
+    (root / "2026" / "2026-11-02-a-paper.source.pdf").write_bytes(b"%PDF-")
+    listed = text(call(url, "ann", "list_documents", {}))
+    assert "2026-11-01-tiempo-de-hormigas.source.epub — Tiempo de hormigas (read in parts)" in listed
+    assert "2026-11-02-a-paper.source.pdf — A paper (read in parts)" in listed
+    assert listed.index("a-paper") < listed.index("tiempo") < listed.index("essay")   # newest first
+    assert "parfit2011" not in listed                       # a source read whole is not listed
+    assert "hormigas" in text(call(url, "ann", "list_documents", {"query": "hormigas"}))
+    assert "hormigas" not in text(call(url, "ann", "list_documents", {"query": "prose"}))
+
+
 def test_list_documents_says_a_library_is_empty(library):
     _, url = library
     assert text(call(url, "bob", "list_documents", {})) == "This library has no chats or documents yet."

@@ -845,6 +845,22 @@ def unindexed_titles(library_path: Path) -> dict[str, str]:
     }
 
 
+def books_and_papers(library_path: Path) -> dict[str, str]:
+    """{rel_path: title} of the sources read a part at a time, an EPUB or PDF
+    each, titled by their slug since nothing indexes them: listed so a reader
+    can find one by name, as it cannot a source read whole."""
+    found = {}
+    for path in sorted(library_path.rglob("*")):
+        rel = path.relative_to(library_path).as_posix()
+        folders = rel.split("/")[:-1]
+        if (path.suffix.lower() not in READ_IN_PARTS or role_of(path.name) != "source"
+                or any(part.startswith(".") for part in rel.split("/")) or _UNSORTED_DIRS.intersection(folders)):
+            continue
+        slug = slug_of(path.name)
+        found[rel] = slug[:1].upper() + slug[1:].replace("-", " ") if slug else path.stem
+    return found
+
+
 def document_count(library_path: Path) -> int:
     """How many chats and documents the library holds."""
     return len(_chats_and_documents(library_path))
