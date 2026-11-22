@@ -208,21 +208,49 @@ def _pdf(path, pages):
     path.write_bytes(bytes(out))
 
 
-def test_read_file_reads_a_pdf_source_page_by_page(tmp_path):
+PDF_NAME = "2026-06-29-the-eleatic-critique.source.pdf"
+
+
+def test_read_file_lists_a_pdf_in_runs_of_pages_without_bookmarks(tmp_path, monkeypatch):
+    import noesis.pdf_text
+    monkeypatch.setattr(noesis.pdf_text, "PAGES_PER_PART", 2)
     _stem_files(tmp_path, roles=("document",))
-    _pdf(tmp_path / "2026" / "2026-06-29-the-eleatic-critique.source.pdf", ["First page", "", "Third page"])
-    head, body = read_file(tmp_path, "2026-06-29-the-eleatic-critique.source.pdf").split("\n\n", 1)
+    _pdf(tmp_path / "2026" / PDF_NAME, ["First page", "", "Third page"])
+    head, outline = read_file(tmp_path, PDF_NAME).split("\n\n", 1)
     assert "the source: third-party material" in head
-    assert body == "First page\n\nThird page"
+    assert outline.endswith("Its 2 parts:\n\n1. pages 1–2\n2. page 3")
+    assert read_file(tmp_path, PDF_NAME, part=1).endswith("Part 1 of 2: pages 1–2.\n\nFirst page")
+    assert read_file(tmp_path, PDF_NAME, part=2).endswith("\n\nThird page")
+
+
+def test_read_file_parts_a_pdf_by_its_bookmarks(tmp_path, monkeypatch):
+    import noesis.pdf_text
+    from pypdf import PdfWriter
+    monkeypatch.setattr(noesis.pdf_text, "MAX_PART_PAGES", 2)
+    path = tmp_path / "2026" / PDF_NAME
+    (tmp_path / "2026").mkdir()
+    _pdf(path, ["Cover", "One a", "One b", "One c", "Two a"])
+    writer = PdfWriter(clone_from=path)
+    writer.add_outline_item(title="Chapter One", page_number=1)
+    writer.add_outline_item(title="Chapter Two", page_number=4)
+    writer.write(path)
+    outline = read_file(tmp_path, PDF_NAME).split("parts:\n\n", 1)[1]
+    assert outline.split("\n") == [
+        "1. Front matter, page 1",
+        "2. Chapter One (1 of 2), pages 2–3",
+        "3. Chapter One (2 of 2), page 4",
+        "4. Chapter Two, page 5",
+    ]
+    assert read_file(tmp_path, PDF_NAME, part=2).endswith("\n\nOne a\n\nOne b")
 
 
 def test_read_file_a_pdf_without_text_or_broken(tmp_path):
     _stem_files(tmp_path, roles=("document",))
     folder = tmp_path / "2026"
-    _pdf(folder / "2026-06-29-the-eleatic-critique.source.pdf", [""])
-    assert "no text layer" in read_file(tmp_path, "2026-06-29-the-eleatic-critique.source.pdf")
-    (folder / "2026-06-29-the-eleatic-critique.source.pdf").write_bytes(b"%PDF\xff\xfe")
-    assert read_file(tmp_path, "2026-06-29-the-eleatic-critique.source.pdf").endswith("a PDF that could not be read.")
+    _pdf(folder / PDF_NAME, [""])
+    assert "no text layer" in read_file(tmp_path, PDF_NAME, part=1)
+    (folder / PDF_NAME).write_bytes(b"%PDF\xff\xfe")
+    assert read_file(tmp_path, PDF_NAME).endswith("a PDF that could not be read.")
 
 
 def test_read_file_excludes_the_chat_being_replied_to(tmp_path):
@@ -375,9 +403,18 @@ def test_index_files_are_written_whole(tmp_path):
     assert [p.name for p in tmp_path.iterdir()] == ["INDEX.md"]
 
 
-def _epub(path, chapters, order=None):
-    """A minimal EPUB: chapters by id, in the spine's `order` (their own by default)."""
+EPUB_NAME = "2026-06-29-the-eleatic-critique.source.epub"
+
+
+def _epub(path, chapters, order=None, nav=None, ncx=None):
+    """A minimal EPUB: chapters by id, in the spine's `order` (their own by
+    default), with an EPUB 3 nav or an EPUB 2 ncx: (chapter id, title) pairs."""
     import zipfile
+    path.parent.mkdir(exist_ok=True)
+
+    def href(c):  # a chapter id, with an anchor after a '#'
+        file, _, anchor = c.partition("#")
+        return f"text/{file}.xhtml" + (f"#{anchor}" if anchor else "")
     with zipfile.ZipFile(path, "w") as z:
         z.writestr("mimetype", "application/epub+zip")
         z.writestr("META-INF/container.xml",
@@ -387,29 +424,92 @@ def _epub(path, chapters, order=None):
                    '</rootfiles></container>')
         items = "".join(f'<item id="{c}" href="text/{c}.xhtml" media-type="application/xhtml+xml"/>' for c in chapters)
         spine = "".join(f'<itemref idref="{c}"/>' for c in (order or list(chapters)))
+        if nav:
+            items += '<item id="nav" href="nav.xhtml" properties="nav" media-type="application/xhtml+xml"/>'
+            spine = '<itemref idref="nav"/>' + spine
+            links = "".join(f'<li><a href="{href(c)}">{t}</a></li>' for c, t in nav)
+            z.writestr("OEBPS/nav.xhtml",
+                       '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body>'
+                       f'<nav epub:type="toc"><ol>{links}</ol></nav></body></html>')
+        if ncx:
+            items += '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>'
+            points = "".join(f'<navPoint id="p{i}"><navLabel><text>{t}</text></navLabel>'
+                             f'<content src="{href(c)}"/></navPoint>' for i, (c, t) in enumerate(ncx))
+            z.writestr("OEBPS/toc.ncx",
+                       f'<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/"><navMap>{points}</navMap></ncx>')
         z.writestr("OEBPS/content.opf",
                    '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0">'
-                   f'<manifest>{items}</manifest><spine>{spine}</spine></package>')
+                   f'<manifest>{items}</manifest><spine{" toc=\"ncx\"" if ncx else ""}>{spine}</spine></package>')
         for c, body in chapters.items():
             z.writestr(f"OEBPS/text/{c}.xhtml",
                        f'<html xmlns="http://www.w3.org/1999/xhtml"><head><title>T</title>'
                        f'<style>p {{}}</style></head><body>{body}</body></html>')
 
 
-def test_read_file_reads_an_epub_source_in_its_spines_order(tmp_path):
+def test_read_file_lists_an_epub_without_contents_a_file_a_part_in_its_spines_order(tmp_path):
     _stem_files(tmp_path, roles=("document",))
-    _epub(tmp_path / "2026" / "2026-06-29-the-eleatic-critique.source.epub",
+    _epub(tmp_path / "2026" / EPUB_NAME,
           {"one": "<h1>Capítulo 1</h1><p>Las  hormigas&nbsp;trabajan.</p>", "two": "<p>Segundo<br/>capítulo.</p>"},
           order=["two", "one"])
-    text = read_file(tmp_path, "2026/2026-06-29-the-eleatic-critique.source.epub")
-    head, body = text.split("\n\n", 1)
+    text = read_file(tmp_path, "2026/" + EPUB_NAME)
+    head, outline = text.split("\n\n", 1)
     assert "the source: third-party material" in head
     assert "2026-06-29-the-eleatic-critique.document.md (document)" in head
-    assert body == "Segundo\n\ncapítulo.\n\nCapítulo 1\n\nLas hormigas trabajan."
-    assert "<style>" not in text and "T\n" not in text
+    assert outline.endswith("Its 2 parts:\n\n1. Segundo — 2 words\n2. Capítulo 1 — 5 words")
+    part = read_file(tmp_path, EPUB_NAME, part=2)
+    assert part.endswith("Part 2 of 2: Capítulo 1 — 5 words.\n\nCapítulo 1\n\nLas hormigas trabajan.")
+    assert "<style>" not in part and "T\n" not in part
+
+
+@pytest.mark.parametrize("contents", ["nav", "ncx"])
+def test_read_file_parts_an_epub_by_its_contents(tmp_path, contents):
+    toc = [("one", "Prólogo"), ("three", "Capítulo 1")]
+    _epub(tmp_path / "2026" / EPUB_NAME,
+          {"cover": "<p>Cover</p>", "one": "<p>Pro</p>", "two": "<p>logo</p>", "three": "<p>Uno</p>"},
+          **{contents: toc})
+    outline = read_file(tmp_path, EPUB_NAME).split("parts:\n\n", 1)[1]
+    assert outline.split("\n") == ["1. Cover — 1 words", "2. Prólogo — 2 words", "3. Capítulo 1 — 1 words"]
+    assert read_file(tmp_path, EPUB_NAME, part=2).endswith("\n\nPro\n\nlogo")
+
+
+def test_read_file_parts_an_epub_at_the_anchors_its_contents_point_to(tmp_path):
+    book = tmp_path / "2026" / EPUB_NAME
+    _epub(book, {"all": '<p>Title</p><p id="p4">Pro</p><p>logo</p><h2 id="p16">Uno</h2><p>uno</p><div id="p28">Dos</div>'},
+          ncx=[("all#p4", "Prólogo"), ("all#p16", "Primera parte"), ("all#p16", "Capítulo 1"), ("all#p28", "Capítulo 2")])
+    outline = read_file(tmp_path, EPUB_NAME).split("parts:\n\n", 1)[1]
+    assert outline.split("\n") == ["1. Title — 1 words", "2. Prólogo — 2 words",
+                                   "3. Primera parte: Capítulo 1 — 2 words", "4. Capítulo 2 — 1 words"]
+    assert read_file(tmp_path, EPUB_NAME, part=3).endswith("\n\nUno\n\nuno")
+
+
+def test_read_file_begins_an_epubs_part_at_its_heading_past_a_page_anchor(tmp_path):
+    # Converted from a PDF: the contents point at the page, the heading below.
+    _epub(tmp_path / "2026" / EPUB_NAME,
+          {"all": '<p>Uno</p><p>uno, por</p><p id="p33">ejemplo fin.</p><p><b>3</b></p><p>El cuento</p><p>tres</p>'},
+          ncx=[("all", "Capítulo 1"), ("all#p33", "Capítulo 3")])
+    assert read_file(tmp_path, EPUB_NAME, part=1).endswith("\n\nUno\n\nuno, por\n\nejemplo fin.")
+    assert read_file(tmp_path, EPUB_NAME, part=2).endswith("\n\n3\n\nEl cuento\n\ntres")
+
+
+def test_read_file_splits_a_long_part_between_paragraphs(tmp_path, monkeypatch):
+    monkeypatch.setattr(noesis.library, "MAX_PART_WORDS", 4)
+    _epub(tmp_path / "2026" / EPUB_NAME, {"one": "<p>a b c</p><p>d e f</p><p>g h</p>"}, nav=[("one", "Long")])
+    outline = read_file(tmp_path, EPUB_NAME).split("parts:\n\n", 1)[1]
+    assert outline.split("\n") == ["1. Long (1 of 2) — 6 words", "2. Long (2 of 2) — 2 words"]
+    assert read_file(tmp_path, EPUB_NAME, part=2).endswith("\n\ng h")
+
+
+def test_read_file_refuses_a_part_it_does_not_have(tmp_path):
+    from noesis.library import NoSuchPart
+    _stem_files(tmp_path, roles=("document",))
+    _epub(tmp_path / "2026" / EPUB_NAME, {"one": "<p>a</p>"})
+    with pytest.raises(NoSuchPart, match="has parts 1 to 1, not 2"):
+        read_file(tmp_path, EPUB_NAME, part=2)
+    with pytest.raises(NoSuchPart, match="read whole"):
+        read_file(tmp_path, "the-eleatic-critique", part=1)
 
 
 def test_read_file_an_epub_that_is_not_one(tmp_path):
     _stem_files(tmp_path, roles=("document",))
-    (tmp_path / "2026" / "2026-06-29-the-eleatic-critique.source.epub").write_bytes(b"PK\x03\x04 broken")
-    assert read_file(tmp_path, "2026-06-29-the-eleatic-critique.source.epub").endswith("an EPUB that could not be read.")
+    (tmp_path / "2026" / EPUB_NAME).write_bytes(b"PK\x03\x04 broken")
+    assert read_file(tmp_path, EPUB_NAME).endswith("an EPUB that could not be read.")

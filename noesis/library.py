@@ -1027,10 +1027,74 @@ def find_file(library_path: Path, query: str, exclude: str | None = None) -> tup
     return found, companions
 
 
+class NoSuchPart(NotFound):
+    """A part a file does not have, or a part of a file not read in parts."""
+
+
+# Files read a part at a time: a book or a paper is too long to read whole.
+READ_IN_PARTS = (".epub", ".pdf")
+
+# The most words an EPUB's part may run before it is split by paragraphs.
+MAX_PART_WORDS = 20_000
+
+
+def _split_by_words(title: str, text: str) -> list[tuple[str, str]]:
+    """A part past MAX_PART_WORDS as nearly equal pieces, broken between paragraphs."""
+    words = len(text.split())
+    if words <= MAX_PART_WORDS:
+        return [(title, text)]
+    count = -(-words // MAX_PART_WORDS)
+    pieces, current, so_far = [], [], 0
+    for paragraph in text.split("\n\n"):
+        current.append(paragraph)
+        so_far += len(paragraph.split())
+        if so_far >= words / count and len(pieces) < count - 1:
+            pieces.append("\n\n".join(current))
+            current, so_far = [], 0
+    if current:
+        pieces.append("\n\n".join(current))
+    return [(f"{title} ({n} of {len(pieces)})", piece) for n, piece in enumerate(pieces, 1)]
+
+
+def _read_in_parts(found: Path, head: list[str], part: int | None) -> str:
+    """An EPUB or PDF: its outline of numbered parts, or the one part asked for."""
+    from noesis.epub import NotAnEpub, epub_parts
+    from noesis.pdf_text import NotAPdf, pdf_pages_text, pdf_parts
+    kind = "an EPUB" if found.suffix.lower() == ".epub" else "a PDF"
+    try:
+        if kind == "an EPUB":
+            texts = [piece for title, text in epub_parts(found) for piece in _split_by_words(title, text)]
+            listed = [f"{title} — {len(text.split()):,} words" for title, text in texts]
+            text_of = lambda i: texts[i][1]
+        else:
+            ranges = pdf_parts(found)
+            listed = [(f"{title}, " if title else "")
+                      + (f"pages {pages.start + 1}–{pages[-1] + 1}" if len(pages) > 1 else f"page {pages.start + 1}")
+                      for title, pages in ranges]
+            text_of = lambda i: pdf_pages_text(found, ranges[i][1])
+        if part is None:
+            if not listed:
+                return "\n".join([*head, f"It is {kind} with no text in it."])
+            return "\n".join(head) + "\n\n" + (
+                f"It is {kind}, read a part at a time: call read_file again with its name and a part's "
+                f"number. Its {len(listed)} parts:\n\n" + "\n".join(f"{n}. {line}" for n, line in enumerate(listed, 1)))
+        if not 1 <= part <= len(listed):
+            raise NoSuchPart(f"{found.name} has parts 1 to {len(listed)}, not {part}" if listed
+                             else f"{found.name} has no parts, having no text")
+        text = text_of(part - 1)
+    except (NotAnEpub, NotAPdf):
+        return "\n".join([*head, f"It is {kind} that could not be read."])
+    where = f"Part {part} of {len(listed)}: {listed[part - 1]}."
+    if not text:
+        return "\n".join([*head, where, "It has no text layer, a scan perhaps; it can be linked from a chat, not read here."])
+    return "\n".join([*head, where]) + "\n\n" + text
+
+
 def read_file(library_path: Path, query: str, exclude: str | None = None,
-              voiced: Callable[[str, str], str] = lambda name, text: text) -> str:
+              voiced: Callable[[str, str], str] = lambda name, text: text, part: int | None = None) -> str:
     """A file as find_file finds it, after a line naming it and one naming its
-    companions; `voiced` (the MCP server's) may add to a chat's text."""
+    companions; `voiced` (the MCP server's) may add to a chat's text. An EPUB
+    or PDF is read in parts: without `part` its outline, with one that part."""
     found, companions = find_file(library_path, query, exclude)
     role = role_of(found.name)
     head = [f"{found.name}" + (f", the {role}" if role else "")
@@ -1039,24 +1103,10 @@ def read_file(library_path: Path, query: str, exclude: str | None = None,
     if companions:
         head.append("Its companions, each read by its name: "
                     + ", ".join(f"{p.name} ({role_of(p.name) or 'file'})" for p in companions) + ".")
-    if found.suffix.lower() == ".epub":
-        from noesis.epub import NotAnEpub, epub_text
-        try:
-            text = epub_text(found)
-        except NotAnEpub:
-            return "\n".join([*head, "It is an EPUB that could not be read."])
-        if not text:
-            return "\n".join([*head, "It is an EPUB with no text in it."])
-        return "\n".join(head) + "\n\n" + text
-    if found.suffix.lower() == ".pdf":
-        from noesis.pdf_text import NotAPdf, pdf_text
-        try:
-            text = pdf_text(found)
-        except NotAPdf:
-            return "\n".join([*head, "It is a PDF that could not be read."])
-        if not text:
-            return "\n".join([*head, "It is a PDF with no text layer, a scan perhaps; it can be linked from a chat, not read here."])
-        return "\n".join(head) + "\n\n" + text
+    if found.suffix.lower() in READ_IN_PARTS:
+        return _read_in_parts(found, head, part)
+    if part is not None:
+        raise NoSuchPart(f"{found.name} is read whole; only an EPUB or PDF is read in parts")
     try:
         text = found.read_text(encoding="utf-8")
     except UnicodeDecodeError:
@@ -1119,14 +1169,18 @@ LIBRARY_TOOLS = [
     },
     {
         "name": "read_file",
-        "description": "Read a file of the library in full, with the names of its companions (the files sharing its stem). A stem, slug or title reads its document, else its chat, source, argument, analysis or review, in that order.",
+        "description": "Read a file of the library in full, with the names of its companions (the files sharing its stem). A stem, slug or title reads its document, else its chat, source, argument, analysis or review, in that order. An EPUB or PDF is read a part at a time: without a part, its outline of numbered parts.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "name": {
                     "type": "string",
                     "description": "The file's name, its stem (2026-06-29-the-eleatic-critique), its slug (the-eleatic-critique) or its title; a directory before it is ignored.",
-                }
+                },
+                "part": {
+                    "type": "integer",
+                    "description": "For an EPUB or PDF only: the number of the part to read, as its outline gives it.",
+                },
             },
             "required": ["name"],
         },

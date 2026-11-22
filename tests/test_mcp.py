@@ -121,6 +121,25 @@ def test_reading(library):
     assert bad.is_error
 
 
+def test_reading_a_book_a_part_at_a_time(library):
+    import zipfile
+    root, url = library
+    with zipfile.ZipFile(root / "2026" / "2026-10-27-essay.source.epub", "w") as book:
+        book.writestr("META-INF/container.xml",
+                      '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles>'
+                      '<rootfile full-path="content.opf"/></rootfiles></container>')
+        book.writestr("content.opf", '<package xmlns="http://www.idpf.org/2007/opf"><manifest>'
+                      '<item id="a" href="a.html"/><item id="b" href="b.html"/></manifest>'
+                      '<spine><itemref idref="a"/><itemref idref="b"/></spine></package>')
+        book.writestr("a.html", "<html><body><p>First</p></body></html>")
+        book.writestr("b.html", "<html><body><p>Second</p></body></html>")
+    name = "2026-10-27-essay.source.epub"
+    assert "Its 2 parts:\n\n1. First — 1 words\n2. Second — 1 words" in text(call(url, "ann", "read_file", {"name": name}))
+    assert text(call(url, "ann", "read_file", {"name": name, "part": 2})).endswith("\n\nSecond")
+    assert call(url, "ann", "read_file", {"name": name, "part": 3}).is_error
+    assert call(url, "ann", "read_file", {"name": "Essay", "part": 1}).is_error
+
+
 def test_nothing_writes(library):
     # claude.ai edits with its own documents, and a conversation reaches the
     # library by its export and noesis import: edit_file is noesis reply's alone,

@@ -223,8 +223,10 @@ def _reply_anthropic(
                 return result
             if tool_name == "read_file":
                 name = str(tool_input.get("name", ""))
+                part = tool_input.get("part")
                 try:
-                    result = read_file(lib, name, exclude=exclude)
+                    result = read_file(lib, name, exclude=exclude,
+                                       part=part if isinstance(part, int) and not isinstance(part, bool) else None)
                 except NotFound as exc:
                     return f"Error: {exc}."
                 status(f"read_file: {name}")

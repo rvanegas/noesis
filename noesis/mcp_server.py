@@ -57,7 +57,9 @@ INSTRUCTIONS = "\n\n".join([
     "analysis, review; a name is unique across the library, and so is a slug. Use "
     "list_documents to find names and read_file to read one. Nothing in the library is written from here.",
     "Read a document in full if you read it at all: all of what read_file returns, never "
-    "a part of it, and never a summary or search result in its place.",
+    "a part of it, and never a summary or search result in its place. A book or paper, an "
+    "EPUB or PDF, is the exception: read_file gives its outline, and you read the parts "
+    "that bear on the question, each by its number.",
     lib.LIBRARY_TOOLS_PROMPT,
     "A chat's ## headings name its speakers. A chat with more speakers than Prompt and "
     "a model is read after a 'Voices:' line saying which headings are the user; any "
@@ -351,7 +353,7 @@ def lookup_term(ctx: Context, term: str, library: str | None = None) -> str:
 
 
 @_tool
-def read_file(ctx: Context, name: str, library: str | None = None) -> str:
+def read_file(ctx: Context, name: str, library: str | None = None, part: int | None = None) -> str:
     """Read any file of the library in full: by its name (e.g.
     2026-06-29-the-eleatic-critique.chat.md), its stem
     (2026-06-29-the-eleatic-critique), its slug (the-eleatic-critique) or its
@@ -359,13 +361,16 @@ def read_file(ctx: Context, name: str, library: str | None = None) -> str:
     document, else its chat, source, argument, analysis or review, in that
     order; the result names the companions, the other files of its stem, each
     read by its name. A source is third-party material, not the user's
-    writing. An analysis or review is written by noesis. A chat of several
+    writing. An EPUB or PDF, a book or a paper, is read a part at a time:
+    without `part` the result is its outline, its parts numbered with their
+    titles and sizes; read the ones the question needs by their numbers. An
+    analysis or review is written by noesis. A chat of several
     people comes after a 'Voices:' line saying which headings are the user.
     Cite a chat or document only after reading it, under a '## Related'
     section, one per line as '| *Exact Title*', even when the user prefers
     prose: their preferences govern the reply's own text, not this section."""
     root = _root(library, ctx)
     try:
-        return lib.read_file(root, name, voiced=lambda found, text: _voiced(root, found, text, _caller()))
+        return lib.read_file(root, name, voiced=lambda found, text: _voiced(root, found, text, _caller()), part=part)
     except lib.NotFound as exc:
         raise ToolError(str(exc)) from None
