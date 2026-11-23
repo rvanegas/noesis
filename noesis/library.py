@@ -1072,10 +1072,19 @@ def _split_by_words(title: str, text: str) -> list[tuple[str, str]]:
     return [(f"{title} ({n} of {len(pieces)})", piece) for n, piece in enumerate(pieces, 1)]
 
 
-def _read_in_parts(found: Path, head: list[str], part: int | None) -> str:
-    """An EPUB or PDF: its outline of numbered parts, or the one part asked for."""
+@dataclass(frozen=True)
+class Reading:
+    """What read_file gives a model: text, and for a PDF's part its pages as a PDF."""
+    name: str
+    text: str
+    pdf: bytes | None = None
+
+
+def _read_in_parts(found: Path, head: list[str], part: int | None, tool: str) -> Reading:
+    """An EPUB or PDF: its outline of numbered parts, or the one part asked for.
+    read_file gives a PDF's part as its pages, read_text as their text."""
     from noesis.epub import NotAnEpub, epub_parts
-    from noesis.pdf_text import NotAPdf, pdf_pages_text, pdf_parts
+    from noesis.pdf_parts import NotAPdf, pdf_pages, pdf_pages_text, pdf_parts
     kind = "an EPUB" if found.suffix.lower() == ".epub" else "a PDF"
     try:
         if kind == "an EPUB":
@@ -1090,27 +1099,27 @@ def _read_in_parts(found: Path, head: list[str], part: int | None) -> str:
             text_of = lambda i: pdf_pages_text(found, ranges[i][1])
         if part is None:
             if not listed:
-                return "\n".join([*head, f"It is {kind} with no text in it."])
-            return "\n".join(head) + "\n\n" + (
-                f"It is {kind}, read a part at a time: call read_file again with its name and a part's "
-                f"number. Its {len(listed)} parts:\n\n" + "\n".join(f"{n}. {line}" for n, line in enumerate(listed, 1)))
+                return Reading(found.name, "\n".join([*head, f"It is {kind} with no text in it."]))
+            return Reading(found.name, "\n".join(head) + "\n\n" + (
+                f"It is {kind}, read a part at a time: call {tool} again with its name and a part's "
+                f"number. Its {len(listed)} parts:\n\n" + "\n".join(f"{n}. {line}" for n, line in enumerate(listed, 1))))
         if not 1 <= part <= len(listed):
             raise NoSuchPart(f"{found.name} has parts 1 to {len(listed)}, not {part}" if listed
                              else f"{found.name} has no parts, having no text")
+        where = f"Part {part} of {len(listed)}: {listed[part - 1]}."
+        if kind == "a PDF" and tool == "read_file":
+            return Reading(found.name, "\n".join([*head, where, "Its pages follow, as a PDF."]),
+                           pdf=pdf_pages(found, ranges[part - 1][1]))
         text = text_of(part - 1)
     except (NotAnEpub, NotAPdf):
-        return "\n".join([*head, f"It is {kind} that could not be read."])
-    where = f"Part {part} of {len(listed)}: {listed[part - 1]}."
+        return Reading(found.name, "\n".join([*head, f"It is {kind} that could not be read."]))
     if not text:
-        return "\n".join([*head, where, "It has no text layer, a scan perhaps; it can be linked from a chat, not read here."])
-    return "\n".join([*head, where]) + "\n\n" + text
+        return Reading(found.name, "\n".join([*head, where, "It has no text layer, a scan perhaps; read_file gives its pages."]))
+    return Reading(found.name, "\n".join([*head, where]) + "\n\n" + text)
 
 
-def read_file(library_path: Path, query: str, exclude: str | None = None,
-              voiced: Callable[[str, str], str] = lambda name, text: text, part: int | None = None) -> str:
-    """A file as find_file finds it, after a line naming it and one naming its
-    companions; `voiced` (the MCP server's) may add to a chat's text. An EPUB
-    or PDF is read in parts: without `part` its outline, with one that part."""
+def _read(library_path: Path, query: str, exclude: str | None, voiced: Callable[[str, str], str],
+          part: int | None, tool: str) -> Reading:
     found, companions = find_file(library_path, query, exclude)
     role = role_of(found.name)
     head = [f"{found.name}" + (f", the {role}" if role else "")
@@ -1120,14 +1129,31 @@ def read_file(library_path: Path, query: str, exclude: str | None = None,
         head.append("Its companions, each read by its name: "
                     + ", ".join(f"{p.name} ({role_of(p.name) or 'file'})" for p in companions) + ".")
     if found.suffix.lower() in READ_IN_PARTS:
-        return _read_in_parts(found, head, part)
+        return _read_in_parts(found, head, part, tool)
     if part is not None:
         raise NoSuchPart(f"{found.name} is read whole; only an EPUB or PDF is read in parts")
     try:
         text = found.read_text(encoding="utf-8")
     except UnicodeDecodeError:
-        return "\n".join([*head, f"It is not text (a {found.suffix} file); it can be linked from a chat, not read here."])
-    return "\n".join(head) + "\n\n" + voiced(found.name, text)
+        return Reading(found.name, "\n".join([*head, f"It is not text (a {found.suffix} file); it can be linked from a chat, not read here."]))
+    return Reading(found.name, "\n".join(head) + "\n\n" + voiced(found.name, text))
+
+
+def read_file(library_path: Path, query: str, exclude: str | None = None,
+              voiced: Callable[[str, str], str] = lambda name, text: text, part: int | None = None) -> Reading:
+    """A file as find_file finds it, for a model: after a line naming it and one
+    naming its companions; `voiced` (the MCP server's) may add to a chat's
+    text. An EPUB or PDF is read in parts: without `part` its outline, with
+    one that part, a PDF's as its pages (Reading.pdf), which a model sees as
+    printed, figures, tables and scans with them."""
+    return _read(library_path, query, exclude, voiced, part, "read_file")
+
+
+def read_text(library_path: Path, query: str, exclude: str | None = None,
+              voiced: Callable[[str, str], str] = lambda name, text: text, part: int | None = None) -> str:
+    """A file as read_file reads it, but all text: a PDF's part as its text
+    layer, for what reads it aloud (The Floor) and cannot take a PDF."""
+    return _read(library_path, query, exclude, voiced, part, "read_text").text
 
 
 def search_library(index: list[DocEntry], query: str) -> list[DocEntry]:
@@ -1150,7 +1176,7 @@ LIBRARY_TOOLS_PROMPT = (
     "You have access to the Personal Library — a collection of the user's own writings. "
     "To find relevant material:\n"
     "1. Call lookup_term with a relevant index term. It returns matching Personal Library documents with summaries and related terms.\n"
-    "2. Call read_file when you need the full text of a Personal Library document, or of any other file of the library: a document's source, argument or analysis. It takes a file's name, stem, slug or title, and says what else shares its stem.\n"
+    "2. Call read_file when you need a Personal Library document in full, or of any other file of the library: a document's source, argument or analysis. It takes a file's name, stem, slug or title, and says what else shares its stem.\n"
     "Follow the Related terms from each lookup to discover adjacent material, and look up all "
     "plausibly relevant terms before composing your reply. "
     "Documents have dates and views may evolve or be superseded; prefer more recent documents "
@@ -1185,7 +1211,7 @@ LIBRARY_TOOLS = [
     },
     {
         "name": "read_file",
-        "description": "Read a file of the library in full, with the names of its companions (the files sharing its stem). A stem, slug or title reads its document, else its chat, source, argument, analysis or review, in that order. An EPUB or PDF is read a part at a time: without a part, its outline of numbered parts.",
+        "description": "Read a file of the library in full, with the names of its companions (the files sharing its stem). A stem, slug or title reads its document, else its chat, source, argument, analysis or review, in that order. An EPUB or PDF is read a part at a time: without a part, its outline of numbered parts; a PDF's part comes as its pages.",
         "input_schema": {
             "type": "object",
             "properties": {

@@ -95,7 +95,11 @@ def text(result) -> str:
 def test_tools_and_auth(library):
     root, url = library
     tools = {t.name: t.description for t in call(url, "ann", None, None).tools}
-    assert list(tools) == ["guide", "list_documents", "lookup_term", "read_file"]
+    assert list(tools) == ["guide", "list_documents", "lookup_term", "read_file", "read_text"]
+    assert tools["read_text"].startswith("For reading a file aloud, not for a model")
+    # guide says what each tool gives, a line each.
+    said = text(call(url, "ann", "guide", {}))
+    assert all(f"\n- {name}: " in said for name in tools if name != "guide")
     # claude.ai shows the model tool descriptions, not server instructions:
     # the guidance travels in guide, and the essentials in the descriptions.
     assert "<date>-<slug>.<role>.<ext>" in text(call(url, "ann", "guide", {}))
@@ -138,6 +142,23 @@ def test_reading_a_book_a_part_at_a_time(library):
     assert text(call(url, "ann", "read_file", {"name": name, "part": 2})).endswith("\n\nSecond")
     assert call(url, "ann", "read_file", {"name": name, "part": 3}).is_error
     assert call(url, "ann", "read_file", {"name": "Essay", "part": 1}).is_error
+    assert text(call(url, "ann", "read_text", {"name": name, "part": 2})).endswith("\n\nSecond")
+
+
+def test_a_pdfs_part_comes_as_its_pages_or_as_text(library):
+    # claude.ai reads a PDF as printed; The Floor, reading aloud, takes text.
+    import base64
+    from test_library import _pdf
+    root, url = library
+    name = "2026-10-27-essay.source.pdf"
+    _pdf(root / "2026" / name, ["Only page"])
+    read = call(url, "ann", "read_file", {"name": name, "part": 1})
+    words, pages = read.content
+    assert words.text.endswith("Part 1 of 1: page 1.\nIts pages follow, as a PDF.")
+    assert pages.resource.mime_type == "application/pdf"
+    assert str(pages.resource.uri) == f"noesis://ann/philosophy/{name}?part=1"
+    assert base64.b64decode(pages.resource.blob).startswith(b"%PDF")
+    assert text(call(url, "ann", "read_text", {"name": name, "part": 1})).endswith("\n\nOnly page")
 
 
 def test_nothing_writes(library):

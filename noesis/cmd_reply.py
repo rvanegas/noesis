@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import re
 import sys
 import time
@@ -211,7 +212,7 @@ def _reply_anthropic(
 
         missing_terms: list[str] = []
 
-        def tool_executor(tool_name: str, tool_input: dict[str, object]) -> str:
+        def tool_executor(tool_name: str, tool_input: dict[str, object]) -> str | list[dict]:
             if tool_name == "lookup_term":
                 term = str(tool_input.get("term", ""))
                 result = lookup_term(lib, term, exclude=exclude)
@@ -225,12 +226,17 @@ def _reply_anthropic(
                 name = str(tool_input.get("name", ""))
                 part = tool_input.get("part")
                 try:
-                    result = read_file(lib, name, exclude=exclude,
-                                       part=part if isinstance(part, int) and not isinstance(part, bool) else None)
+                    read = read_file(lib, name, exclude=exclude,
+                                     part=part if isinstance(part, int) and not isinstance(part, bool) else None)
                 except NotFound as exc:
                     return f"Error: {exc}."
                 status(f"read_file: {name}")
-                return result
+                if read.pdf is None:
+                    return read.text
+                # A PDF's part as its pages, which the model sees as printed.
+                return [{"type": "text", "text": read.text},
+                        {"type": "document", "source": {"type": "base64", "media_type": "application/pdf",
+                                                        "data": base64.b64encode(read.pdf).decode("ascii")}}]
             return f"Unknown tool: {tool_name}"
 
         def post_batch() -> None:
@@ -252,7 +258,7 @@ def _reply_anthropic(
                                           members=config.members)
         tools = (tools or []) + [EDIT_TOOL]
         prev_exec = tool_executor
-        def tool_executor(name: str, inp: dict[str, object]) -> str:  # noqa: E306
+        def tool_executor(name: str, inp: dict[str, object]) -> str | list[dict]:  # noqa: E306
             if name == "edit_file":
                 return edit_exec(name, inp)
             return prev_exec(name, inp) if prev_exec else f"Unknown tool: {name}"

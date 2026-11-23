@@ -1,14 +1,17 @@
-"""A PDF's parts, for read_file: page ranges by its bookmarks, else by tens,
-each read as its text layer by pypdf.
+"""A PDF's parts: page ranges by its bookmarks, else by tens, each given
+either as its pages, a PDF of its own (read_file, for a model, which sees
+them as they are printed), or as its text layer (read_text, for reading
+aloud), both by pypdf.
 
 The outline is had without extracting any text, so a long PDF's parts are
 listed cheaply and only the part asked for is read. A scanned PDF has no text
-layer and reads as nothing; an encrypted one is read only when it opens
-without a password.
+layer and reads as nothing, though its pages are still given; an encrypted
+one is read only when it opens without a password.
 """
 
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
 
 # Pages to a part where the PDF has no bookmarks, and the most a bookmarked
@@ -79,3 +82,20 @@ def pdf_pages_text(path: Path, pages: range) -> str:
     except Exception as e:
         raise NotAPdf(str(e)) from e
     return "\n\n".join(text for text in texts if text)
+
+
+def pdf_pages(path: Path, pages: range) -> bytes:
+    """These pages as a PDF of their own."""
+    from pypdf import PdfWriter
+    try:
+        reader = _reader(path)
+        writer = PdfWriter()
+        for n in pages:
+            writer.add_page(reader.pages[n])
+        out = BytesIO()
+        writer.write(out)
+    except NotAPdf:
+        raise
+    except Exception as e:
+        raise NotAPdf(str(e)) from e
+    return out.getvalue()

@@ -20,10 +20,15 @@ calls a library "Philosophy", and a channel's by the channel's name.
 Nothing here writes. edit_file is `noesis reply`'s alone, and append_turn is
 gone: claude.ai edits with its own documents, and a conversation reaches the
 library by its export and `noesis import`, which is whole where a turn-by-turn
-write depended on Claude remembering to make it.
+write depended on Claude remembering to make it, and gathers each turn's
+`## Related`/`## References` at the end (transcript.collect_citations).
 
-Files come back as they are. A chat whose headings go beyond Prompt and the
-model's comes after one line saying whose voice each heading is: the
+Files come back as they are, but for a book or paper, read in parts:
+read_file gives a PDF's part as its pages, an embedded PDF, since a model
+reads figures, tables and scans from the page; read_text gives every part as
+text, for The Floor, which reads a document aloud (2026-11-23). A chat
+whose headings go beyond Prompt and the model's comes after one line saying
+whose voice each heading is: the
 library owner's by their display name (members.voices), the
 model's, anyone else's. In a channel's library the user is whoever reads,
 and each other member is named as one, speaking for themselves (_heard).
@@ -33,6 +38,7 @@ user.
 
 from __future__ import annotations
 
+import base64
 import os
 import re
 from contextlib import asynccontextmanager
@@ -43,6 +49,7 @@ from mcp.server.auth.settings import AuthSettings
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
+from mcp_types import BlobResourceContents, ContentBlock, EmbeddedResource, TextContent
 
 from noesis import library as lib
 from noesis import members
@@ -54,12 +61,22 @@ INSTRUCTIONS = "\n\n".join([
     "These tools reach the user's noesis library: their own writing (chats, documents, "
     "argument files) and the sources they keep. Files are named "
     "<date>-<slug>.<role>.<ext>, the role one of chat, document, source, argument, "
-    "analysis, review; a name is unique across the library, and so is a slug. Use "
-    "list_documents to find names and read_file to read one. Nothing in the library is written from here.",
+    "analysis, review; a name is unique across the library, and so is a slug. Nothing in "
+    "the library is written from here. The tools:\n"
+    "- list_documents: the chats and documents, and the books and papers (an EPUB or PDF "
+    "source, marked 'read in parts'), name and title, newest first; with a query, those "
+    "matching it. One marked 'not yet indexed' is too new for lookup_term, but read_file reads it.\n"
+    "- lookup_term: the documents an index term is on, with their summaries, and related terms to follow.\n"
+    "- read_file: a file in full, by its name, stem, slug or title, naming its companions, "
+    "the files of its stem. A book or paper comes a part at a time: without a part, its "
+    "outline of numbered parts; an EPUB's part as text, a PDF's as its pages, a PDF to "
+    "read as printed, figures and tables with them.\n"
+    "- read_text: the same as read_file, but all as text, a PDF's part as its text layer "
+    "rather than its pages. It is for reading a file aloud, not for you: read with read_file.",
     "Read a document in full if you read it at all: all of what read_file returns, never "
     "a part of it, and never a summary or search result in its place. A book or paper, an "
-    "EPUB or PDF, is the exception: read_file gives its outline, and you read the parts "
-    "that bear on the question, each by its number.",
+    "EPUB or PDF, is the exception: read its outline, then the parts that bear on the "
+    "question, each by its number.",
     lib.LIBRARY_TOOLS_PROMPT,
     "A chat's ## headings name its speakers. A chat with more speakers than Prompt and "
     "a model is read after a 'Voices:' line saying which headings are the user; any "
@@ -359,7 +376,8 @@ def lookup_term(ctx: Context, term: str, library: str | None = None) -> str:
 
 
 @_tool
-def read_file(ctx: Context, name: str, library: str | None = None, part: int | None = None) -> str:
+def read_file(ctx: Context, name: str, library: str | None = None,
+              part: int | None = None) -> str | list[ContentBlock]:
     """Read any file of the library in full: by its name (e.g.
     2026-06-29-the-eleatic-critique.chat.md), its stem
     (2026-06-29-the-eleatic-critique), its slug (the-eleatic-critique) or its
@@ -369,14 +387,33 @@ def read_file(ctx: Context, name: str, library: str | None = None, part: int | N
     read by its name. A source is third-party material, not the user's
     writing. An EPUB or PDF, a book or a paper, is read a part at a time:
     without `part` the result is its outline, its parts numbered with their
-    titles and sizes; read the ones the question needs by their numbers. An
-    analysis or review is written by noesis. A chat of several
-    people comes after a 'Voices:' line saying which headings are the user.
+    titles and sizes; read the ones the question needs by their numbers. A
+    PDF's part comes as its pages, a PDF: read them as printed, figures and
+    tables with them. An analysis or review is written by noesis. A chat of
+    several people comes after a 'Voices:' line saying which headings are the user.
     Cite a chat or document only after reading it, under a '## Related'
     section, one per line as '| *Exact Title*', even when the user prefers
     prose: their preferences govern the reply's own text, not this section."""
+    lib_id, root = _roots(library, ctx, many=False)[0]
+    try:
+        read = lib.read_file(root, name, voiced=lambda found, text: _voiced(root, found, text, _caller()), part=part)
+    except lib.NotFound as exc:
+        raise ToolError(str(exc)) from None
+    if read.pdf is None:
+        return read.text
+    return [TextContent(type="text", text=read.text),
+            EmbeddedResource(type="resource", resource=BlobResourceContents(
+                uri=f"noesis://{lib_id}/{read.name}?part={part}",
+                mime_type="application/pdf", blob=base64.b64encode(read.pdf).decode("ascii")))]
+
+
+@_tool
+def read_text(ctx: Context, name: str, library: str | None = None, part: int | None = None) -> str:
+    """For reading a file aloud, not for a model: read_file is how to read.
+    The file as read_file finds and outlines it, but all text: a PDF's part
+    as its text layer rather than its pages."""
     root = _root(library, ctx)
     try:
-        return lib.read_file(root, name, voiced=lambda found, text: _voiced(root, found, text, _caller()), part=part)
+        return lib.read_text(root, name, voiced=lambda found, text: _voiced(root, found, text, _caller()), part=part)
     except lib.NotFound as exc:
         raise ToolError(str(exc)) from None

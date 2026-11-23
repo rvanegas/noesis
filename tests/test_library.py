@@ -14,6 +14,7 @@ from noesis.library import (
     NotFound,
     find_file,
     read_file,
+    read_text,
     slug_conflicts,
     render_manifest,
     search_library,
@@ -153,7 +154,7 @@ def test_read_file_follows_the_order_without_a_document(tmp_path):
 
 def test_read_file_by_name_reads_that_file_and_names_its_companions(tmp_path):
     _stem_files(tmp_path)
-    text = read_file(tmp_path, "2026-06-29-the-eleatic-critique.argument.md")
+    text = read_text(tmp_path, "2026-06-29-the-eleatic-critique.argument.md")
     head, body = text.split("\n\n", 1)
     assert head.startswith("2026-06-29-the-eleatic-critique.argument.md, the argument.")
     assert "2026-06-29-the-eleatic-critique.document.md (document)" in head
@@ -162,7 +163,7 @@ def test_read_file_by_name_reads_that_file_and_names_its_companions(tmp_path):
 
 def test_read_file_says_a_source_is_someone_elses(tmp_path):
     _stem_files(tmp_path, roles=("source",))
-    assert "third-party material" in read_file(tmp_path, "the-eleatic-critique").split("\n", 1)[0]
+    assert "third-party material" in read_text(tmp_path, "the-eleatic-critique").split("\n", 1)[0]
 
 
 def test_read_file_finds_a_title_its_slug_has_left(tmp_path):
@@ -174,13 +175,13 @@ def test_read_file_finds_a_title_its_slug_has_left(tmp_path):
 
 def test_read_file_undated_files_by_name(tmp_path):
     (tmp_path / "KEYS.md").write_text("## Alias\n")
-    assert read_file(tmp_path, "KEYS.md").endswith("## Alias\n")
+    assert read_text(tmp_path, "KEYS.md").endswith("## Alias\n")
 
 
 def test_read_file_not_text(tmp_path):
     _stem_files(tmp_path, roles=("document",))
     (tmp_path / "2026" / "parmenides.png").write_bytes(b"\x89PNG\r\n\x1a\n\xff\xfe")
-    assert "not text" in read_file(tmp_path, "parmenides.png")
+    assert "not text" in read_text(tmp_path, "parmenides.png")
 
 
 def _pdf(path, pages):
@@ -212,21 +213,21 @@ PDF_NAME = "2026-06-29-the-eleatic-critique.source.pdf"
 
 
 def test_read_file_lists_a_pdf_in_runs_of_pages_without_bookmarks(tmp_path, monkeypatch):
-    import noesis.pdf_text
-    monkeypatch.setattr(noesis.pdf_text, "PAGES_PER_PART", 2)
+    import noesis.pdf_parts
+    monkeypatch.setattr(noesis.pdf_parts, "PAGES_PER_PART", 2)
     _stem_files(tmp_path, roles=("document",))
     _pdf(tmp_path / "2026" / PDF_NAME, ["First page", "", "Third page"])
-    head, outline = read_file(tmp_path, PDF_NAME).split("\n\n", 1)
+    head, outline = read_text(tmp_path, PDF_NAME).split("\n\n", 1)
     assert "the source: third-party material" in head
     assert outline.endswith("Its 2 parts:\n\n1. pages 1–2\n2. page 3")
-    assert read_file(tmp_path, PDF_NAME, part=1).endswith("Part 1 of 2: pages 1–2.\n\nFirst page")
-    assert read_file(tmp_path, PDF_NAME, part=2).endswith("\n\nThird page")
+    assert read_text(tmp_path, PDF_NAME, part=1).endswith("Part 1 of 2: pages 1–2.\n\nFirst page")
+    assert read_text(tmp_path, PDF_NAME, part=2).endswith("\n\nThird page")
 
 
 def test_read_file_parts_a_pdf_by_its_bookmarks(tmp_path, monkeypatch):
-    import noesis.pdf_text
+    import noesis.pdf_parts
     from pypdf import PdfWriter
-    monkeypatch.setattr(noesis.pdf_text, "MAX_PART_PAGES", 2)
+    monkeypatch.setattr(noesis.pdf_parts, "MAX_PART_PAGES", 2)
     path = tmp_path / "2026" / PDF_NAME
     (tmp_path / "2026").mkdir()
     _pdf(path, ["Cover", "One a", "One b", "One c", "Two a"])
@@ -234,23 +235,50 @@ def test_read_file_parts_a_pdf_by_its_bookmarks(tmp_path, monkeypatch):
     writer.add_outline_item(title="Chapter One", page_number=1)
     writer.add_outline_item(title="Chapter Two", page_number=4)
     writer.write(path)
-    outline = read_file(tmp_path, PDF_NAME).split("parts:\n\n", 1)[1]
+    outline = read_text(tmp_path, PDF_NAME).split("parts:\n\n", 1)[1]
     assert outline.split("\n") == [
         "1. Front matter, page 1",
         "2. Chapter One (1 of 2), pages 2–3",
         "3. Chapter One (2 of 2), page 4",
         "4. Chapter Two, page 5",
     ]
-    assert read_file(tmp_path, PDF_NAME, part=2).endswith("\n\nOne a\n\nOne b")
+    assert read_text(tmp_path, PDF_NAME, part=2).endswith("\n\nOne a\n\nOne b")
+
+
+def test_read_file_gives_a_pdfs_part_as_its_pages(tmp_path, monkeypatch):
+    # A model reads a PDF as printed; read_text is the same part as text.
+    from io import BytesIO
+    from pypdf import PdfReader
+    import noesis.pdf_parts
+    monkeypatch.setattr(noesis.pdf_parts, "PAGES_PER_PART", 2)
+    _stem_files(tmp_path, roles=("document",))
+    _pdf(tmp_path / "2026" / PDF_NAME, ["First page", "Second page", "Third page"])
+    outline = read_file(tmp_path, PDF_NAME)
+    assert outline.pdf is None and "call read_file again" in outline.text
+    assert "call read_text again" in read_text(tmp_path, PDF_NAME)
+    read = read_file(tmp_path, PDF_NAME, part=1)
+    assert read.name == PDF_NAME
+    assert read.text.endswith("Part 1 of 2: pages 1–2.\nIts pages follow, as a PDF.")
+    pages = PdfReader(BytesIO(read.pdf)).pages
+    assert [page.extract_text() for page in pages] == ["First page", "Second page"]
+
+
+def test_read_file_gives_anything_else_as_read_text_does(tmp_path):
+    _stem_files(tmp_path, roles=("document",))
+    _epub(tmp_path / "2026" / EPUB_NAME, {"one": "<p>a</p>"})
+    for name, part in (("the-eleatic-critique", None), (EPUB_NAME, 1)):
+        read = read_file(tmp_path, name, part=part)
+        assert read.pdf is None and read.text == read_text(tmp_path, name, part=part)
 
 
 def test_read_file_a_pdf_without_text_or_broken(tmp_path):
     _stem_files(tmp_path, roles=("document",))
     folder = tmp_path / "2026"
     _pdf(folder / PDF_NAME, [""])
-    assert "no text layer" in read_file(tmp_path, PDF_NAME, part=1)
+    assert "no text layer" in read_text(tmp_path, PDF_NAME, part=1)
+    assert read_file(tmp_path, PDF_NAME, part=1).pdf.startswith(b"%PDF")  # a scan's pages still
     (folder / PDF_NAME).write_bytes(b"%PDF\xff\xfe")
-    assert read_file(tmp_path, PDF_NAME).endswith("a PDF that could not be read.")
+    assert read_text(tmp_path, PDF_NAME).endswith("a PDF that could not be read.")
 
 
 def test_read_file_excludes_the_chat_being_replied_to(tmp_path):
@@ -451,12 +479,12 @@ def test_read_file_lists_an_epub_without_contents_a_file_a_part_in_its_spines_or
     _epub(tmp_path / "2026" / EPUB_NAME,
           {"one": "<h1>Capítulo 1</h1><p>Las  hormigas&nbsp;trabajan.</p>", "two": "<p>Segundo<br/>capítulo.</p>"},
           order=["two", "one"])
-    text = read_file(tmp_path, "2026/" + EPUB_NAME)
+    text = read_text(tmp_path, "2026/" + EPUB_NAME)
     head, outline = text.split("\n\n", 1)
     assert "the source: third-party material" in head
     assert "2026-06-29-the-eleatic-critique.document.md (document)" in head
     assert outline.endswith("Its 2 parts:\n\n1. Segundo — 2 words\n2. Capítulo 1 — 5 words")
-    part = read_file(tmp_path, EPUB_NAME, part=2)
+    part = read_text(tmp_path, EPUB_NAME, part=2)
     assert part.endswith("Part 2 of 2: Capítulo 1 — 5 words.\n\nCapítulo 1\n\nLas hormigas trabajan.")
     assert "<style>" not in part and "T\n" not in part
 
@@ -467,19 +495,19 @@ def test_read_file_parts_an_epub_by_its_contents(tmp_path, contents):
     _epub(tmp_path / "2026" / EPUB_NAME,
           {"cover": "<p>Cover</p>", "one": "<p>Pro</p>", "two": "<p>logo</p>", "three": "<p>Uno</p>"},
           **{contents: toc})
-    outline = read_file(tmp_path, EPUB_NAME).split("parts:\n\n", 1)[1]
+    outline = read_text(tmp_path, EPUB_NAME).split("parts:\n\n", 1)[1]
     assert outline.split("\n") == ["1. Cover — 1 words", "2. Prólogo — 2 words", "3. Capítulo 1 — 1 words"]
-    assert read_file(tmp_path, EPUB_NAME, part=2).endswith("\n\nPro\n\nlogo")
+    assert read_text(tmp_path, EPUB_NAME, part=2).endswith("\n\nPro\n\nlogo")
 
 
 def test_read_file_parts_an_epub_at_the_anchors_its_contents_point_to(tmp_path):
     book = tmp_path / "2026" / EPUB_NAME
     _epub(book, {"all": '<p>Title</p><p id="p4">Pro</p><p>logo</p><h2 id="p16">Uno</h2><p>uno</p><div id="p28">Dos</div>'},
           ncx=[("all#p4", "Prólogo"), ("all#p16", "Primera parte"), ("all#p16", "Capítulo 1"), ("all#p28", "Capítulo 2")])
-    outline = read_file(tmp_path, EPUB_NAME).split("parts:\n\n", 1)[1]
+    outline = read_text(tmp_path, EPUB_NAME).split("parts:\n\n", 1)[1]
     assert outline.split("\n") == ["1. Title — 1 words", "2. Prólogo — 2 words",
                                    "3. Primera parte: Capítulo 1 — 2 words", "4. Capítulo 2 — 1 words"]
-    assert read_file(tmp_path, EPUB_NAME, part=3).endswith("\n\nUno\n\nuno")
+    assert read_text(tmp_path, EPUB_NAME, part=3).endswith("\n\nUno\n\nuno")
 
 
 def test_read_file_begins_an_epubs_part_at_its_heading_past_a_page_anchor(tmp_path):
@@ -487,16 +515,16 @@ def test_read_file_begins_an_epubs_part_at_its_heading_past_a_page_anchor(tmp_pa
     _epub(tmp_path / "2026" / EPUB_NAME,
           {"all": '<p>Uno</p><p>uno, por</p><p id="p33">ejemplo fin.</p><p><b>3</b></p><p>El cuento</p><p>tres</p>'},
           ncx=[("all", "Capítulo 1"), ("all#p33", "Capítulo 3")])
-    assert read_file(tmp_path, EPUB_NAME, part=1).endswith("\n\nUno\n\nuno, por\n\nejemplo fin.")
-    assert read_file(tmp_path, EPUB_NAME, part=2).endswith("\n\n3\n\nEl cuento\n\ntres")
+    assert read_text(tmp_path, EPUB_NAME, part=1).endswith("\n\nUno\n\nuno, por\n\nejemplo fin.")
+    assert read_text(tmp_path, EPUB_NAME, part=2).endswith("\n\n3\n\nEl cuento\n\ntres")
 
 
 def test_read_file_splits_a_long_part_between_paragraphs(tmp_path, monkeypatch):
     monkeypatch.setattr(noesis.library, "MAX_PART_WORDS", 4)
     _epub(tmp_path / "2026" / EPUB_NAME, {"one": "<p>a b c</p><p>d e f</p><p>g h</p>"}, nav=[("one", "Long")])
-    outline = read_file(tmp_path, EPUB_NAME).split("parts:\n\n", 1)[1]
+    outline = read_text(tmp_path, EPUB_NAME).split("parts:\n\n", 1)[1]
     assert outline.split("\n") == ["1. Long (1 of 2) — 6 words", "2. Long (2 of 2) — 2 words"]
-    assert read_file(tmp_path, EPUB_NAME, part=2).endswith("\n\ng h")
+    assert read_text(tmp_path, EPUB_NAME, part=2).endswith("\n\ng h")
 
 
 def test_read_file_refuses_a_part_it_does_not_have(tmp_path):
@@ -504,12 +532,12 @@ def test_read_file_refuses_a_part_it_does_not_have(tmp_path):
     _stem_files(tmp_path, roles=("document",))
     _epub(tmp_path / "2026" / EPUB_NAME, {"one": "<p>a</p>"})
     with pytest.raises(NoSuchPart, match="has parts 1 to 1, not 2"):
-        read_file(tmp_path, EPUB_NAME, part=2)
+        read_text(tmp_path, EPUB_NAME, part=2)
     with pytest.raises(NoSuchPart, match="read whole"):
-        read_file(tmp_path, "the-eleatic-critique", part=1)
+        read_text(tmp_path, "the-eleatic-critique", part=1)
 
 
 def test_read_file_an_epub_that_is_not_one(tmp_path):
     _stem_files(tmp_path, roles=("document",))
     (tmp_path / "2026" / EPUB_NAME).write_bytes(b"PK\x03\x04 broken")
-    assert read_file(tmp_path, EPUB_NAME).endswith("an EPUB that could not be read.")
+    assert read_text(tmp_path, EPUB_NAME).endswith("an EPUB that could not be read.")

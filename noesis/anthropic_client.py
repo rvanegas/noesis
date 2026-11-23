@@ -117,7 +117,7 @@ class AnthropicChatClient:
         on_delta: Callable[[str], None] | None = None,
         reasoning_effort: str | None = None,
         tools: list[dict[str, object]] | None = None,
-        tool_executor: Callable[[str, dict[str, object]], str] | None = None,
+        tool_executor: Callable[[str, dict[str, object]], str | list[dict]] | None = None,
         post_batch: Callable[[], None] | None = None,
         format_tool_annotation: Callable[[str, dict[str, object]], str] | None = None,
         use_files_api: bool = False,
