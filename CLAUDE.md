@@ -10,7 +10,7 @@
 
 ## Practices
 
-The practices this project shares with others are technosophia's (`~/src/technosophia`). This file imports its `WORKING.md`, which says when to read the rest. Among them: no compatibility code, since nothing installed depends on noesis — change completely, and migrate the data when existing files would otherwise break.
+The practices this project shares with others are technosophia's (`~/src/technosophia`). This file imports its `WORKING.md`, which says when to read the rest. Migrate the data, by a script, when a change would otherwise break existing files.
 
 Scripts run as `ts <name>` from anywhere in the checkout: this project's `bin/` first (`cap`, `libraries`, `nightly-index`), then technosophia's shared ones (`deploy`, `deploys`, `health`, …). The shared ones read `bin/ts.env`, never ship what `bin/ts.rsync` excludes, and run this project's own steps from `bin/hooks/`.
 
