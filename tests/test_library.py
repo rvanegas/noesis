@@ -184,13 +184,22 @@ def test_read_file_not_text(tmp_path):
     assert "not text" in read_text(tmp_path, "parmenides.png")
 
 
+@pytest.fixture(autouse=True)
+def _fresh_pdf_parts():
+    # pdf_parts keeps a file's parts while it is unchanged; tests change the sizes.
+    import noesis.pdf_parts
+    noesis.pdf_parts._pdf_parts.cache_clear()
+
+
 def _pdf(path, pages):
-    """A minimal PDF, a line of Helvetica on each page; empty strings make blank pages."""
+    """A minimal PDF, lines of Helvetica on each page (a newline between
+    lines); empty strings make blank pages."""
     objects = [b"<< /Type /Catalog /Pages 2 0 R >>", None,
                b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
     kids = []
     for line in pages:
-        stream = f"BT /F1 12 Tf 72 720 Td ({line}) Tj ET".encode("latin-1") if line else b""
+        stream = " ".join(f"BT /F1 12 Tf 72 {720 - 20 * n} Td ({text}) Tj ET"
+                          for n, text in enumerate(line.split("\n"))).encode("latin-1") if line else b""
         objects.append(b"<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream))
         content = len(objects)
         objects.append(b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
@@ -215,6 +224,7 @@ PDF_NAME = "2026-06-29-the-eleatic-critique.source.pdf"
 def test_read_file_lists_a_pdf_in_runs_of_pages_without_bookmarks(tmp_path, monkeypatch):
     import noesis.pdf_parts
     monkeypatch.setattr(noesis.pdf_parts, "PAGES_PER_PART", 2)
+    monkeypatch.setattr(noesis.pdf_parts, "MAX_PART_PAGES", 2)
     _stem_files(tmp_path, roles=("document",))
     _pdf(tmp_path / "2026" / PDF_NAME, ["First page", "", "Third page"])
     head, outline = read_text(tmp_path, PDF_NAME).split("\n\n", 1)
@@ -222,6 +232,37 @@ def test_read_file_lists_a_pdf_in_runs_of_pages_without_bookmarks(tmp_path, monk
     assert outline.endswith("Its 2 parts:\n\n1. pages 1–2\n2. page 3")
     assert read_text(tmp_path, PDF_NAME, part=1).endswith("Part 1 of 2: pages 1–2.\n\nFirst page")
     assert read_text(tmp_path, PDF_NAME, part=2).endswith("\n\nThird page")
+
+
+def test_read_file_reads_a_short_pdf_as_one_part(tmp_path):
+    # A paper is read whole: one part, whatever its bookmarks or headings.
+    _stem_files(tmp_path, roles=("document",))
+    _pdf(tmp_path / "2026" / PDF_NAME, ["Title\n1. FIRST THINGS", "Text", "2. LAST THINGS"])
+    outline = read_text(tmp_path, PDF_NAME).split("\n\n", 1)[1]
+    assert outline == ("It is a PDF short enough to be one part: call read_text again with its name "
+                       "and part 1. Its one part:\n\n1. pages 1–3")
+
+
+def test_read_file_parts_a_long_pdf_at_its_section_headings(tmp_path, monkeypatch):
+    # Without bookmarks: numbered headings in their order, so a numbered
+    # premise or a sentence is not one, then notes and references.
+    import noesis.pdf_parts
+    monkeypatch.setattr(noesis.pdf_parts, "MAX_PART_PAGES", 3)
+    _stem_files(tmp_path, roles=("document",))
+    _pdf(tmp_path / "2026" / PDF_NAME, [
+        "A Title\nAbstract", "1. OBJECTS, PROPERTIES, AND FACTS\nText",
+        "1. All experiences are in the head.\nI think, satisfying account of",
+        "2. Perceptual Experience\nText", "Text\n3. PAINS AND MOODS\nII. NOT NEXT",
+        "Text", "NOTES\n1 A note", "References\nDretske, F."])
+    outline = read_text(tmp_path, PDF_NAME).split("parts:\n\n", 1)[1]
+    assert outline.split("\n") == [
+        "1. Front matter, page 1",
+        "2. 1. OBJECTS, PROPERTIES, AND FACTS, pages 2–3",
+        "3. 2. Perceptual Experience, page 4",
+        "4. 3. PAINS AND MOODS, pages 5–6",
+        "5. Notes, page 7",
+        "6. References, page 8",
+    ]
 
 
 def test_read_file_parts_a_pdf_by_its_bookmarks(tmp_path, monkeypatch):
@@ -251,6 +292,7 @@ def test_read_file_gives_a_pdfs_part_as_its_pages(tmp_path, monkeypatch):
     from pypdf import PdfReader
     import noesis.pdf_parts
     monkeypatch.setattr(noesis.pdf_parts, "PAGES_PER_PART", 2)
+    monkeypatch.setattr(noesis.pdf_parts, "MAX_PART_PAGES", 2)
     _stem_files(tmp_path, roles=("document",))
     _pdf(tmp_path / "2026" / PDF_NAME, ["First page", "Second page", "Third page"])
     outline = read_file(tmp_path, PDF_NAME)

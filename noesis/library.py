@@ -1101,8 +1101,10 @@ def _read_in_parts(found: Path, head: list[str], part: int | None, tool: str) ->
             if not listed:
                 return Reading(found.name, "\n".join([*head, f"It is {kind} with no text in it."]))
             return Reading(found.name, "\n".join(head) + "\n\n" + (
-                f"It is {kind}, read a part at a time: call {tool} again with its name and a part's "
-                f"number. Its {len(listed)} parts:\n\n" + "\n".join(f"{n}. {line}" for n, line in enumerate(listed, 1))))
+                (f"It is {kind} short enough to be one part: call {tool} again with its name and "
+                 "part 1. Its one part:\n\n" if len(listed) == 1 else
+                 f"It is {kind}, read a part at a time: call {tool} again with its name and a part's "
+                 f"number. Its {len(listed)} parts:\n\n") + "\n".join(f"{n}. {line}" for n, line in enumerate(listed, 1))))
         if not 1 <= part <= len(listed):
             raise NoSuchPart(f"{found.name} has parts 1 to {len(listed)}, not {part}" if listed
                              else f"{found.name} has no parts, having no text")
