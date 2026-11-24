@@ -29,8 +29,8 @@ an application who belongs to a library.
 **Two names during the move to twohands.co** (planned 2026-11-23): auth also
 answers as `auth.rvanegas.co` (NOESIS_AUTH_ALSO_URLS) and noesis as
 `noesis.rvanegas.co` (NOESIS_ALSO_URLS, mcp_server.py), so a token from
-either auth is good, for either noesis. COMPATIBILITY: goes no sooner than two
-weeks after the commons cutover (rvanegas-site's
+either auth is good, for either noesis. COMPATIBILITY: goes no sooner than
+2027-01-23, two months after the commons cutover (rvanegas-site's
 move-everything-from-rvanegas-co-to-twohands-co.md, step 8).
 """
 
