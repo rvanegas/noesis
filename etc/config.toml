@@ -7,6 +7,7 @@ model = "claude-sonnet-5"
 index_model = "claude-haiku-4-5"
 llm_names = ["Claude", "GPT"]
 
-dianoia_api_url = "https://dianoia.rvanegas.co/api"
+dianoia_api_url = "https://dianoia.twohands.co/api"
 roxana_api_url = "https://w4aocbt7pzdqrkqtk2gorjrit4.appsync-api.us-west-2.amazonaws.com/graphql"
+# Roxana keeps its old name until its own move (rvanegas-site's move to twohands.co, step 5).
 roxana_web_url = "https://roxana.rvanegas.co"

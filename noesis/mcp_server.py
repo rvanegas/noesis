@@ -6,7 +6,7 @@ phone, Claude Desktop, Claude Code). They run in-process on the server's copy
 of the library, which is canonical.
 
 Callers authenticate with a bearer token carrying `noesis:read` (bearer.py):
-an access token from auth (`auth.rvanegas.co`), where claude.ai's connector
+an access token from auth (`auth.twohands.co`), where claude.ai's connector
 signs the person in, or a minted noesis token sent as it is (Claude Code).
 
 **Which libraries** (2026-11-01): a grant reaches all of a person's. An
@@ -41,7 +41,7 @@ from __future__ import annotations
 import base64
 import os
 import re
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 
 from mcp.server.auth.middleware.auth_context import get_access_token
@@ -92,8 +92,9 @@ def _tool(fn):
     return fn
 
 
-def build() -> MCPServer:
-    """A fresh MCP server: a streamable-HTTP session manager runs only once."""
+def build(public: str | None = None) -> MCPServer:
+    """A fresh MCP server for one of noesis's names: a streamable-HTTP session manager runs only once."""
+    public = public or public_url()
     server = MCPServer(
         name="noesis",
         title="noesis library",
@@ -103,8 +104,8 @@ def build() -> MCPServer:
         # protected-resource metadata.
         token_verifier=bearer.Verifier(),
         auth=AuthSettings(
-            issuer_url=bearer.auth_url(),
-            resource_server_url=f"{public_url()}/mcp",
+            issuer_url=auth_for(public),
+            resource_server_url=f"{public}/mcp",
             required_scopes=[bearer.READ],
             validate_token_resource=False,  # bearer.py checks the audience
         ),
@@ -115,21 +116,54 @@ def build() -> MCPServer:
 
 
 def public_url() -> str:
-    return os.environ.get("NOESIS_PUBLIC_URL", "https://noesis.rvanegas.co").rstrip("/")
+    """noesis's own address: NOESIS_PUBLIC_URL."""
+    return os.environ.get("NOESIS_PUBLIC_URL", "https://noesis.twohands.co").rstrip("/")
+
+
+# noesis answers at its old name too during the move to twohands.co, as the
+# MCP server a claude.ai connection made there signed up with: its resource
+# is that name's /mcp, and its authorization server the auth of the same
+# name. NOESIS_ALSO_URLS lists the old names, and NOESIS_AUTH_ALSO_URLS their
+# auths, in the same order. COMPATIBILITY: see bearer.py.
+
+def public_urls() -> list[str]:
+    """Every name noesis answers at: NOESIS_PUBLIC_URL, then NOESIS_ALSO_URLS."""
+    return [public_url(), *(u for u in bearer.urls("NOESIS_ALSO_URLS") if u != public_url())]
+
+
+def auth_for(public: str) -> str:
+    """The auth a name of noesis sends people to: the one of the same place in the lists, else NOESIS_AUTH_URL."""
+    also, auths = bearer.urls("NOESIS_ALSO_URLS"), bearer.urls("NOESIS_AUTH_ALSO_URLS")
+    if public in also and also.index(public) < len(auths):
+        return auths[also.index(public)]
+    return bearer.auth_url()
+
+
+def _netloc(url: str) -> str:
+    return url.split("://", 1)[1]
+
+
+def asked(host: str | None) -> str:
+    """The name of noesis a request's Host header asked for, else NOESIS_PUBLIC_URL."""
+    for url in public_urls():
+        if host and _netloc(url).lower() == host.lower():
+            return url
+    return public_url()
 
 
 class _Mount:
-    """The ASGI app mounted in noesis serve; forwards to this lifespan's MCP app."""
+    """The ASGI app mounted in noesis serve; forwards to this lifespan's MCP app for the name asked."""
 
     def __init__(self) -> None:
-        self.app = None
+        self.apps: dict[str, object] = {}
 
     async def __call__(self, scope, receive, send) -> None:
-        if self.app is None:  # not started (or stopped): nothing is here
+        if not self.apps:  # not started (or stopped): nothing is here
             from starlette.responses import PlainTextResponse
             await PlainTextResponse("Not Found", status_code=404)(scope, receive, send)
             return
-        await self.app(scope, receive, send)
+        host = dict(scope.get("headers") or []).get(b"host", b"").decode("latin-1")
+        await self.apps[asked(host)](scope, receive, send)
 
 
 mcp_app = _Mount()
@@ -137,21 +171,26 @@ mcp_app = _Mount()
 
 @asynccontextmanager
 async def mcp_lifespan():
-    server = build()
-    mcp_app.app = server.streamable_http_app(
-        streamable_http_path="/mcp",
-        stateless_http=True,
-        transport_security=TransportSecuritySettings(
-            enable_dns_rebinding_protection=True,
-            allowed_hosts=[public_url().split("://", 1)[1], "127.0.0.1:*", "localhost:*", "testserver"],
-            allowed_origins=["https://claude.ai", "https://claude.com"],
-        ),
-    )
-    async with server.session_manager.run():
+    hosts = [_netloc(u) for u in public_urls()]
+    async with AsyncExitStack() as stack:
+        apps = {}
+        for public in public_urls():
+            server = build(public)
+            apps[public] = server.streamable_http_app(
+                streamable_http_path="/mcp",
+                stateless_http=True,
+                transport_security=TransportSecuritySettings(
+                    enable_dns_rebinding_protection=True,
+                    allowed_hosts=[*hosts, "127.0.0.1:*", "localhost:*", "testserver"],
+                    allowed_origins=["https://claude.ai", "https://claude.com"],
+                ),
+            )
+            await stack.enter_async_context(server.session_manager.run())
+        mcp_app.apps = apps
         try:
             yield
         finally:
-            mcp_app.app = None
+            mcp_app.apps = {}
 
 
 # ---------------------------------------------------------------------------

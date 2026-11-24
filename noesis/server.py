@@ -3,7 +3,7 @@
 Every route but /healthz and the web client's pages needs a bearer token
 (bearer.py): a minted one, which /data/users.toml maps by its SHA-256 to a
 user, or to "*" for a service (the nightly index); or an access token from
-auth (`auth.rvanegas.co`, where people sign in) carrying `noesis:api` (the
+auth (`auth.twohands.co`, where people sign in) carrying `noesis:api` (the
 web client's). One carrying `noesis:import` (The Floor) reaches /import
 alone; an application's own token carrying `noesis:keep` makes
 it the owner of the libraries it keeps (members.py).
@@ -974,7 +974,7 @@ _WEB_HEADERS = {
 }
 
 
-# The bare name is where people arrive (rvanegas.co links here); the client
+# The bare name is where people arrive (twohands.co links here); the client
 # itself stays at /web/, its OAuth redirect, clear of the MCP and OAuth paths
 # mounted at the root. Temporary, so / stays free for something else.
 @app.get("/", include_in_schema=False)
@@ -989,17 +989,20 @@ def web_root() -> Response:
 
 @app.get("/web/{name}")
 @app.get("/web/", include_in_schema=False)
-def web_file(name: str = "index.html") -> Response:
+def web_file(request: Request, name: str = "index.html") -> Response:
     path = _WEB / name
     if "/" in name or name.startswith(".") or path.suffix not in _WEB_TYPES or not path.is_file():
         raise HTTPException(404, "Not Found")
-    from noesis.bearer import auth_url
+    # The page signs in at the auth of the name it was loaded from, so a
+    # sign-in made at the old name stays there (mcp_server.auth_for).
+    from noesis.mcp_server import asked, auth_for
+    auth = auth_for(asked(request.headers.get("host")))
     body = path.read_bytes()
     if path.suffix == ".html":
         from noesis.config import load_config
-        body = body.replace(AUTH_PLACEHOLDER.encode(), auth_url().encode())
+        body = body.replace(AUTH_PLACEHOLDER.encode(), auth.encode())
         body = body.replace(ROXANA_PLACEHOLDER.encode(), (load_config().roxana_web_url or "").encode())
-    headers = {**_WEB_HEADERS, "Content-Security-Policy": _WEB_HEADERS["Content-Security-Policy"].format(auth=auth_url())}
+    headers = {**_WEB_HEADERS, "Content-Security-Policy": _WEB_HEADERS["Content-Security-Policy"].format(auth=auth)}
     return Response(body, media_type=_WEB_TYPES[path.suffix], headers=headers)
 
 

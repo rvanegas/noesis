@@ -10,7 +10,7 @@ auth (client_credentials, `noesis:keep`, which dianoia-auth's scripts/add_client
 name at auth too (its scripts/accounts.py hold), so no person signs up as it.
 Unmarking stops every member's access at once and keeps the libraries.
 
-    docker compose run --rm -T noesis python scripts/client_libraries.py thefloor https://thefloor.rvanegas.co
+    docker compose run --rm -T noesis python scripts/client_libraries.py thefloor https://thefloor.twohands.co
     docker compose run --rm -T noesis python scripts/client_libraries.py thefloor --off
 """
 

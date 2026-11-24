@@ -1,6 +1,6 @@
 """The bearer tokens noesis takes, now that sign-in is auth's (2026-11-08).
 
-noesis is a resource server: people sign in at auth (`auth.rvanegas.co`,
+noesis is a resource server: people sign in at auth (`auth.twohands.co`,
 `~/src/dianoia-auth`), which issues every OAuth token, and noesis checks them. Three
 kinds of token reach it:
 
@@ -25,6 +25,13 @@ kinds of token reach it:
 noesis also holds a client of its own at auth (NOESIS_AUTH_CLIENT_ID and
 NOESIS_AUTH_CLIENT_SECRET), whose token (`own_token`) it presents when it asks
 an application who belongs to a library.
+
+**Two names during the move to twohands.co** (planned 2026-11-23): auth also
+answers as `auth.rvanegas.co` (NOESIS_AUTH_ALSO_URLS) and noesis as
+`noesis.rvanegas.co` (NOESIS_ALSO_URLS, mcp_server.py), so a token from
+either auth is good, for either noesis. COMPATIBILITY: goes no sooner than two
+weeks after the commons cutover (rvanegas-site's
+move-everything-from-rvanegas-co-to-twohands-co.md, step 8).
 """
 
 from __future__ import annotations
@@ -63,7 +70,18 @@ _own: dict = {}
 
 
 def auth_url() -> str:
-    return os.environ.get("NOESIS_AUTH_URL", "https://auth.rvanegas.co").rstrip("/")
+    """auth, which signs people in: NOESIS_AUTH_URL."""
+    return os.environ.get("NOESIS_AUTH_URL", "https://auth.twohands.co").rstrip("/")
+
+
+def urls(env: str) -> list[str]:
+    """A comma-separated list of URLs from the environment, without trailing slashes."""
+    return [u.strip().rstrip("/") for u in os.environ.get(env, "").split(",") if u.strip()]
+
+
+def auth_urls() -> list[str]:
+    """Every name of auth whose tokens are good: NOESIS_AUTH_URL, then NOESIS_AUTH_ALSO_URLS."""
+    return [auth_url(), *(u for u in urls("NOESIS_AUTH_ALSO_URLS") if u != auth_url())]
 
 
 def _sha(value: str) -> str:
@@ -98,10 +116,10 @@ def _claims(token: str) -> dict | None:
     key = _key(kid) if kid else None
     if key is None:
         return None
-    from noesis.mcp_server import public_url
+    from noesis.mcp_server import public_urls
+    audiences = [*auth_urls(), *public_urls(), *(f"{u}/mcp" for u in public_urls())]
     try:
-        return jwt.decode(token, key, algorithms=["EdDSA"], issuer=auth_url(),
-                          audience=[auth_url(), public_url(), f"{public_url()}/mcp"])
+        return jwt.decode(token, key, algorithms=["EdDSA"], issuer=auth_urls(), audience=audiences)
     except jwt.PyJWTError:
         return None
 

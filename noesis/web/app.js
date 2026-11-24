@@ -5,7 +5,7 @@
 // are checked, fixed, indexed, downloaded and deleted; only the settings are
 // edited in place.
 //
-// Signs in at auth (`auth.rvanegas.co`, named by the page's `auth` meta) as
+// Signs in at auth (`auth.twohands.co`, named by the page's `auth` meta) as
 // the public client `noesis-web` (authorization code with PKCE), then calls
 // the same file and run API the CLI does (server.py). The refresh token is kept in
 // localStorage so a sign-in lasts its ninety days; the access token only in

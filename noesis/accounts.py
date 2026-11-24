@@ -1,6 +1,6 @@
 """What each person may spend and store at noesis (SERVER.md, Phase 6).
 
-Who a person is is auth's (`auth.rvanegas.co`, since 2026-11-08): they sign
+Who a person is is auth's (`auth.twohands.co`, since 2026-11-08): they sign
 in there, and noesis knows them by the user name in its tokens (bearer.py).
 What they may do here is noesis's, kept per user name:
 

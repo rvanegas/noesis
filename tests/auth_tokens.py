@@ -10,6 +10,8 @@ import jwt
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 AUTH = "https://auth.test"
+# auth's old name, during a move (bearer.py): its tokens are good too.
+OLD_AUTH = "https://auth.old.test"
 KEY = Ed25519PrivateKey.generate()
 KID = "test-key"
 STRANGER = Ed25519PrivateKey.generate()
@@ -18,6 +20,7 @@ STRANGER = Ed25519PrivateKey.generate()
 def install(monkeypatch) -> None:
     from noesis import bearer
     monkeypatch.setenv("NOESIS_AUTH_URL", AUTH)
+    monkeypatch.setenv("NOESIS_AUTH_ALSO_URLS", OLD_AUTH)
     monkeypatch.setattr(bearer, "_fetch_keys", lambda: {KID: KEY.public_key()})
     monkeypatch.setattr(bearer, "_jwks", {"keys": {}, "fetched": 0.0})
 

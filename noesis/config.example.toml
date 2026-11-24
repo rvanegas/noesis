@@ -34,7 +34,7 @@ llm_names = ["Claude", "GPT"]
 # API base URL and service token used by "noesis argue", "noesis analyze" and "noesis audit".
 # The token is dianoia's NOESIS_TOKEN. Can also be set via DIANOIA_API_URL /
 # DIANOIA_TOKEN environment variables.
-# dianoia_api_url = "https://dianoia.rvanegas.co/api"
+# dianoia_api_url = "https://dianoia.twohands.co/api"
 # dianoia_token = "..."
 
 # --- Roxana ---

@@ -31,6 +31,8 @@ def live(tmp_path_factory):
     mp.setenv("NOESIS_DATA_DIR", str(data))
     mp.setenv("NOESIS_CONFIG_DIR", str(data / "config"))
     mp.setenv("NOESIS_PUBLIC_URL", f"http://127.0.0.1:{port}")
+    # Its old name during a move, reached by the Host header (mcp_server.public_urls).
+    mp.setenv("NOESIS_ALSO_URLS", f"http://localhost:{port}")
     auth_tokens.install(mp)
     (data / "users.toml").write_text(
         f'[[tokens]]\nuser = "ann"\nsha256 = "{hashlib.sha256(b"ann").hexdigest()}"\n'
@@ -363,3 +365,41 @@ def test_list_documents_names_books_and_papers(library):
 def test_list_documents_says_a_library_is_empty(library):
     _, url = library
     assert text(call(url, "bob", "list_documents", {})) == "This library has no chats or documents yet."
+
+
+# The move to twohands.co (bearer.py, mcp_server.public_urls). COMPATIBILITY:
+# these go with NOESIS_ALSO_URLS and NOESIS_AUTH_ALSO_URLS.
+
+def _old(url):
+    return {"Host": url.split("://", 1)[1].replace("127.0.0.1", "localhost")}
+
+
+def test_each_name_tells_claude_its_own_resource_and_auth(live):
+    data, url = live
+    new = httpx.get(f"{url}/.well-known/oauth-protected-resource/mcp").json()
+    assert new["resource"] == f"{url}/mcp" and new["authorization_servers"] == [auth_tokens.AUTH]
+    old = httpx.get(f"{url}/.well-known/oauth-protected-resource/mcp", headers=_old(url)).json()
+    old_url = "http://" + _old(url)["Host"]
+    assert old["resource"] == f"{old_url}/mcp" and old["authorization_servers"] == [auth_tokens.OLD_AUTH]
+    # The 401 points a client at the metadata of the name it asked.
+    refused = httpx.post(f"{url}/mcp", json={}, headers=_old(url))
+    assert refused.status_code == 401 and old_url in refused.headers["www-authenticate"]
+
+
+def test_a_connection_made_at_the_old_name_keeps_reading(library, live):
+    data, url = live
+    old_url = "http://" + _old(url)["Host"]
+    connector = auth_tokens.token("ann", scopes=["noesis:read"], client="claude1",
+                                  issuer=auth_tokens.OLD_AUTH, aud=f"{old_url}/mcp")
+    assert "Prose here." in text(call(url, connector, "read_file", {"name": "2026-10-27-essay.document.md"}))
+    web = auth_tokens.bearer("ann", issuer=auth_tokens.OLD_AUTH, aud=auth_tokens.OLD_AUTH)
+    assert httpx.get(f"{url}/libraries", headers=web).status_code == 200
+
+
+def test_the_web_client_signs_in_at_the_auth_of_the_name_it_came_from(live):
+    data, url = live
+    page = httpx.get(f"{url}/web/")
+    assert f'content="{auth_tokens.AUTH}"' in page.text and auth_tokens.AUTH in page.headers["content-security-policy"]
+    old = httpx.get(f"{url}/web/", headers=_old(url))
+    assert f'content="{auth_tokens.OLD_AUTH}"' in old.text
+    assert auth_tokens.OLD_AUTH in old.headers["content-security-policy"]
